@@ -1,0 +1,965 @@
+openapi: 3.1.0
+info:
+  title: Beacon API
+  version: 0.4.0
+  description: |
+    Beacon text-only OpenAI-compatible inference surface and signed-in developer
+    management surface. Public inference routes use Beacon API keys; developer
+    routes use the existing Beacon session and CSRF policy.
+servers:
+  - url: /
+    description: Current Beacon API origin
+tags:
+  - name: Inference
+    description: OpenAI-compatible endpoints authenticated with a Beacon API key.
+  - name: Developer
+    description: Management endpoints authenticated with the existing Beacon session.
+paths:
+  /api/ai/v1/models:
+    get:
+      tags: [Inference]
+      operationId: listBeaconModels
+      summary: List enabled public models
+      security:
+        - BeaconKey: []
+      responses:
+        '200':
+          description: Models enabled by the authoritative backend pricing revision.
+          headers:
+            X-Request-Id:
+              $ref: '#/components/headers/XRequestId'
+            X-Beacon-Pricing-Revision:
+              $ref: '#/components/headers/XPricingRevision'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelList'
+        '401':
+          $ref: '#/components/responses/PublicError'
+        '403':
+          $ref: '#/components/responses/PublicError'
+        '429':
+          $ref: '#/components/responses/PublicError'
+        '503':
+          $ref: '#/components/responses/PublicError'
+
+  /api/ai/v1/chat/completions:
+    post:
+      tags: [Inference]
+      operationId: createBeaconChatCompletion
+      summary: Create a text chat completion
+      description: |
+        Returns JSON when `stream` is false and SSE when `stream` is true. A normal
+        stream uses `data: {json}\n\n` frames and ends with `data: [DONE]\n\n`.
+        Once the first data frame is sent, an execution failure is reported in-band
+        and the request is not executed again.
+      security:
+        - BeaconKey: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatCompletionRequest'
+      responses:
+        '200':
+          description: A non-streaming completion or an SSE completion stream.
+          headers:
+            X-Request-Id:
+              $ref: '#/components/headers/XRequestId'
+            X-Beacon-Pricing-Revision:
+              $ref: '#/components/headers/XPricingRevision'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatCompletionResponse'
+            text/event-stream:
+              schema:
+                type: string
+              example: |
+                data: {"id":"chatcmpl_example","object":"chat.completion.chunk"}
+
+                data: [DONE]
+        '400':
+          $ref: '#/components/responses/PublicError'
+        '401':
+          $ref: '#/components/responses/PublicError'
+        '402':
+          $ref: '#/components/responses/PublicError'
+        '403':
+          $ref: '#/components/responses/PublicError'
+        '404':
+          $ref: '#/components/responses/PublicError'
+        '408':
+          $ref: '#/components/responses/PublicError'
+        '409':
+          $ref: '#/components/responses/PublicError'
+        '413':
+          $ref: '#/components/responses/PublicError'
+        '429':
+          $ref: '#/components/responses/PublicError'
+        '503':
+          $ref: '#/components/responses/PublicError'
+
+  /api/ai/developer/keys:
+    get:
+      tags: [Developer]
+      operationId: listBeaconKeys
+      summary: List API key metadata
+      security:
+        - SessionBearer: []
+        - SessionCookie: []
+      responses:
+        '200':
+          description: API key metadata; full secrets are never returned.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiKeyList'
+        '401':
+          $ref: '#/components/responses/ManagementError'
+        '403':
+          $ref: '#/components/responses/ManagementError'
+    post:
+      tags: [Developer]
+      operationId: createBeaconKey
+      summary: Create an API key
+      description: The `api_key` secret appears in this response exactly once.
+      security:
+        - SessionBearer: []
+        - SessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CsrfToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApiKeyCreateRequest'
+      responses:
+        '201':
+          description: API key created; copy the one-time secret now.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiKeyMutationResult'
+        '400':
+          $ref: '#/components/responses/ManagementError'
+        '401':
+          $ref: '#/components/responses/ManagementError'
+        '403':
+          $ref: '#/components/responses/ManagementError'
+        '409':
+          $ref: '#/components/responses/ManagementError'
+
+  /api/ai/developer/keys/{id}/rotate:
+    post:
+      tags: [Developer]
+      operationId: rotateBeaconKey
+      summary: Atomically rotate an API key
+      description: The old secret is revoked immediately; the new secret appears once.
+      security:
+        - SessionBearer: []
+        - SessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/KeyId'
+        - $ref: '#/components/parameters/CsrfToken'
+      responses:
+        '200':
+          description: API key rotated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiKeyMutationResult'
+        '401':
+          $ref: '#/components/responses/ManagementError'
+        '403':
+          $ref: '#/components/responses/ManagementError'
+        '404':
+          $ref: '#/components/responses/ManagementError'
+
+  /api/ai/developer/keys/{id}:
+    delete:
+      tags: [Developer]
+      operationId: revokeBeaconKey
+      summary: Revoke an API key
+      security:
+        - SessionBearer: []
+        - SessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/KeyId'
+        - $ref: '#/components/parameters/CsrfToken'
+      responses:
+        '204':
+          description: The API key is revoked, or was already absent/revoked. This operation is idempotent.
+        '401':
+          $ref: '#/components/responses/ManagementError'
+        '403':
+          $ref: '#/components/responses/ManagementError'
+
+  /api/ai/developer/usage/summary:
+    get:
+      tags: [Developer]
+      operationId: getBeaconUsageSummary
+      summary: Get balance, 30-day usage, and monthly free-model quotas
+      security:
+        - SessionBearer: []
+        - SessionCookie: []
+      responses:
+        '200':
+          description: Current USD balance, fixed 30-day usage, and reserved free-model call quotas.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UsageSummaryEnvelope'
+        '401':
+          $ref: '#/components/responses/ManagementError'
+        '403':
+          $ref: '#/components/responses/ManagementError'
+
+  /api/ai/developer/logs:
+    get:
+      tags: [Developer]
+      operationId: listBeaconRequestLogs
+      summary: List sanitized request logs
+      description: |
+        Prompt and completion content, full keys, credential material, internal
+        execution identities, internal model identifiers, attempt counts and
+        internal request identifiers are never returned. Compatibility fields use
+        the Beacon service identity and requested public model only.
+      security:
+        - SessionBearer: []
+        - SessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: key_id
+          in: query
+          schema:
+            type: string
+        - name: model
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Cursor-paginated sanitized request logs.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LogsPage'
+        '400':
+          $ref: '#/components/responses/ManagementError'
+        '401':
+          $ref: '#/components/responses/ManagementError'
+        '403':
+          $ref: '#/components/responses/ManagementError'
+
+  /api/ai/developer/requests/{requestId}:
+    get:
+      tags: [Developer]
+      operationId: getBeaconRequest
+      summary: Get sanitized request details
+      security:
+        - SessionBearer: []
+        - SessionCookie: []
+      parameters:
+        - name: requestId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^req_[A-Za-z0-9_-]+$'
+      responses:
+        '200':
+          description: |
+            A request owned by the signed-in user. Content and internal execution
+            metadata are not exposed; compatibility fields contain neutral Beacon
+            values only.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestDetail'
+        '401':
+          $ref: '#/components/responses/ManagementError'
+        '403':
+          $ref: '#/components/responses/ManagementError'
+        '404':
+          $ref: '#/components/responses/ManagementError'
+
+components:
+  securitySchemes:
+    BeaconKey:
+      type: http
+      scheme: bearer
+      bearerFormat: sk-beacon-live_...
+    SessionBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    SessionCookie:
+      type: apiKey
+      in: cookie
+      name: beacon_token
+
+  headers:
+    XRequestId:
+      description: Stable Beacon request identifier.
+      schema:
+        type: string
+    XPricingRevision:
+      description: Backend pricing revision used for this request.
+      schema:
+        type: string
+
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: |
+        Prevents a second model execution and double charge for the same API key and
+        payload. Because prompts and completions are not stored, a completed replay
+        returns 409 with the original X-Request-Id instead of replaying response content.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 200
+    CsrfToken:
+      name: X-CSRF-Token
+      in: header
+      required: false
+      description: Required for unsafe methods when the session comes from a cookie.
+      schema:
+        type: string
+    KeyId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: '^[1-9][0-9]*$'
+    Cursor:
+      name: cursor
+      in: query
+      schema:
+        type: string
+    Limit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 25
+
+  responses:
+    PublicError:
+      description: |
+        Beacon-owned OpenAI-shaped inference error. Internal execution failures and
+        infrastructure details are normalized to stable public Beacon error codes.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/OpenAiErrorEnvelope'
+    ManagementError:
+      description: Signed-in developer management error.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ManagementErrorEnvelope'
+
+  schemas:
+    OpenAiErrorEnvelope:
+      type: object
+      required: [error]
+      additionalProperties: false
+      properties:
+        error:
+          type: object
+          required: [message, type, code]
+          additionalProperties: false
+          properties:
+            message:
+              type: string
+            type:
+              type: string
+            param:
+              type: [string, 'null']
+            code:
+              type: string
+              description: Stable public Beacon error code; internal execution codes are never returned.
+
+    ManagementErrorEnvelope:
+      type: object
+      required: [error, code]
+      properties:
+        error:
+          type: string
+        code:
+          type: string
+
+    Model:
+      type: object
+      required: [id, object, created, owned_by]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        object:
+          const: model
+        created:
+          type: integer
+        owned_by:
+          const: beacon
+
+    ModelList:
+      type: object
+      required: [object, data]
+      additionalProperties: false
+      properties:
+        object:
+          const: list
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Model'
+
+    FunctionDefinition:
+      type: object
+      required: [name, parameters]
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          pattern: '^[a-zA-Z0-9_-]{1,64}$'
+        description:
+          type: string
+          maxLength: 4096
+        parameters:
+          type: object
+          description: JSON Schema describing the function arguments.
+
+    ChatTool:
+      type: object
+      required: [type, function]
+      additionalProperties: false
+      properties:
+        type:
+          const: function
+        function:
+          $ref: '#/components/schemas/FunctionDefinition'
+
+    ToolCall:
+      type: object
+      required: [id, type, function]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          minLength: 1
+          maxLength: 200
+        type:
+          const: function
+        function:
+          type: object
+          required: [name, arguments]
+          additionalProperties: false
+          properties:
+            name:
+              type: string
+              pattern: '^[a-zA-Z0-9_-]{1,64}$'
+            arguments:
+              type: string
+              description: JSON-encoded function arguments.
+
+    ChatMessage:
+      type: object
+      required: [role]
+      additionalProperties: false
+      properties:
+        role:
+          type: string
+          enum: [system, developer, user, assistant, tool]
+        content:
+          type: [string, 'null']
+        tool_call_id:
+          type: string
+          minLength: 1
+          maxLength: 200
+        tool_calls:
+          type: array
+          minItems: 1
+          maxItems: 128
+          items:
+            $ref: '#/components/schemas/ToolCall'
+
+    ChatCompletionRequest:
+      type: object
+      required: [model, messages]
+      additionalProperties: false
+      properties:
+        model:
+          type: string
+        messages:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/ChatMessage'
+        stream:
+          type: boolean
+          default: false
+        max_completion_tokens:
+          type: integer
+          minimum: 1
+        max_tokens:
+          type: integer
+          minimum: 1
+          deprecated: true
+          description: Compatibility alias for max_completion_tokens.
+        temperature:
+          type: number
+          minimum: 0
+          maximum: 2
+        top_p:
+          type: number
+          minimum: 0
+          maximum: 1
+        stop:
+          oneOf:
+            - type: string
+              minLength: 1
+              maxLength: 1000
+            - type: array
+              minItems: 1
+              maxItems: 4
+              items:
+                type: string
+                minLength: 1
+                maxLength: 1000
+        presence_penalty:
+          type: number
+          minimum: -2
+          maximum: 2
+        frequency_penalty:
+          type: number
+          minimum: -2
+          maximum: 2
+        seed:
+          type: integer
+          minimum: -2147483648
+          maximum: 2147483647
+        n:
+          type: integer
+          minimum: 1
+          maximum: 1
+        stream_options:
+          type: object
+          additionalProperties: false
+          properties:
+            include_usage:
+              type: boolean
+              const: true
+              default: true
+              description: Beacon always includes final usage for streaming requests.
+        chat_template_kwargs:
+          type: object
+          description: Optional public reasoning control for compatible Beacon models.
+          required: [thinking]
+          additionalProperties: false
+          properties:
+            thinking:
+              type: boolean
+        tools:
+          type: array
+          minItems: 1
+          maxItems: 128
+          items:
+            $ref: '#/components/schemas/ChatTool'
+        tool_choice:
+          oneOf:
+            - type: string
+              enum: [none, auto, required]
+            - type: object
+              required: [type, function]
+              additionalProperties: false
+              properties:
+                type:
+                  const: function
+                function:
+                  type: object
+                  required: [name]
+                  additionalProperties: false
+                  properties:
+                    name:
+                      type: string
+                      pattern: '^[a-zA-Z0-9_-]{1,64}$'
+
+    TokenUsage:
+      type: object
+      required: [prompt_tokens, completion_tokens, total_tokens]
+      additionalProperties: false
+      properties:
+        prompt_tokens:
+          type: integer
+          minimum: 0
+        completion_tokens:
+          type: integer
+          minimum: 0
+          description: Total output tokens, including reasoning tokens when reported by the provider.
+        total_tokens:
+          type: integer
+          minimum: 0
+        completion_tokens_details:
+          type: object
+          additionalProperties: false
+          required: [reasoning_tokens]
+          properties:
+            reasoning_tokens:
+              type: integer
+              minimum: 0
+              description: Optional reasoning subset of completion_tokens; do not add it again when calculating charges.
+
+    ChatCompletionResponse:
+      type: object
+      required: [id, object, created, model, choices, usage]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        object:
+          const: chat.completion
+        created:
+          type: integer
+        model:
+          type: string
+        choices:
+          type: array
+          items:
+            type: object
+            required: [index, message, finish_reason]
+            additionalProperties: false
+            properties:
+              index:
+                type: integer
+                minimum: 0
+              message:
+                type: object
+                required: [role, content]
+                additionalProperties: false
+                properties:
+                  role:
+                    const: assistant
+                  content:
+                    type: [string, 'null']
+                  reasoning:
+                    type: [string, 'null']
+                  reasoning_content:
+                    type: [string, 'null']
+                  refusal:
+                    type: [string, 'null']
+                  tool_calls:
+                    type: array
+                    minItems: 1
+                    maxItems: 128
+                    items:
+                      $ref: '#/components/schemas/ToolCall'
+              finish_reason:
+                type: [string, 'null']
+        usage:
+          $ref: '#/components/schemas/TokenUsage'
+
+    ApiKeyMetadata:
+      type: object
+      required:
+        - id
+        - name
+        - environment
+        - key_prefix
+        - key_suffix
+        - scopes
+        - model_allowlist
+        - is_active
+        - spend_used_usd
+        - created_at
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        environment:
+          type: string
+          enum: [live, test]
+        key_prefix:
+          type: string
+        key_suffix:
+          type: string
+        masked_key:
+          type: string
+        scopes:
+          type: array
+          items:
+            type: string
+        model_allowlist:
+          type: array
+          items:
+            type: string
+        rpm_limit:
+          type: integer
+        max_in_flight:
+          type: integer
+        spend_limit_usd:
+          type:
+            - string
+            - "null"
+          description: Maximum cumulative spend in USD for this key; null means unlimited.
+        spend_used_usd:
+          type: integer
+          minimum: 0
+          description: Points cumulatively consumed by successful requests using this key.
+        is_active:
+          type: boolean
+        expires_at:
+          type: [string, 'null']
+          format: date-time
+        last_used_at:
+          type: [string, 'null']
+          format: date-time
+        rotated_at:
+          type: [string, 'null']
+          format: date-time
+        revoked_at:
+          type: [string, 'null']
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+
+    ApiKeyList:
+      type: object
+      required: [keys]
+      properties:
+        keys:
+          type: array
+          items:
+            $ref: '#/components/schemas/ApiKeyMetadata'
+
+    ApiKeyCreateRequest:
+      type: object
+      required: [name]
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 80
+        environment:
+          type: string
+          enum: [live, test]
+          default: live
+        model_allowlist:
+          type: array
+          maxItems: 100
+          items:
+            type: string
+        rpm_limit:
+          type: integer
+          minimum: 1
+          maximum: 6000
+        max_in_flight:
+          type: integer
+          minimum: 1
+          maximum: 100
+        spend_limit_usd:
+          type:
+            - string
+            - "null"
+          description: Maximum cumulative spend in USD; null means unlimited.
+        expires_at:
+          type: [string, 'null']
+          format: date-time
+          description: Must be at least one hour in the future; null means the key never expires.
+
+    ApiKeyMutationResult:
+      type: object
+      required: [key, api_key]
+      properties:
+        key:
+          $ref: '#/components/schemas/ApiKeyMetadata'
+        api_key:
+          type: string
+          description: One-time plaintext secret.
+
+    UsageSummaryEnvelope:
+      type: object
+      required: [usage]
+      properties:
+        usage:
+          $ref: '#/components/schemas/UsageSummary'
+
+    UsageSummary:
+      type: object
+      required:
+        - balance_usd
+        - requests
+        - succeeded
+        - failed
+        - input_tokens
+        - output_tokens
+        - total_tokens
+        - charged_usd
+        - period_days
+        - free_model_quotas
+      additionalProperties: false
+      properties:
+        balance_usd:
+          type: string
+          description: Current balance in USD, fixed 6-decimal string (micro-USD exact).
+        requests:
+          type: integer
+        succeeded:
+          type: integer
+        failed:
+          type: integer
+        input_tokens:
+          type: integer
+        output_tokens:
+          type: integer
+        total_tokens:
+          type: integer
+        charged_usd:
+          type: string
+          description: Charged amount in USD, fixed 6-decimal string (micro-USD exact).
+        period_days:
+          type: integer
+          const: 30
+        free_model_quotas:
+          type: object
+          description: Calls used and allowed for the current calendar month, keyed by public model ID.
+          additionalProperties:
+            $ref: '#/components/schemas/FreeModelQuota'
+
+    FreeModelQuota:
+      type: object
+      required: [used, limit]
+      additionalProperties: false
+      properties:
+        used:
+          type: integer
+          minimum: 0
+        limit:
+          type: integer
+          minimum: 0
+
+    UsageLog:
+      type: object
+      required:
+        - request_id
+        - created_at
+        - completed_at
+        - api_key_id
+        - key_name
+        - requested_model
+        - actual_model
+        - provider
+        - status
+        - input_tokens
+        - output_tokens
+        - total_tokens
+        - reserved_usd
+        - charged_usd
+        - refunded_usd
+        - latency_ms
+        - first_token_latency_ms
+        - error_code
+      additionalProperties: false
+      properties:
+        request_id:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: [string, 'null']
+          format: date-time
+        api_key_id:
+          type: [string, 'null']
+        key_name:
+          type: [string, 'null']
+        requested_model:
+          type: string
+          description: Public Beacon model requested by the client.
+        actual_model:
+          type: string
+          description: Compatibility field that always mirrors requested_model.
+        provider:
+          type: string
+          const: beacon
+          description: Beacon service identity; internal execution identities are never returned.
+        status:
+          type: string
+        input_tokens:
+          type: integer
+        output_tokens:
+          type: integer
+        total_tokens:
+          type: integer
+        reserved_usd:
+          type: string
+          description: Reserved amount in USD, fixed 6-decimal string (micro-USD exact).
+        charged_usd:
+          type: string
+          description: Charged amount in USD, fixed 6-decimal string (micro-USD exact).
+        refunded_usd:
+          type: string
+          description: Refunded amount in USD, fixed 6-decimal string (micro-USD exact).
+        latency_ms:
+          type: [integer, 'null']
+        first_token_latency_ms:
+          type: [integer, 'null']
+        error_code:
+          type: [string, 'null']
+          description: Stable public Beacon error code; internal execution codes are never returned.
+        pricing_revision:
+          type: [string, 'null']
+          description: Present only on request-detail responses.
+
+    LogsPage:
+      type: object
+      required: [logs, pagination]
+      properties:
+        logs:
+          type: array
+          items:
+            $ref: '#/components/schemas/UsageLog'
+        pagination:
+          type: object
+          required: [next_cursor, has_more]
+          properties:
+            next_cursor:
+              type: [string, 'null']
+            has_more:
+              type: boolean
+
+    RequestDetail:
+      allOf:
+        - $ref: '#/components/schemas/UsageLog'
+        - type: object
+          required: [pricing_revision]
+      unevaluatedProperties: false

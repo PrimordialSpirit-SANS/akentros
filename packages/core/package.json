@@ -1,0 +1,12 @@
+{
+  "name": "@beacon/core",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Portable Beacon core: pricing authority, billing, API keys, provider pools, inference and SSE.",
+  "license": "MIT",
+  "scripts": {
+    "test": "node --test \"tests/*.test.ts\"",
+    "typecheck": "tsc --noEmit"
+  }
+}

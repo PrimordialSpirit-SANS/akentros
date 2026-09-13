@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint and format check (Biome)
+        run: npm run lint
+
+      - name: Typecheck (all workspaces)
+        run: npm run typecheck
+
+      - name: Tests (all workspaces, incl. gateway)
+        run: npm test
+
+      - name: Dependency audit (high severity fails)
+        run: npm audit --audit-level=high
+
+      - name: Build console
+        run: npm run build
+
+      - name: Secret scan (gitleaks)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

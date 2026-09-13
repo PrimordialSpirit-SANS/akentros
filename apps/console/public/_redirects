@@ -1,0 +1,3 @@
+# SPA fallback:BrowserRouter 的深連結(如 /keys、/requests)由 index.html 接手;
+# 實際存在的靜態檔(assets/brand/data)優先於本規則。
+/*    /index.html   200

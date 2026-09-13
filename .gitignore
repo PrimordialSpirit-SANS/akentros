@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+
+# Builds
+dist/
+dist-worker/
+.wrangler/
+*.tsbuildinfo
+
+# Secrets — never commit real credentials
+.env
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
+
+# Database (SQLite)
+*.db
+*.db-shm
+*.db-wal
+
+# Logs / OS
+*.log
+.DS_Store
+Thumbs.db
+.wrangler/
+
+# Local agent workspace files
+.zcode/

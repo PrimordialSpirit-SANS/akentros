@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
+  <title>MiniMax（中性佔位標誌）</title>
+  <rect width="48" height="48" rx="10" fill="#FF4D4F"/>
+  <text x="24" y="31.5" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="24" font-weight="600" text-anchor="middle" fill="#FFFFFF">M</text>
+</svg>
