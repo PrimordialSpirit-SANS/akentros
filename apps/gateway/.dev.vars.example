@@ -1,0 +1,78 @@
+# 範本刻意留空。複製為 .dev.vars 後填入。
+# 本檔供 Node 自架部署(npm run dev:gateway)與本地 wrangler dev 共用。
+# 部署到 Cloudflare Workers 時:secrets 一律用 `wrangler secret put` 設定,
+# 非敏感 vars 寫在 wrangler.jsonc "vars";BEACON_DB_PATH 不適用(資料庫為
+# DO 內建 SQLite)。
+# 資料庫(Node):SQLite 單檔;路徑相對 apps/gateway/,未設定時預設 ./beacon.db。
+# 也可用 sqlite:// 前綴,例如 sqlite://./data/beacon.db
+BEACON_DB_PATH=./beacon.db
+
+# 以下兩個密鑰請使用獨立、密碼學隨機的值(建議 openssl rand -hex 32)。
+# JWT_SECRET:登入會話 cookie(beacon_token)的簽名金鑰。
+JWT_SECRET=
+# BEACON_API_KEY_PEPPER:API 金鑰 digest 的 HMAC pepper(≥32 bytes)。
+BEACON_API_KEY_PEPPER=
+
+# 內建帳號系統
+# 管理員種子(npm run migrate 時建立/確保;密碼不會被印出)
+ADMIN_EMAIL=
+ADMIN_PASSWORD=
+ADMIN_USERNAME=admin
+# 新註冊帳號的初始點數
+BEACON_SIGNUP_BONUS_USD=1000
+# 設為 true 時關閉公開註冊(僅管理員能開帳號)
+BEACON_DISABLE_REGISTRATION=
+# PBKDF2 迭代次數(建議 ≥10000)
+BEACON_PBKDF2_ITERATIONS=
+
+# Beacon 入口開關(fail-closed):設為 true 才會啟用 /api/ai/* 路由。
+BEACON_ENABLED=true
+
+# CORS:控制台與其他允許帶 cookie 的來源(逗號分隔)
+FRONTEND_ORIGINS="http://localhost:5173,http://localhost:4173"
+FRONTEND_BASE_URL="http://localhost:5173"
+RATE_LIMIT_NAMESPACE="beacon"
+# 公開推理端點的額外放行來源(不需 cookie 的呼叫方,例如 API 文件站)
+BEACON_PUBLIC_ORIGINS=
+
+# 開發供應商金鑰(僅填實際使用的供應商;詳見 docs/PROVIDERS.md)
+OPENROUTER_API_KEY_1=
+CLOUDFLARE_AI_API_TOKEN_1=
+CLOUDFLARE_AI_ACCOUNT_ID_1=
+CLOUDFLARE_AI_API_TOKEN_2=
+CLOUDFLARE_AI_ACCOUNT_ID_2=
+CLOUDFLARE_AI_API_TOKEN_3=
+CLOUDFLARE_AI_ACCOUNT_ID_3=
+HUGGING_FACE_API_KEY_1=
+QWENCLOUD_API_KEY_1=
+OPENAI_API_KEY_1=
+ANTHROPIC_API_KEY_1=
+GEMINI_API_KEY_1=
+XAI_API_KEY_1=
+GROQ_API_KEY_1=
+MISTRAL_API_KEY_1=
+DEEPSEEK_API_KEY_1=
+TOGETHER_API_KEY_1=
+FIREWORKS_AI_API_KEY_1=
+CEREBRAS_API_KEY_1=
+PERPLEXITY_API_KEY_1=
+COHERE_API_KEY_1=
+MOONSHOT_API_KEY_1=
+ZHIPU_API_KEY_1=
+MINIMAX_API_KEY_1=
+NVIDIA_API_KEY_1=
+DEEPINFRA_API_KEY_1=
+SAMBANOVA_API_KEY_1=
+LAMBDA_API_KEY_1=
+FRIENDLI_API_KEY_1=
+BAICHUAN_API_KEY_1=
+STEPFUN_API_KEY_1=
+HUNYUAN_API_KEY_1=
+SPARK_API_KEY_1=
+ERNIE_API_KEY_1=
+AI21_API_KEY_1=
+CUSTOM_PROVIDER_API_KEY_1=
+BEDROCK_API_KEY_1=
+AZURE_OPENAI_API_KEY_1=
+SCALEWAY_API_KEY_1=
+OVHCLOUD_API_KEY_1=

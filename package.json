@@ -1,0 +1,38 @@
+{
+  "name": "beacon",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Self-hosted OpenAI-compatible AI gateway with point-based billing, multi-provider pooling and a developer console.",
+  "license": "MIT",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "build": "npm run build --workspaces --if-present",
+    "dev:console": "npm run dev --workspace @beacon/console",
+    "dev:gateway": "node apps/gateway/src/nodeServer.ts",
+    "dev:worker": "npm run dev:worker --workspace @beacon/gateway",
+    "deploy:worker": "npm run deploy:worker --workspace @beacon/gateway",
+    "migrate": "npm run migrate --workspace @beacon/gateway",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "start:gateway": "node apps/gateway/src/nodeServer.ts"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.13",
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^24.0.0",
+    "js-yaml": "^4.1.0",
+    "typescript": "^5.9.2"
+  },
+  "dependencies": {
+    "@hono/node-server": "^2.1.1"
+  }
+}

@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://beacon.example/schemas/beacon/provider-pools.schema.json",
+  "title": "Beacon provider credential pools",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "revision", "pools"],
+  "properties": {
+    "schema_version": { "const": "1.0.0" },
+    "revision": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}\\.[1-9][0-9]*$"
+    },
+    "pools": {
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": { "pattern": "^[a-z0-9][a-z0-9.-]{2,79}$" },
+      "additionalProperties": { "$ref": "#/$defs/pool" }
+    }
+  },
+  "$defs": {
+    "provider": {
+      "enum": ["openrouter", "cloudflare-workers-ai", "hugging-face", "qwencloud"]
+    },
+    "selection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["strategy", "lease_ttl_ms", "base_cooldown_ms", "max_cooldown_ms"],
+      "properties": {
+        "strategy": { "const": "database-weighted-round-robin" },
+        "lease_ttl_ms": { "type": "integer", "minimum": 1000, "maximum": 900000 },
+        "base_cooldown_ms": { "type": "integer", "minimum": 1000, "maximum": 900000 },
+        "max_cooldown_ms": { "type": "integer", "minimum": 1000, "maximum": 86400000 }
+      }
+    },
+    "secretRefs": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "string",
+        "pattern": "^[A-Z][A-Z0-9_]{2,127}$"
+      },
+      "propertyNames": {
+        "enum": ["api_key", "api_token", "account_id"]
+      }
+    },
+    "credential": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["credential_id", "enabled", "weight", "max_in_flight", "secret_refs"],
+      "properties": {
+        "credential_id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9.-]{2,79}$" },
+        "enabled": { "type": "boolean" },
+        "weight": { "type": "integer", "minimum": 1, "maximum": 10000 },
+        "max_in_flight": { "type": "integer", "minimum": 1, "maximum": 10000 },
+        "secret_refs": { "$ref": "#/$defs/secretRefs" }
+      }
+    },
+    "pool": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider", "enabled", "api_style", "base_url", "selection", "credentials"],
+      "properties": {
+        "provider": { "$ref": "#/$defs/provider" },
+        "enabled": { "type": "boolean" },
+        "api_style": { "enum": ["openai-compatible", "cloudflare-rest"] },
+        "base_url": { "type": "string", "pattern": "^https://[^\\s]+$", "maxLength": 500 },
+        "selection": { "$ref": "#/$defs/selection" },
+        "credentials": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/credential" }
+        }
+      }
+    }
+  }
+}

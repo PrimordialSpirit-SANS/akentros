@@ -1,0 +1,25 @@
+{
+  "name": "@beacon/gateway",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Beacon gateway: OpenAI-compatible API, key management and billing. Runs as a Node server (nodeServer.ts) or on Cloudflare Workers via a Durable Object (worker.ts).",
+  "license": "MIT",
+  "scripts": {
+    "migrate": "node scripts/migrateBeacon.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test \"tests/*.test.ts\"",
+    "start": "node src/nodeServer.ts",
+    "dev:worker": "wrangler dev",
+    "deploy:worker": "wrangler deploy"
+  },
+  "dependencies": {
+    "dotenv": "^17.2.0",
+    "hono": "^4.9.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.2",
+    "wrangler": "^4.40.0"
+  }
+}

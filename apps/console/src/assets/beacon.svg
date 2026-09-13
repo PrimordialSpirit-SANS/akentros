@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="135 15 420 690" width="720" height="720" fill="none">
+  <!-- 空心線條部分 -->
+  <g fill="none" stroke="currentColor" stroke-width="32" stroke-linecap="round" stroke-linejoin="round">
+    <!-- 葉片外框（空心） -->
+    <path d="M345 36 C240 132, 157 272, 157 410 C157 552, 243 638, 345 690 C447 638, 532 552, 532 410 C532 272, 450 132, 345 36 Z"/>
+    <!-- 主莖 -->
+    <path d="M341 352 L341 688"/>
+    <!-- 左側分支（轉折處為弧線） -->
+    <path d="M237 401 L262 478 Q272 511 303 528 L341 550"/>
+    <!-- 右側分支（轉折處為弧線） -->
+    <path d="M441 369 L435 431 Q431 466 399 480 L341 507"/>
+  </g>
+  <!-- 實心圓形 -->
+  <g fill="currentColor" stroke="none">
+    <circle cx="341" cy="316" r="42"/>
+    <circle cx="237" cy="401" r="28"/>
+    <circle cx="441" cy="369" r="26"/>
+  </g>
+</svg>

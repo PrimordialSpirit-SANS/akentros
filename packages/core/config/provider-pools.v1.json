@@ -1,0 +1,832 @@
+{
+  "schema_version": "1.0.0",
+  "revision": "2026-09-13.2",
+  "pools": {
+    "openrouter-production": {
+      "provider": "openrouter",
+      "enabled": true,
+      "api_style": "openai-compatible",
+      "base_url": "https://openrouter.ai/api/v1",
+      "selection": {
+        "strategy": "database-weighted-round-robin",
+        "lease_ttl_ms": 90000,
+        "base_cooldown_ms": 5000,
+        "max_cooldown_ms": 300000
+      },
+      "credentials": [
+        {
+          "credential_id": "openrouter-primary",
+          "enabled": true,
+          "weight": 100,
+          "max_in_flight": 16,
+          "secret_refs": {
+            "api_key": "OPENROUTER_API_KEY_1"
+          }
+        }
+      ]
+    },
+    "cloudflare-workers-ai-production": {
+      "provider": "cloudflare-workers-ai",
+      "enabled": true,
+      "api_style": "cloudflare-rest",
+      "base_url": "https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/run",
+      "selection": {
+        "strategy": "database-weighted-round-robin",
+        "lease_ttl_ms": 90000,
+        "base_cooldown_ms": 5000,
+        "max_cooldown_ms": 300000
+      },
+      "credentials": [
+        {
+          "credential_id": "cloudflare-workers-ai-primary",
+          "enabled": true,
+          "weight": 100,
+          "max_in_flight": 8,
+          "secret_refs": {
+            "api_token": "CLOUDFLARE_AI_API_TOKEN_1",
+            "account_id": "CLOUDFLARE_AI_ACCOUNT_ID_1"
+          }
+        },
+        {
+          "credential_id": "cloudflare-workers-ai-secondary",
+          "enabled": true,
+          "weight": 100,
+          "max_in_flight": 8,
+          "secret_refs": {
+            "api_token": "CLOUDFLARE_AI_API_TOKEN_2",
+            "account_id": "CLOUDFLARE_AI_ACCOUNT_ID_2"
+          }
+        },
+        {
+          "credential_id": "cloudflare-workers-ai-tertiary",
+          "enabled": true,
+          "weight": 100,
+          "max_in_flight": 8,
+          "secret_refs": {
+            "api_token": "CLOUDFLARE_AI_API_TOKEN_3",
+            "account_id": "CLOUDFLARE_AI_ACCOUNT_ID_3"
+          }
+        }
+      ]
+    },
+    "hugging-face-production": {
+      "provider": "hugging-face",
+      "enabled": true,
+      "api_style": "openai-compatible",
+      "base_url": "https://router.huggingface.co/v1",
+      "selection": {
+        "strategy": "database-weighted-round-robin",
+        "lease_ttl_ms": 90000,
+        "base_cooldown_ms": 5000,
+        "max_cooldown_ms": 300000
+      },
+      "credentials": [
+        {
+          "credential_id": "hugging-face-primary",
+          "enabled": true,
+          "weight": 100,
+          "max_in_flight": 8,
+          "secret_refs": {
+            "api_key": "HUGGING_FACE_API_KEY_1"
+          }
+        }
+      ]
+    },
+    "qwencloud-production": {
+      "provider": "qwencloud",
+      "enabled": true,
+      "api_style": "openai-compatible",
+      "base_url": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+      "selection": {
+        "strategy": "database-weighted-round-robin",
+        "lease_ttl_ms": 90000,
+        "base_cooldown_ms": 5000,
+        "max_cooldown_ms": 300000
+      },
+      "credentials": [
+        {
+          "credential_id": "qwencloud-primary",
+          "enabled": true,
+          "weight": 100,
+          "max_in_flight": 8,
+          "secret_refs": {
+            "api_key": "QWENCLOUD_API_KEY_1"
+          }
+        }
+      ]
+    },
+    "openai-production": {
+      "provider": "openai",
+      "enabled": true,
+      "api_style": "openai-compatible",
+      "base_url": "https://api.openai.com/v1",
+      "selection": {
+        "strategy": "database-weighted-round-robin",
+        "lease_ttl_ms": 90000,
+        "base_cooldown_ms": 5000,
+        "max_cooldown_ms": 300000
+      },
+      "credentials": [
+        {
+          "credential_id": "openai-primary",
+          "enabled": true,
+          "weight": 100,
+          "max_in_flight": 16,
+          "secret_refs": {
+            "api_key": "OPENAI_API_KEY_1"
+          }
+        }
+      ]
+    },
+    "anthropic-production": {
+      "provider": "anthropic",
+      "enabled": true,
+      "api_style": "anthropic-messages",
+      "base_url": "https://api.anthropic.com/v1",
+      "selection": {
+        "strategy": "database-weighted-round-robin",
+        "lease_ttl_ms": 90000,
+        "base_cooldown_ms": 5000,
+        "max_cooldown_ms": 300000
+      },
+      "credentials": [
+        {
+          "credential_id": "anthropic-primary",
+          "enabled": true,
+          "weight": 100,
+          "max_in_flight": 8,
+          "secret_refs": {
+            "api_key": "ANTHROPIC_API_KEY_1"
+          }
+        }
+      ]
+    },
+    "google-production": {
+      "provider": "google",
+      "enabled": true,
+      "api_style": "openai-compatible",
+      "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
+      "selection": {
+        "strategy": "database-weighted-round-robin",
+        "lease_ttl_ms": 90000,
+        "base_cooldown_ms": 5000,
+        "max_cooldown_ms": 300000
+      },
+      "credentials": [
+        {
+          "credential_id": "google-primary",
+          "enabled": true,
+          "weight": 100,
+          "max_in_flight": 8,
+          "secret_refs": {
+            "api_key": "GEMINI_API_KEY_1"
+          }
+        }
+      ]
+    },
+    "xai-production": {
+      "provider": "xai",
+      "enabled": true,
+      "api_style": "openai-compatible",
+      "base_url": "https://api.x.ai/v1",
+      "selection": {
+        "strategy": "database-weighted-round-robin",
+        "lease_ttl_ms": 90000,
+        "base_cooldown_ms": 5000,
+        "max_cooldown_ms": 300000
+      },
+      "credentials": [
+        {
+          "credential_id": "xai-primary",
+          "enabled": true,
+          "weight": 100,
+          "max_in_flight": 8,
+          "secret_refs": {
+            "api_key": "XAI_API_KEY_1"
+          }
+        }
+      ]
+    },
+    "groq-production": {
+      "provider": "groq",
+      "enabled": true,
+      "api_style": "openai-compatible",
+      "base_url": "https://api.groq.com/openai/v1",
+      "selection": {
+        "strategy": "database-weighted-round-robin",
+        "lease_ttl_ms": 90000,
+        "base_cooldown_ms": 5000,
+        "max_cooldown_ms": 300000
+      },
+      "credentials": [
+        {
+          "credential_id": "groq-primary",
+          "enabled": true,
+          "weight": 100,
+          "max_in_flight": 8,
+          "secret_refs": {
+            "api_key": "GROQ_API_KEY_1"
+          }
+        }
+      ]
+    },
+    "mistral-production": {
+      "provider": "mistral",
+      "enabled": true,
+      "api_style": "openai-compatible",
+      "base_url": "https://api.mistral.ai/v1",
+      "selection": {
+        "strategy": "database-weighted-round-robin",
+        "lease_ttl_ms": 90000,
+        "base_cooldown_ms": 5000,
+        "max_cooldown_ms": 300000
+      },
+      "credentials": [
+        {
+          "credential_id": "mistral-primary",
+          "enabled": true,
+          "weight": 100,
+          "max_in_flight": 8,
+          "secret_refs": {
+            "api_key": "MISTRAL_API_KEY_1"
+          }
+        }
+      ]
+    },
+    "deepseek-production": {
+      "provider": "deepseek",
+      "enabled": true,
+      "api_style": "openai-compatible",
+      "base_url": "https://api.deepseek.com/v1",
+      "selection": {
+        "strategy": "database-weighted-round-robin",
+        "lease_ttl_ms": 90000,
+        "base_cooldown_ms": 5000,
+        "max_cooldown_ms": 300000
+      },
+      "credentials": [
+        {
+          "credential_id": "deepseek-primary",
+          "enabled": true,
+          "weight": 100,
+          "max_in_flight": 8,
+          "secret_refs": {
+            "api_key": "DEEPSEEK_API_KEY_1"
+          }
+        }
+      ]
+    },
+    "together-production": {
+      "provider": "together",
+      "enabled": true,
+      "api_style": "openai-compatible",
+      "base_url": "https://api.together.xyz/v1",
+      "selection": {
+        "strategy": "database-weighted-round-robin",
+        "lease_ttl_ms": 90000,
+        "base_cooldown_ms": 5000,
+        "max_cooldown_ms": 300000
+      },
+      "credentials": [
+        {
+          "credential_id": "together-primary",
+          "enabled": true,
+          "weight": 100,
+          "max_in_flight": 8,
+          "secret_refs": {
+            "api_key": "TOGETHER_API_KEY_1"
+          }
+        }
+      ]
+    },
+    "fireworks-production": {
+      "provider": "fireworks",
+      "enabled": true,
+      "api_style": "openai-compatible",
+      "base_url": "https://api.fireworks.ai/inference/v1",
+      "selection": {
+        "strategy": "database-weighted-round-robin",
+        "lease_ttl_ms": 90000,
+        "base_cooldown_ms": 5000,
+        "max_cooldown_ms": 300000
+      },
+      "credentials": [
+        {
+          "credential_id": "fireworks-primary",
+          "enabled": true,
+          "weight": 100,
+          "max_in_flight": 8,
+          "secret_refs": {
+            "api_key": "FIREWORKS_AI_API_KEY_1"
+          }
+        }
+      ]
+    },
+    "cerebras-production": {
+      "provider": "cerebras",
+      "enabled": true,
+      "api_style": "openai-compatible",
+      "base_url": "https://api.cerebras.ai/v1",
+      "selection": {
+        "strategy": "database-weighted-round-robin",
+        "lease_ttl_ms": 90000,
+        "base_cooldown_ms": 5000,
+        "max_cooldown_ms": 300000
+      },
+      "credentials": [
+        {
+          "credential_id": "cerebras-primary",
+          "enabled": true,
+          "weight": 100,
+          "max_in_flight": 8,
+          "secret_refs": {
+            "api_key": "CEREBRAS_API_KEY_1"
+          }
+        }
+      ]
+    },
+    "perplexity-production": {
+      "provider": "perplexity",
+      "enabled": true,
+      "api_style": "openai-compatible",
+      "base_url": "https://api.perplexity.ai",
+      "selection": {
+        "strategy": "database-weighted-round-robin",
+        "lease_ttl_ms": 90000,
+        "base_cooldown_ms": 5000,
+        "max_cooldown_ms": 300000
+      },
+      "credentials": [
+        {
+          "credential_id": "perplexity-primary",
+          "enabled": true,
+          "weight": 100,
+          "max_in_flight": 8,
+          "secret_refs": {
+            "api_key": "PERPLEXITY_API_KEY_1"
+          }
+        }
+      ]
+    },
+    "cohere-production": {
+      "provider": "cohere",
+      "enabled": true,
+      "api_style": "openai-compatible",
+      "base_url": "https://api.cohere.ai/compatibility/v1",
+      "selection": {
+        "strategy": "database-weighted-round-robin",
+        "lease_ttl_ms": 90000,
+        "base_cooldown_ms": 5000,
+        "max_cooldown_ms": 300000
+      },
+      "credentials": [
+        {
+          "credential_id": "cohere-primary",
+          "enabled": true,
+          "weight": 100,
+          "max_in_flight": 8,
+          "secret_refs": {
+            "api_key": "COHERE_API_KEY_1"
+          }
+        }
+      ]
+    },
+    "moonshot-production": {
+      "provider": "moonshot",
+      "enabled": true,
+      "api_style": "openai-compatible",
+      "base_url": "https://api.moonshot.ai/v1",
+      "selection": {
+        "strategy": "database-weighted-round-robin",
+        "lease_ttl_ms": 90000,
+        "base_cooldown_ms": 5000,
+        "max_cooldown_ms": 300000
+      },
+      "credentials": [
+        {
+          "credential_id": "moonshot-primary",
+          "enabled": true,
+          "weight": 100,
+          "max_in_flight": 8,
+          "secret_refs": {
+            "api_key": "MOONSHOT_API_KEY_1"
+          }
+        }
+      ]
+    },
+    "zhipu-production": {
+      "provider": "zhipu",
+      "enabled": true,
+      "api_style": "openai-compatible",
+      "base_url": "https://open.bigmodel.cn/api/paas/v4",
+      "selection": {
+        "strategy": "database-weighted-round-robin",
+        "lease_ttl_ms": 90000,
+        "base_cooldown_ms": 5000,
+        "max_cooldown_ms": 300000
+      },
+      "credentials": [
+        {
+          "credential_id": "zhipu-primary",
+          "enabled": true,
+          "weight": 100,
+          "max_in_flight": 8,
+          "secret_refs": {
+            "api_key": "ZHIPU_API_KEY_1"
+          }
+        }
+      ]
+    },
+    "minimax-production": {
+      "provider": "minimax",
+      "enabled": true,
+      "api_style": "openai-compatible",
+      "base_url": "https://api.minimax.io/v1",
+      "selection": {
+        "strategy": "database-weighted-round-robin",
+        "lease_ttl_ms": 90000,
+        "base_cooldown_ms": 5000,
+        "max_cooldown_ms": 300000
+      },
+      "credentials": [
+        {
+          "credential_id": "minimax-primary",
+          "enabled": true,
+          "weight": 100,
+          "max_in_flight": 8,
+          "secret_refs": {
+            "api_key": "MINIMAX_API_KEY_1"
+          }
+        }
+      ]
+    },
+    "nvidia-production": {
+      "provider": "nvidia",
+      "enabled": true,
+      "api_style": "openai-compatible",
+      "base_url": "https://integrate.api.nvidia.com/v1",
+      "selection": {
+        "strategy": "database-weighted-round-robin",
+        "lease_ttl_ms": 90000,
+        "base_cooldown_ms": 5000,
+        "max_cooldown_ms": 300000
+      },
+      "credentials": [
+        {
+          "credential_id": "nvidia-primary",
+          "enabled": true,
+          "weight": 100,
+          "max_in_flight": 8,
+          "secret_refs": {
+            "api_key": "NVIDIA_API_KEY_1"
+          }
+        }
+      ]
+    },
+    "deepinfra-production": {
+      "provider": "deepinfra",
+      "enabled": true,
+      "api_style": "openai-compatible",
+      "base_url": "https://api.deepinfra.com/v1/openai",
+      "selection": {
+        "strategy": "database-weighted-round-robin",
+        "lease_ttl_ms": 90000,
+        "base_cooldown_ms": 5000,
+        "max_cooldown_ms": 300000
+      },
+      "credentials": [
+        {
+          "credential_id": "deepinfra-primary",
+          "enabled": true,
+          "weight": 100,
+          "max_in_flight": 8,
+          "secret_refs": {
+            "api_key": "DEEPINFRA_API_KEY_1"
+          }
+        }
+      ]
+    },
+    "sambanova-production": {
+      "provider": "sambanova",
+      "enabled": true,
+      "api_style": "openai-compatible",
+      "base_url": "https://api.sambanova.ai/v1",
+      "selection": {
+        "strategy": "database-weighted-round-robin",
+        "lease_ttl_ms": 90000,
+        "base_cooldown_ms": 5000,
+        "max_cooldown_ms": 300000
+      },
+      "credentials": [
+        {
+          "credential_id": "sambanova-primary",
+          "enabled": true,
+          "weight": 100,
+          "max_in_flight": 8,
+          "secret_refs": {
+            "api_key": "SAMBANOVA_API_KEY_1"
+          }
+        }
+      ]
+    },
+    "lambda-production": {
+      "provider": "lambda",
+      "enabled": true,
+      "api_style": "openai-compatible",
+      "base_url": "https://api.lambda.ai/v1",
+      "selection": {
+        "strategy": "database-weighted-round-robin",
+        "lease_ttl_ms": 90000,
+        "base_cooldown_ms": 5000,
+        "max_cooldown_ms": 300000
+      },
+      "credentials": [
+        {
+          "credential_id": "lambda-primary",
+          "enabled": true,
+          "weight": 100,
+          "max_in_flight": 8,
+          "secret_refs": {
+            "api_key": "LAMBDA_API_KEY_1"
+          }
+        }
+      ]
+    },
+    "friendli-production": {
+      "provider": "friendli",
+      "enabled": true,
+      "api_style": "openai-compatible",
+      "base_url": "https://inference.friendli.ai/v1",
+      "selection": {
+        "strategy": "database-weighted-round-robin",
+        "lease_ttl_ms": 90000,
+        "base_cooldown_ms": 5000,
+        "max_cooldown_ms": 300000
+      },
+      "credentials": [
+        {
+          "credential_id": "friendli-primary",
+          "enabled": true,
+          "weight": 100,
+          "max_in_flight": 8,
+          "secret_refs": {
+            "api_key": "FRIENDLI_API_KEY_1"
+          }
+        }
+      ]
+    },
+    "baichuan-production": {
+      "provider": "baichuan",
+      "enabled": true,
+      "api_style": "openai-compatible",
+      "base_url": "https://api.baichuan-ai.com/v1",
+      "selection": {
+        "strategy": "database-weighted-round-robin",
+        "lease_ttl_ms": 90000,
+        "base_cooldown_ms": 5000,
+        "max_cooldown_ms": 300000
+      },
+      "credentials": [
+        {
+          "credential_id": "baichuan-primary",
+          "enabled": true,
+          "weight": 100,
+          "max_in_flight": 8,
+          "secret_refs": {
+            "api_key": "BAICHUAN_API_KEY_1"
+          }
+        }
+      ]
+    },
+    "stepfun-production": {
+      "provider": "stepfun",
+      "enabled": true,
+      "api_style": "openai-compatible",
+      "base_url": "https://api.stepfun.com/v1",
+      "selection": {
+        "strategy": "database-weighted-round-robin",
+        "lease_ttl_ms": 90000,
+        "base_cooldown_ms": 5000,
+        "max_cooldown_ms": 300000
+      },
+      "credentials": [
+        {
+          "credential_id": "stepfun-primary",
+          "enabled": true,
+          "weight": 100,
+          "max_in_flight": 8,
+          "secret_refs": {
+            "api_key": "STEPFUN_API_KEY_1"
+          }
+        }
+      ]
+    },
+    "hunyuan-production": {
+      "provider": "hunyuan",
+      "enabled": true,
+      "api_style": "openai-compatible",
+      "base_url": "https://api.hunyuan.cloud.tencent.com/v1",
+      "selection": {
+        "strategy": "database-weighted-round-robin",
+        "lease_ttl_ms": 90000,
+        "base_cooldown_ms": 5000,
+        "max_cooldown_ms": 300000
+      },
+      "credentials": [
+        {
+          "credential_id": "hunyuan-primary",
+          "enabled": true,
+          "weight": 100,
+          "max_in_flight": 8,
+          "secret_refs": {
+            "api_key": "HUNYUAN_API_KEY_1"
+          }
+        }
+      ]
+    },
+    "spark-production": {
+      "provider": "spark",
+      "enabled": true,
+      "api_style": "openai-compatible",
+      "base_url": "https://spark-api-open.xf-yun.com/v1",
+      "selection": {
+        "strategy": "database-weighted-round-robin",
+        "lease_ttl_ms": 90000,
+        "base_cooldown_ms": 5000,
+        "max_cooldown_ms": 300000
+      },
+      "credentials": [
+        {
+          "credential_id": "spark-primary",
+          "enabled": true,
+          "weight": 100,
+          "max_in_flight": 8,
+          "secret_refs": {
+            "api_key": "SPARK_API_KEY_1"
+          }
+        }
+      ]
+    },
+    "ernie-production": {
+      "provider": "ernie",
+      "enabled": true,
+      "api_style": "openai-compatible",
+      "base_url": "https://qianfan.baidubce.com/v2",
+      "selection": {
+        "strategy": "database-weighted-round-robin",
+        "lease_ttl_ms": 90000,
+        "base_cooldown_ms": 5000,
+        "max_cooldown_ms": 300000
+      },
+      "credentials": [
+        {
+          "credential_id": "ernie-primary",
+          "enabled": true,
+          "weight": 100,
+          "max_in_flight": 8,
+          "secret_refs": {
+            "api_key": "ERNIE_API_KEY_1"
+          }
+        }
+      ]
+    },
+    "ai21-production": {
+      "provider": "ai21",
+      "enabled": true,
+      "api_style": "openai-compatible",
+      "base_url": "https://api.ai21.com/studio/v1",
+      "selection": {
+        "strategy": "database-weighted-round-robin",
+        "lease_ttl_ms": 90000,
+        "base_cooldown_ms": 5000,
+        "max_cooldown_ms": 300000
+      },
+      "credentials": [
+        {
+          "credential_id": "ai21-primary",
+          "enabled": true,
+          "weight": 100,
+          "max_in_flight": 8,
+          "secret_refs": {
+            "api_key": "AI21_API_KEY_1"
+          }
+        }
+      ]
+    },
+    "custom-gateway-template": {
+      "provider": "custom",
+      "enabled": false,
+      "api_style": "openai-compatible",
+      "base_url": "https://ai-gateway.example.com/v1",
+      "selection": {
+        "strategy": "database-weighted-round-robin",
+        "lease_ttl_ms": 90000,
+        "base_cooldown_ms": 5000,
+        "max_cooldown_ms": 300000
+      },
+      "credentials": [
+        {
+          "credential_id": "custom-gateway-primary",
+          "enabled": true,
+          "weight": 100,
+          "max_in_flight": 8,
+          "secret_refs": {
+            "api_key": "CUSTOM_PROVIDER_API_KEY_1"
+          }
+        }
+      ]
+    },
+    "amazon-bedrock-production": {
+      "provider": "amazon-bedrock",
+      "enabled": true,
+      "api_style": "openai-compatible",
+      "base_url": "https://bedrock-runtime.us-east-1.amazonaws.com/openai/v1",
+      "selection": {
+        "strategy": "database-weighted-round-robin",
+        "lease_ttl_ms": 90000,
+        "base_cooldown_ms": 5000,
+        "max_cooldown_ms": 300000
+      },
+      "credentials": [
+        {
+          "credential_id": "amazon-bedrock-primary",
+          "enabled": true,
+          "weight": 100,
+          "max_in_flight": 8,
+          "secret_refs": {
+            "api_key": "BEDROCK_API_KEY_1"
+          }
+        }
+      ]
+    },
+    "scaleway-production": {
+      "provider": "scaleway",
+      "enabled": true,
+      "api_style": "openai-compatible",
+      "base_url": "https://api.scaleway.ai/v1",
+      "selection": {
+        "strategy": "database-weighted-round-robin",
+        "lease_ttl_ms": 90000,
+        "base_cooldown_ms": 5000,
+        "max_cooldown_ms": 300000
+      },
+      "credentials": [
+        {
+          "credential_id": "scaleway-primary",
+          "enabled": true,
+          "weight": 100,
+          "max_in_flight": 8,
+          "secret_refs": {
+            "api_key": "SCALEWAY_API_KEY_1"
+          }
+        }
+      ]
+    },
+    "ovhcloud-production": {
+      "provider": "ovhcloud",
+      "enabled": true,
+      "api_style": "openai-compatible",
+      "base_url": "https://oai.endpoints.kepler.ai.cloud.ovh.net/v1",
+      "selection": {
+        "strategy": "database-weighted-round-robin",
+        "lease_ttl_ms": 90000,
+        "base_cooldown_ms": 5000,
+        "max_cooldown_ms": 300000
+      },
+      "credentials": [
+        {
+          "credential_id": "ovhcloud-primary",
+          "enabled": true,
+          "weight": 100,
+          "max_in_flight": 8,
+          "secret_refs": {
+            "api_key": "OVHCLOUD_API_KEY_1"
+          }
+        }
+      ]
+    },
+    "azure-openai-template": {
+      "provider": "azure-openai",
+      "enabled": false,
+      "api_style": "openai-compatible",
+      "base_url": "https://your-resource.openai.azure.com/openai/v1",
+      "selection": {
+        "strategy": "database-weighted-round-robin",
+        "lease_ttl_ms": 90000,
+        "base_cooldown_ms": 5000,
+        "max_cooldown_ms": 300000
+      },
+      "credentials": [
+        {
+          "credential_id": "azure-openai-primary",
+          "enabled": true,
+          "weight": 100,
+          "max_in_flight": 8,
+          "secret_refs": {
+            "api_key": "AZURE_OPENAI_API_KEY_1"
+          }
+        }
+      ]
+    }
+  }
+}
