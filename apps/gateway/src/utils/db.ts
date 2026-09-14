@@ -1,3 +1,4 @@
+import type { BeaconRuntimeEnv } from "../types.ts";
 // DB adapter 註冊點:gateway 其餘程式只依賴這個模組的查詢介面,實作可替換:
 // - Node 自架部署:進入點(nodeServer、migrate/reconcile scripts)啟動時呼叫
 //   installNodeBeaconDbAdapter(),動態載入本目錄的 db.node.ts(node:sqlite)。
@@ -12,10 +13,10 @@ export interface BeaconDbQueryResult {
 }
 
 export type BeaconDbAdapter = {
-  dbQuery: (env: any, sql: string, params?: any[]) => Promise<BeaconDbQueryResult>;
-  dbGet: (env: any, sql: string, params?: any[]) => Promise<any | null>;
-  withBeaconTransaction: (env: any, fn: () => Promise<any>) => Promise<any>;
-  createBeaconQuery: (env: any) => any;
+  dbQuery: (env: BeaconRuntimeEnv, sql: string, params?: any[]) => Promise<BeaconDbQueryResult>;
+  dbGet: (env: BeaconRuntimeEnv, sql: string, params?: any[]) => Promise<any | null>;
+  withBeaconTransaction: (env: BeaconRuntimeEnv, fn: () => Promise<any>) => Promise<any>;
+  createBeaconQuery: (env: BeaconRuntimeEnv) => any;
   closePostgresClients: () => Promise<void>;
 };
 
@@ -42,19 +43,23 @@ function requireAdapter(): BeaconDbAdapter {
   );
 }
 
-export function dbQuery(env: any, sql: string, params: any[] = []): Promise<BeaconDbQueryResult> {
+export function dbQuery(
+  env: BeaconRuntimeEnv,
+  sql: string,
+  params: any[] = [],
+): Promise<BeaconDbQueryResult> {
   return requireAdapter().dbQuery(env, sql, params);
 }
 
-export function dbGet(env: any, sql: string, params: any[] = []): Promise<any | null> {
+export function dbGet(env: BeaconRuntimeEnv, sql: string, params: any[] = []): Promise<any | null> {
   return requireAdapter().dbGet(env, sql, params);
 }
 
-export function withBeaconTransaction<T>(env: any, fn: () => Promise<T>): Promise<T> {
+export function withBeaconTransaction<T>(env: BeaconRuntimeEnv, fn: () => Promise<T>): Promise<T> {
   return requireAdapter().withBeaconTransaction(env, fn) as Promise<T>;
 }
 
-export function createBeaconQuery(env: any) {
+export function createBeaconQuery(env: BeaconRuntimeEnv) {
   return requireAdapter().createBeaconQuery(env);
 }
 

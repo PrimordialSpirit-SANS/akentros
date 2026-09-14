@@ -1,4 +1,3 @@
-import { Hono } from "hono";
 import {
   createBeaconInferenceRuntime,
   listPublicBeaconModels,
@@ -6,10 +5,18 @@ import {
   normalizeStreamChunk,
   prepareBeaconChatRequest,
   publicProviderError,
-} from "../../../../packages/core/src/inference.ts";
-import { BACKEND_PRICING } from "../../../../packages/core/src/pricing.ts";
-import { BeaconProviderError } from "../../../../packages/core/src/providers.ts";
+} from "@beacon/core/inference";
+import { BACKEND_PRICING } from "@beacon/core/pricing";
+import { BeaconProviderError } from "@beacon/core/providers";
+import { Hono } from "hono";
 import { authenticateBeaconKey, requireAiScope } from "../middleware/aiAuth.ts";
+import type {
+  BeaconAuthenticatedKey,
+  BeaconContext,
+  BeaconEnv,
+  BeaconNext,
+  BeaconRuntimeEnv,
+} from "../types.ts";
 import {
   markBeaconDispatched,
   markBeaconNeedsReconciliation,
@@ -23,19 +30,21 @@ import { acquireBeaconApiLimit, releaseBeaconApiLimit } from "../utils/aiLimits.
 import { finishBeaconProviderAttempt, startBeaconProviderAttempt } from "../utils/aiProviderAttempts.ts";
 import { claimBeaconProviderCredential, releaseBeaconProviderCredential } from "../utils/aiProviderPool.ts";
 
-export const aiPublicRoutes = new Hono();
+export const aiPublicRoutes = new Hono<BeaconEnv>();
 
 function newRequestId() {
   return `req_${globalThis.crypto.randomUUID().replaceAll("-", "")}`;
 }
 
-function setPublicHeaders(c: any, requestId: any) {
+function setPublicHeaders(c: BeaconContext, requestId: string) {
   c.header("Cache-Control", "no-store, no-transform");
   c.header("X-Request-Id", requestId);
   c.header("X-Beacon-Pricing-Revision", BACKEND_PRICING.revision);
 }
 
-function runtimeFor(env: any) {
+// createBeaconInferenceRuntime 的 options 在 core 端刻意未型別化(可攜核心
+// 不依賴 gateway 型別);此處的 input/attempt 參數即為該未型別化邊界。
+function runtimeFor(env: BeaconRuntimeEnv) {
   return createBeaconInferenceRuntime({
     billing: {
       reserve: (input: any) => reserveBeaconSpend(env, input),
@@ -56,8 +65,8 @@ function runtimeFor(env: any) {
   });
 }
 
-async function readPublicJsonObject(c: any) {
-  let value: any;
+async function readPublicJsonObject(c: BeaconContext): Promise<Record<string, unknown>> {
+  let value: unknown;
   try {
     value = await c.req.json();
   } catch {
@@ -70,31 +79,38 @@ async function readPublicJsonObject(c: any) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw invalidRequest("The request body must be a JSON object.");
   }
-  return value;
+  return value as Record<string, unknown>;
 }
 
-function visibleModels(aiKey: any) {
+function visibleModels(aiKey: BeaconAuthenticatedKey) {
   const list = listPublicBeaconModels();
   if (!Array.isArray(aiKey.model_allowlist) || aiKey.model_allowlist.length === 0) return list;
   return { ...list, data: list.data.filter((model) => aiKey.model_allowlist.includes(model.id)) };
 }
 
-aiPublicRoutes.use("*", async (c: any, next: any) => {
+type MaybeKey = BeaconAuthenticatedKey | null | undefined;
+type MaybeKeyOrResolver = MaybeKey | (() => MaybeKey) | (() => Promise<MaybeKey>);
+
+aiPublicRoutes.use("*", async (c: BeaconContext, next: BeaconNext) => {
   c.set("aiRequestId", newRequestId());
-  setPublicHeaders(c, c.get("aiRequestId"));
+  setPublicHeaders(c, c.get("aiRequestId") || "");
   await next();
 });
 aiPublicRoutes.use("*", authenticateBeaconKey);
 
-aiPublicRoutes.get("/models", requireAiScope("models:read"), (c: any) => {
-  return c.json(visibleModels(c.get("aiKey")));
+aiPublicRoutes.get("/models", requireAiScope("models:read"), (c: BeaconContext) => {
+  return c.json(visibleModels(c.get("aiKey")!));
 });
 
-export async function handleBeaconChatCompletions(c: any, aiKeyOrResolver = c.get("aiKey")) {
+export async function handleBeaconChatCompletions(
+  c: BeaconContext,
+  aiKeyOrResolver: MaybeKeyOrResolver = c.get("aiKey"),
+) {
   if (!c.get("aiRequestId")) {
     c.set("aiRequestId", newRequestId());
   }
-  setPublicHeaders(c, c.get("aiRequestId"));
+  setPublicHeaders(c, c.get("aiRequestId") || "");
+  // prepared/streamContext 的形狀由 @beacon/core/inference 的未型別化 API 決定。
   let prepared: any;
   let streamContext: any;
   let admissionAcquired = false;
@@ -161,7 +177,7 @@ export async function handleBeaconChatCompletions(c: any, aiKeyOrResolver = c.ge
     else requestSignal.addEventListener("abort", abortFromRequest, { once: true });
     try {
       streamContext = await runtime.openStream(prepared, { signal: providerAbortController.signal });
-    } catch (error: any) {
+    } catch (error) {
       requestSignal.removeEventListener("abort", abortFromRequest);
       throw error;
     }
@@ -214,7 +230,7 @@ export async function handleBeaconChatCompletions(c: any, aiKeyOrResolver = c.ge
           }
           await runtime.finalizeStream(streamContext, usage);
           controller.enqueue(encoder.encode("data: [DONE]\n\n"));
-        } catch (error: any) {
+        } catch (error) {
           try {
             await runtime.failStream(streamContext, error);
           } catch {
@@ -271,20 +287,21 @@ export async function handleBeaconChatCompletions(c: any, aiKeyOrResolver = c.ge
         "x-beacon-pricing-revision": BACKEND_PRICING.revision,
       },
     });
-  } catch (error: any) {
+  } catch (error) {
     if (admissionAcquired && prepared?.requestId) {
       await releaseAdmissionOnce();
     }
     const safe = publicProviderError(error);
-    return sendOpenAiError(c, safe, error?.requestId || prepared?.requestId || c.get("aiRequestId") || "");
+    const errorRequestId = (error as { requestId?: string })?.requestId;
+    return sendOpenAiError(c, safe, errorRequestId || prepared?.requestId || c.get("aiRequestId") || "");
   }
 }
 
-aiPublicRoutes.post("/chat/completions", requireAiScope("chat:completions"), (c: any) =>
+aiPublicRoutes.post("/chat/completions", requireAiScope("chat:completions"), (c: BeaconContext) =>
   handleBeaconChatCompletions(c),
 );
 
-aiPublicRoutes.all("*", (c: any) =>
+aiPublicRoutes.all("*", (c: BeaconContext) =>
   sendOpenAiError(
     c,
     new BeaconError("The requested Beacon endpoint does not exist.", {

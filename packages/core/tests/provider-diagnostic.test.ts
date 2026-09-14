@@ -23,14 +23,22 @@ test("provider diagnostic is offline by default and exposes only public model ID
   assert.ok(available.every(({ route }: any) => route.provider === "cloudflare-workers-ai"));
 });
 
-test("QwenCloud diagnostics select its six configured models without including Cloudflare routes", () => {
+test("QwenCloud diagnostics select its seven configured models without including Cloudflare routes", () => {
   const options = parseDiagnosticOptions(["--provider=qwencloud", "--all", "--stream"]);
   assert.equal(options.live, false);
   assert.equal(options.provider, "qwencloud");
   const available = listDiagnosticModels(options.provider);
   assert.deepEqual(
     available.map(({ upstreamModel }) => upstreamModel),
-    ["qwen3.8-max", "qwen3.8-flash", "glm-5.2", "kimi-k3", "deepseek-v4-flash", "deepseek-v4-pro-0813"],
+    [
+      "deepseek-v4-pro-0813",
+      "deepseek-v4.1-flash",
+      "kimi-k3",
+      "glm-5.3",
+      "glm-5.3-flash",
+      "qwen3.8-max",
+      "qwen3.8-flash",
+    ],
   );
   assert.ok(available.every(({ route }) => route.credential_pool === "qwencloud-production"));
 });

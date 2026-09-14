@@ -1,8 +1,10 @@
-import { BeaconError, invalidRequest, openAiErrorBody } from "../../../../packages/core/src/openaiErrors.ts";
+import { BeaconError, invalidRequest, openAiErrorBody } from "@beacon/core/openaiErrors";
+import type { ContentfulStatusCode } from "hono/utils/http-status";
+import type { BeaconContext } from "../types.ts";
 
 export { BeaconError, invalidRequest, openAiErrorBody };
 
-export function sendOpenAiError(c: any, error: any, requestId = "") {
+export function sendOpenAiError(c: BeaconContext, error: unknown, requestId = "") {
   const safe =
     error instanceof BeaconError
       ? error
@@ -12,5 +14,5 @@ export function sendOpenAiError(c: any, error: any, requestId = "") {
   c.header("Pragma", "no-cache");
   c.header("Vary", "Origin, Authorization");
   if (safe.retryAfter) c.header("Retry-After", String(safe.retryAfter));
-  return c.json(openAiErrorBody(safe), safe.status);
+  return c.json(openAiErrorBody(safe), safe.status as ContentfulStatusCode);
 }

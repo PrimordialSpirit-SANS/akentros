@@ -5,6 +5,23 @@
   "type": "module",
   "description": "Portable Beacon core: pricing authority, billing, API keys, provider pools, inference and SSE.",
   "license": "MIT",
+  "exports": {
+    "./package.json": "./package.json",
+    "./apiKeys": "./src/apiKeys.ts",
+    "./apiLimits": "./src/apiLimits.ts",
+    "./billing": "./src/billing.ts",
+    "./developerUsage": "./src/developerUsage.ts",
+    "./inference": "./src/inference.ts",
+    "./openaiErrors": "./src/openaiErrors.ts",
+    "./pricing": "./src/pricing.ts",
+    "./providerAttempts": "./src/providerAttempts.ts",
+    "./providerPool": "./src/providerPool.ts",
+    "./providers": "./src/providers.ts",
+    "./schemaMigration": "./src/schemaMigration.ts",
+    "./schemaReadiness": "./src/schemaReadiness.ts",
+    "./sse": "./src/sse.ts",
+    "./validation": "./src/validation.ts"
+  },
   "scripts": {
     "test": "node --test \"tests/*.test.ts\"",
     "typecheck": "tsc --noEmit"

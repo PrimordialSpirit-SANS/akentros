@@ -1,9 +1,11 @@
+import { parseUsdToMicros, usdMicrosToDecimalString } from "@beacon/core/pricing";
 import { Hono } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
-import { parseUsdToMicros, usdMicrosToDecimalString } from "../../../../packages/core/src/pricing.ts";
 import { createRateLimit } from "../middleware/rateLimit.ts";
+import type { BeaconContext, BeaconEnv, BeaconNext, BeaconRuntimeEnv } from "../types.ts";
 import { randomBytesHex } from "../utils/crypto.ts";
 import { signBeaconJwt, verifyBeaconJwt } from "../utils/jwt.ts";
+import type { BeaconAccount } from "../utils/users.ts";
 import {
   createUser,
   findUserByEmail,
@@ -18,7 +20,7 @@ import {
 // - beacon_token:httpOnly 會話 cookie(authenticateToken 驗證)
 // - csrf_token:可讀 cookie,apiFetch 會放進 X-CSRF-Token(雙提交)
 
-export const authRoutes = new Hono();
+export const authRoutes = new Hono<BeaconEnv>();
 
 export const BEACON_SESSION_COOKIE = "beacon_token";
 export const BEACON_CSRF_COOKIE = "csrf_token";
@@ -27,7 +29,7 @@ export const BEACON_SESSION_TTL_SECONDS = 7 * 24 * 60 * 60;
 // 開發者管理面的會話認證:驗 beacon_token cookie(HS256 JWT)→ 載入使用者 →
 // c.set('user', …)。aiDeveloper.ts 依賴 user.id / role / is_banned /
 // restricted_services 等欄位,形狀需與 utils/users.ts 的 BeaconAccount 一致。
-export async function authenticateToken(c: any, next: any) {
+export async function authenticateToken(c: BeaconContext, next: BeaconNext) {
   const secret = String(c.env?.JWT_SECRET || "");
   if (secret.length < 32) {
     return c.json(
@@ -69,7 +71,7 @@ export async function authenticateToken(c: any, next: any) {
 // CSRF:雙提交 cookie。前端 apiFetch 會讀 csrf_token cookie 並帶 X-CSRF-Token。
 // 沒有 csrf_token cookie 的請求(尚未取得 session 的 login/register)直接放行,
 // 因為此時沒有可被冒用的憑證;取得 session 後所有 mutating 請求都會被要求比對。
-export async function requireCsrfToken(c: any, next: any) {
+export async function requireCsrfToken(c: BeaconContext, next: BeaconNext) {
   const method = c.req.method.toUpperCase();
   if (method === "GET" || method === "HEAD" || method === "OPTIONS") {
     await next();
@@ -107,10 +109,10 @@ const authLimiter = createRateLimit({
   keyPrefix: "beacon-auth",
   windowMs: 15 * 60 * 1000,
   max: 60,
-  keyGenerator: (c: any) => String(c.req.header("cf-connecting-ip") || "local"),
+  keyGenerator: (c) => String(c.req.header("cf-connecting-ip") || "local"),
 });
 
-function isSecureRequest(c: any): boolean {
+function isSecureRequest(c: BeaconContext): boolean {
   try {
     return (
       new URL(c.req.url).protocol === "https:" || String(c.req.header("x-forwarded-proto") || "") === "https"
@@ -120,12 +122,12 @@ function isSecureRequest(c: any): boolean {
   }
 }
 
-function requireJwtSecret(env: any): string | null {
+function requireJwtSecret(env: BeaconRuntimeEnv): string | null {
   const secret = String(env?.JWT_SECRET || "");
   return secret.length >= 32 ? secret : null;
 }
 
-function issueSession(c: any, env: any, userId: string) {
+function issueSession(c: BeaconContext, env: BeaconRuntimeEnv, userId: string) {
   const secret = requireJwtSecret(env);
   if (!secret) {
     return c.json(
@@ -154,7 +156,7 @@ function issueSession(c: any, env: any, userId: string) {
   });
 }
 
-function registrationDisabled(env: any): boolean {
+function registrationDisabled(env: BeaconRuntimeEnv): boolean {
   return (
     String(env?.BEACON_DISABLE_REGISTRATION || "")
       .trim()
@@ -162,7 +164,7 @@ function registrationDisabled(env: any): boolean {
   );
 }
 
-function signupBonusUsdMicros(env: any): string {
+function signupBonusUsdMicros(env: BeaconRuntimeEnv): string {
   try {
     return parseUsdToMicros(env?.BEACON_SIGNUP_BONUS_USD ?? "5.00", "BEACON_SIGNUP_BONUS_USD").toString();
   } catch {
@@ -174,14 +176,14 @@ const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 authRoutes.use("*", authLimiter);
 
-authRoutes.post("/register", async (c: any) => {
+authRoutes.post("/register", async (c: BeaconContext) => {
   if (registrationDisabled(c.env)) {
     return c.json(
       { error: "Registration is disabled on this deployment.", code: "registration_disabled" },
       403,
     );
   }
-  let body: any;
+  let body: Record<string, unknown>;
   try {
     body = await c.req.json();
   } catch {
@@ -217,8 +219,8 @@ authRoutes.post("/register", async (c: any) => {
   return c.json({ user: publicUser(user) }, 201);
 });
 
-authRoutes.post("/login", async (c: any) => {
-  let body: any;
+authRoutes.post("/login", async (c: BeaconContext) => {
+  let body: Record<string, unknown>;
   try {
     body = await c.req.json();
   } catch {
@@ -241,20 +243,20 @@ authRoutes.post("/login", async (c: any) => {
   return c.json({ user: publicUser(user) });
 });
 
-authRoutes.post("/logout", async (c: any) => {
+authRoutes.post("/logout", async (c: BeaconContext) => {
   deleteCookie(c, BEACON_SESSION_COOKIE, { path: "/" });
   deleteCookie(c, BEACON_CSRF_COOKIE, { path: "/" });
   return c.json({ ok: true });
 });
 
-authRoutes.get("/me", authenticateToken, async (c: any) => {
+authRoutes.get("/me", authenticateToken, async (c: BeaconContext) => {
   // authenticateToken 已設 c.set('user', …);重新讀取以取得最新點數。
-  const user = await findUserById(c.env, c.get("user").id);
+  const user = await findUserById(c.env, c.get("user")?.id || "");
   if (!user) return c.json({ error: "Account not found.", code: "user_not_found" }, 404);
   return c.json({ user: publicUser(user) });
 });
 
-function publicUser(user: any) {
+function publicUser(user: BeaconAccount) {
   return {
     id: user.id,
     username: user.username,

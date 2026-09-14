@@ -1,6 +1,6 @@
 import { fileURLToPath } from "node:url";
+import { BEACON_SCHEMA_VERSION } from "@beacon/core/schemaMigration";
 import dotenv from "dotenv";
-import { BEACON_SCHEMA_VERSION } from "../../../packages/core/src/schemaMigration.ts";
 import { ensureBeaconSchemaReady, seedBeaconAdminFromEnv } from "../src/utils/bootstrap.ts";
 import { closePostgresClients, installNodeBeaconDbAdapter } from "../src/utils/db.ts";
 

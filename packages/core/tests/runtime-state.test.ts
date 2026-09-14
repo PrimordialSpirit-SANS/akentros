@@ -327,7 +327,7 @@ test("provider attempt audit stores opaque routing metadata and attaches success
 test("lease bookkeeping failure after provider success never repeats inference", async () => {
   const prepared = await prepareBeaconChatRequest({
     body: {
-      model: "beacon/llama-3.2-1b-instruct",
+      model: "beacon/qwen-3.8-27b",
       messages: [{ role: "user", content: "hello" }],
     },
     aiKey: { id: "1", user: { id: "2" }, model_allowlist: [], spend_limit_usd_micros: null },

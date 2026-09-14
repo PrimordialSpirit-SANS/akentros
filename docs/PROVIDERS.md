@@ -45,30 +45,32 @@ secret or `.dev.vars` binding listed below.
 
 ## Models and Beacon prices
 
-Rates use each provider's official public API prices checked on 2026-09-12.
-Beacon passes the upstream USD rate through directly (`input_usd_per_million_tokens`
-/ `output_usd_per_million_tokens`, USD decimals), with a $0.0001 per-request minimum. Cache
-discounts, batch discounts, tiered long-context pricing, and promotions are
-excluded from the published rates.
+The published catalog covers 19 models from eight model families (OpenAI GPT,
+Anthropic Claude, Google Gemini, xAI Grok, DeepSeek, Moonshot AI Kimi, Z.ai
+GLM, and Alibaba Qwen). Rates use each provider's official public API prices
+checked on 2026-09-14. Beacon passes the upstream USD rate through with a small
+settlement margin (`input_usd_per_million_tokens` / `output_usd_per_million_tokens`,
+USD decimals), with a $0.0001 per-request minimum. Cache discounts, batch
+discounts, tiered long-context pricing, and promotions are excluded from the
+published rates.
 
 ### OpenAI (`https://api.openai.com/v1`)
 
 | Public model | Upstream model | USD in / out per 1M | Points in / out per 1M |
 | --- | --- | --- | --- |
-| `beacon/gpt-5` | `gpt-5` | 1.25 / 10 | 42 / 334 |
-| `beacon/gpt-5-mini` | `gpt-5-mini` | 0.25 / 2 | 9 / 67 |
-| `beacon/gpt-5-nano` | `gpt-5-nano` | 0.05 / 0.40 | 2 / 14 |
+| `beacon/gpt-6-astra` | `gpt-6-astra` | 10 / 50.01 | 334 / 1667 |
+| `beacon/gpt-5.2` | `gpt-5.2` | 1.26 / 10.02 | 42 / 334 |
+| `beacon/gpt-5.2-codex` | `gpt-5.2-codex` | 1.26 / 10.02 | 42 / 334 |
 
-Context 400,000 tokens. Gemini-style tiered pricing does not apply; OpenAI
-charges one rate per direction.
+Contexts: GPT-6 Astra 1,000,000 tokens; GPT-5.2 and GPT-5.2 Codex 400,000.
 
 ### Anthropic (`https://api.anthropic.com/v1`, Messages API)
 
 | Public model | Upstream model | USD in / out per 1M | Points in / out per 1M |
 | --- | --- | --- | --- |
-| `beacon/claude-opus-4-1` | `claude-opus-4-1` | 15 / 75 | 500 / 2500 |
-| `beacon/claude-sonnet-4-5` | `claude-sonnet-4-5` | 3 / 15 | 100 / 500 |
-| `beacon/claude-haiku-4-5` | `claude-haiku-4-5` | 1 / 5 | 34 / 167 |
+| `beacon/claude-opus-4-8` | `claude-opus-4-8` | 5 / 25.01 | 167 / 834 |
+| `beacon/claude-sonnet-5` | `claude-sonnet-5` | 2 / 10.01 | 67 / 334 |
+| `beacon/claude-haiku-4-5` | `claude-haiku-4-5` | 1.02 / 5.01 | 34 / 167 |
 
 Context 200,000 tokens. Prompt-cache write/read discounts are excluded.
 
@@ -76,74 +78,72 @@ Context 200,000 tokens. Prompt-cache write/read discounts are excluded.
 
 | Public model | Upstream model | USD in / out per 1M | Points in / out per 1M |
 | --- | --- | --- | --- |
-| `beacon/gemini-2.5-pro` | `gemini-2.5-pro` | 1.25 / 10 | 42 / 334 |
-| `beacon/gemini-2.5-flash` | `gemini-2.5-flash` | 0.30 / 2.50 | 10 / 84 |
-| `beacon/gemini-2.5-flash-lite` | `gemini-2.5-flash-lite` | 0.10 / 0.40 | 4 / 14 |
+| `beacon/gemini-3.5-pro` | `gemini-3.5-pro` | 2.01 / 12.02 | 67 / 401 |
+| `beacon/gemini-3.8-flash` | `gemini-3.8-flash` | 0.30 / 2.52 | 10 / 84 |
+| `beacon/gemini-3.5-flash-lite` | `gemini-3.5-flash-lite` | 0.12 / 0.42 | 4 / 14 |
 
-Context 1,048,576 tokens. Beacon bills the ≤200k-input tier; the >200k tier
-(`gemini-2.5-pro` at 2.50 / 15) is not reflected in the published rates, so
-very large prompts can exceed the modeled upstream cost.
+Context 1,048,576 tokens. Beacon bills the baseline tier; tiered long-context
+pricing above 200k inputs is not reflected in the published rates, so very
+large prompts can exceed the modeled upstream cost.
 
 ### xAI Grok (`https://api.x.ai/v1`)
 
 | Public model | Upstream model | USD in / out per 1M | Points in / out per 1M |
 | --- | --- | --- | --- |
-| `beacon/grok-4` | `grok-4` | 3 / 15 | 100 / 500 |
-| `beacon/grok-4-fast` | `grok-4-fast-reasoning` | 0.20 / 0.50 | 7 / 17 |
-| `beacon/grok-code-fast` | `grok-code-fast-1` | 0.20 / 1.50 | 7 / 50 |
+| `beacon/grok-4.6` | `grok-4.6` | 2 / 6.01 | 67 / 201 |
+| `beacon/grok-4.1-fast` | `grok-4.1-fast` | 0.21 / 0.51 | 7 / 17 |
 
-Contexts: Grok 4 and Grok Code Fast 256,000 tokens; Grok 4 Fast 2,000,000.
-
-### Groq (`https://api.groq.com/openai/v1`)
-
-| Public model | Upstream model | USD in / out per 1M | Points in / out per 1M |
-| --- | --- | --- | --- |
-| `beacon/llama-3.3-70b-instruct` | `llama-3.3-70b-versatile` | 0.59 / 0.79 | 20 / 27 |
-| `beacon/kimi-k2-instruct` | `moonshotai/kimi-k2-instruct-0905` | 1 / 3 | 34 / 100 |
-
-Contexts: Llama 3.3 131,072 tokens; Kimi K2 262,144 tokens.
-
-### Mistral AI (`https://api.mistral.ai/v1`)
-
-| Public model | Upstream model | USD in / out per 1M | Points in / out per 1M |
-| --- | --- | --- | --- |
-| `beacon/mistral-large` | `mistral-large-latest` | 2 / 6 | 67 / 200 |
-| `beacon/codestral` | `codestral-latest` | 0.30 / 0.90 | 10 / 30 |
-
-Contexts: Mistral Large 131,072 tokens; Codestral 262,144 tokens.
+Context 2,000,000 tokens for both models. Grok 4.6 applies higher long-context
+rates above 200k inputs; Beacon bills the standard tier.
 
 ### DeepSeek (`https://api.deepseek.com/v1`)
 
 | Public model | Upstream model | USD in / out per 1M | Points in / out per 1M |
 | --- | --- | --- | --- |
-| `beacon/deepseek-v3.2` | `deepseek-chat` | 0.28 / 0.42 | 10 / 14 |
-| `beacon/deepseek-v3.2-reasoner` | `deepseek-reasoner` | 0.28 / 0.42 | 10 / 14 |
+| `beacon/deepseek-v4-pro` | `deepseek-v4-pro` | 1.32 / 3.96 | 44 / 132 |
+| `beacon/deepseek-v4.1-flash` | `deepseek-v4.1-flash` | 0.15 / 0.6 | 5 / 20 |
 
-Context 131,072 tokens. Off-peak discounts and cache-hit pricing are excluded.
+Context 1,000,000 tokens. The 2026-08-16 DeepSeek price increase, off-peak
+discounts and cache-hit pricing are excluded.
 
-### Perplexity (`https://api.perplexity.ai`)
-
-| Public model | Upstream model | USD in / out per 1M | Points in / out per 1M |
-| --- | --- | --- | --- |
-| `beacon/sonar` | `sonar` | 1 / 1 | 34 / 34 |
-| `beacon/sonar-pro` | `sonar-pro` | 3 / 15 | 100 / 500 |
-
-Contexts: Sonar 128,000 tokens; Sonar Pro 200,000 tokens. Perplexity charges a
-per-request search fee on top of token usage; the token-based Beacon settlement
-does not model that fee, so these routes may settle below upstream cost.
-Streaming omits `stream_options` (unsupported); usage arrives in the final
-chunk.
-
-### Cohere (`https://api.cohere.ai/compatibility/v1`)
+### Moonshot AI Kimi (`https://api.moonshot.ai/v1`)
 
 | Public model | Upstream model | USD in / out per 1M | Points in / out per 1M |
 | --- | --- | --- | --- |
-| `beacon/command-a` | `command-a-03-2025` | 2.50 / 10 | 84 / 334 |
-| `beacon/command-r7b` | `command-r7b-12-2024` | 0.0375 / 0.15 | 2 / 5 |
+| `beacon/kimi-k3` | `kimi-k3` | 3 / 15 | 100 / 500 |
 
-Contexts: Command A 256,000 tokens; Command R7B 128,000 tokens. Streaming
-omits `stream_options`; usage falls back to estimated settlement when the
-compatibility endpoint does not report it.
+Context 1,048,576 tokens. Kimi K3 is the July 2026 open-weight flagship
+(2.8T-parameter MoE with native vision input).
+
+### Z.ai GLM (`https://api.z.ai/api/paas/v4`)
+
+| Public model | Upstream model | USD in / out per 1M | Points in / out per 1M |
+| --- | --- | --- | --- |
+| `beacon/glm-5.3` | `glm-5.3` | 1.41 / 4.41 | 47 / 147 |
+| `beacon/glm-5.3-flash` | `glm-5.3-flash` | 0.15 / 0.6 | 5 / 20 |
+
+Context 1,000,000 tokens. GLM-5.3 (August 2026) is the open-weight coding
+flagship; GLM-5.3 Flash is the natively multimodal 320B/18B-active model.
+
+### QwenCloud (`https://dashscope-intl.aliyuncs.com/compatible-mode/v1`)
+
+| Public model | Upstream model | USD in / out per 1M | Points in / out per 1M |
+| --- | --- | --- | --- |
+| `beacon/qwen-3.8-max` | `qwen3.8-max` | 2.01 / 6 | 67 / 200 |
+| `beacon/qwen-3.8-flash` | `qwen3.8-flash` | 0.15 / 0.48 | 5 / 16 |
+
+Context 1,000,000 tokens (input capped at 983,616). See
+[QWENCLOUD.md](QWENCLOUD.md) for the full QwenCloud integration notes,
+including the GLM, Kimi and DeepSeek models it serves as a fallback route.
+
+### Cloudflare Workers AI (native binding + REST)
+
+| Public model | Upstream model | USD in / out per 1M | Points in / out per 1M |
+| --- | --- | --- | --- |
+| `beacon/qwen-3.8-27b` | `@cf/qwen/qwen3.8-27b` | 0.42 / 3 | 14 / 100 |
+
+Context 262,144 tokens. Served through the Worker's native AI binding (with a
+REST fallback transport); tool calling is not exposed for this route.
 
 ### Multi-route fallback
 
@@ -152,23 +152,14 @@ one public model, tried in ascending `priority` order:
 
 | Public model | Routes (priority order) |
 | --- | --- |
-| `beacon/gpt-oss-120b` | Cloudflare Workers AI (10) → Groq `openai/gpt-oss-120b` (20) → Amazon Bedrock `openai.gpt-oss-120b-1:0` (30) |
-| `beacon/kimi-k3` | QwenCloud (10) → Moonshot AI `kimi-k3` (20) |
-| `beacon/glm-5.2` | QwenCloud (10) → Zhipu AI BigModel `glm-5.2` (20) |
-| `beacon/kimi-k2-instruct` | Groq (10) → DeepInfra `moonshotai/Kimi-K2` (20) → Fireworks AI (30) |
+| `beacon/deepseek-v4-pro` | DeepSeek API `deepseek-v4-pro` (10) → QwenCloud `deepseek-v4-pro-0813` (20) |
+| `beacon/deepseek-v4.1-flash` | DeepSeek API `deepseek-v4.1-flash` (10) → QwenCloud `deepseek-v4.1-flash` (20) |
+| `beacon/kimi-k3` | Moonshot AI `kimi-k3` (10) → QwenCloud `kimi-k3` (20) |
+| `beacon/glm-5.3` | Z.ai BigModel `glm-5.3` (10) → QwenCloud `glm-5.3` (20) |
+| `beacon/glm-5.3-flash` | Z.ai BigModel `glm-5.3-flash` (10) → QwenCloud `glm-5.3-flash` (20) |
 
 Public billing stays model-level and is set by the most expensive enabled
 route, so a fallback never bills below platform cost.
-
-### MiniMax (`https://api.minimax.io/v1`)
-
-| Public model | Upstream model | USD in / out per 1M | Points in / out per 1M |
-| --- | --- | --- | --- |
-| `beacon/minimax-m2` | `MiniMax-M2` | 0.30 / 1.20 | 10 / 40 |
-
-Context 200,000 tokens (capped conservatively against MiniMax's published
-window). MiniMax M2 interleaves thinking with tool use; reasoning text is not
-separately reported through the OpenAI-compatible endpoint.
 
 ## Transport-ready providers without catalog models
 
@@ -194,12 +185,12 @@ publish them:
 | `scaleway` | `https://api.scaleway.ai/v1` | `SCALEWAY_API_KEY_1` | Scaleway Generative APIs |
 | `ovhcloud` | `https://oai.endpoints.kepler.ai.cloud.ovh.net/v1` | `OVHCLOUD_API_KEY_1` | OVHcloud AI Endpoints |
 
-`amazon-bedrock` serves `beacon/gpt-oss-120b` through Amazon Bedrock's
-OpenAI-compatible surface (`https://bedrock-runtime.us-east-1.amazonaws.com/openai/v1`)
-with a Bedrock API key — no SigV4 signing or AWS SDK required. Add Bedrock
-models by using the Bedrock inference model ID as `upstream_model`, for
-example `anthropic.claude-sonnet-4-5-20250929-v1:0` or
-`meta.llama3-3-70b-instruct-v1:0`.
+`amazon-bedrock` is registered but currently serves no catalog models. It
+connects through Amazon Bedrock's OpenAI-compatible surface
+(`https://bedrock-runtime.us-east-1.amazonaws.com/openai/v1`) with a Bedrock
+API key — no SigV4 signing or AWS SDK required. Add Bedrock models by using
+the Bedrock inference model ID as `upstream_model`, for example
+`anthropic.claude-sonnet-4-5-20250929-v1:0` or `meta.llama3-3-70b-instruct-v1:0`.
 
 The `custom` provider is a disabled template pool
 (`custom-gateway-template`) for any OpenAI-compatible endpoint: duplicate it

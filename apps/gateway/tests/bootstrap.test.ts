@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { assertBeaconSchemaReady } from "../../../packages/core/src/schemaReadiness.ts";
+import { assertBeaconSchemaReady } from "@beacon/core/schemaReadiness";
 import { ensureBeaconSchemaReady, seedBeaconAdminFromEnv } from "../src/utils/bootstrap.ts";
 import { createBeaconQuery, dbGet, dbQuery, installNodeBeaconDbAdapter } from "../src/utils/db.ts";
 

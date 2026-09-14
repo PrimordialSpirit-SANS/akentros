@@ -421,3 +421,71 @@ test("Hono billing adapter uses the shared billing core", () => {
   assert.match(worker, /ensureAiSchema/);
   assert.doesNotMatch(worker, /UPDATE users|INSERT INTO ledger_entries/);
 });
+
+test("reconcileStale quarantines stale reservations that already dispatched", async () => {
+  const { query, user } = await billingFixture();
+  const store = createBeaconBillingStore(query);
+  await query(
+    `INSERT INTO ai_requests (request_id, user_id, api_key_id, request_fingerprint, public_model,
+                              pricing_revision, pricing_snapshot, dispatched_at)
+     VALUES ('req_stale_dispatched', ?, ?, ?, 'beacon-test-model', 'pricing-v1', '{}', ?)`,
+    [user.id, "22", fingerprint, new Date().toISOString()],
+  );
+  await query(
+    `INSERT INTO ai_billing_reservations (ai_request_id, request_id, user_id, reserved_usd_micros, state, expires_at)
+     VALUES (1, 'req_stale_dispatched', ?, 8, 'reserved', '2020-01-01T00:00:00.000Z')`,
+    [user.id],
+  );
+
+  const outcomes = await store.reconcileStale();
+  assert.equal(outcomes.length, 1);
+  assert.equal(outcomes[0].requestId, "req_stale_dispatched");
+  assert.equal(outcomes[0].reservationState, "needs_reconciliation");
+  assert.equal(outcomes[0].errorCode, "reservation_expired_after_dispatch");
+
+  // 已派發的保留單進入隔離(而非直接退款):保留原狀以利人工調查,
+  // 由 resolveQuarantined 提供自動退款出口;餘額不變。
+  const reservation = await query(
+    `SELECT state FROM ai_billing_reservations WHERE request_id = 'req_stale_dispatched'`,
+  );
+  assert.equal(reservation.rows[0].state, "needs_reconciliation");
+  const account = await query(`SELECT balance_usd_micros FROM users WHERE id = ?`, [user.id]);
+  assert.equal(Number(account.rows[0].balance_usd_micros), 1_000_000);
+});
+
+test("reconcileStale refunds stale reservations that never dispatched", async () => {
+  const { query, user } = await billingFixture();
+  const store = createBeaconBillingStore(query);
+  await query(
+    `INSERT INTO ai_requests (request_id, user_id, api_key_id, request_fingerprint, public_model,
+                              pricing_revision, pricing_snapshot)
+     VALUES ('req_stale_reserved', ?, ?, ?, 'beacon-test-model', 'pricing-v1', '{}')`,
+    [user.id, "22", fingerprint],
+  );
+  await query(
+    `INSERT INTO ai_billing_reservations (ai_request_id, request_id, user_id, reserved_usd_micros, state, expires_at)
+     VALUES (1, 'req_stale_reserved', ?, 8, 'reserved', '2020-01-01T00:00:00.000Z')`,
+    [user.id],
+  );
+
+  const outcomes = await store.reconcileStale();
+  assert.equal(outcomes.length, 1);
+  assert.equal(outcomes[0].requestId, "req_stale_reserved");
+  assert.equal(outcomes[0].reservationState, "refunded");
+  assert.equal(outcomes[0].errorCode, "reservation_expired");
+  assert.equal(outcomes[0].httpStatus, 504);
+
+  const reservation = await query(
+    `SELECT state FROM ai_billing_reservations WHERE request_id = 'req_stale_reserved'`,
+  );
+  assert.equal(reservation.rows[0].state, "refunded");
+  // 未派發即過期:保留額全數退回使用者的消費上限(fixture 直接插入保留單,
+  // 未經 reserve 扣款,故退款為餘額 +8)。
+  const account = await query(`SELECT balance_usd_micros FROM users WHERE id = ?`, [user.id]);
+  assert.equal(Number(account.rows[0].balance_usd_micros), 1_000_008);
+  const ledger = await query(
+    `SELECT transaction_type, amount FROM ledger_entries WHERE idempotency_key = 'req_stale_reserved'`,
+  );
+  assert.equal(ledger.rows[0].transaction_type, "ai_usage_refund");
+  assert.equal(ledger.rows[0].amount, "8");
+});

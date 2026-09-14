@@ -8,13 +8,37 @@ import {
   parseBeaconModelAllowlistStrict,
   requireBeaconApiKeyPepper,
   serializeBeaconApiKey,
-} from "../../../../packages/core/src/apiKeys.ts";
-import { listEnabledModels } from "../../../../packages/core/src/pricing.ts";
+} from "@beacon/core/apiKeys";
+import { listEnabledModels } from "@beacon/core/pricing";
+import type { BeaconAuthenticatedKey, BeaconRuntimeEnv } from "../types.ts";
 import { ensureAiSchema } from "./aiSchema.ts";
 import { hmacSha256Hex, randomToken, sha256Hex } from "./crypto.ts";
 import { createBeaconQuery, dbGet, dbQuery, withBeaconTransaction } from "./db.ts";
 
-function getPepper(env: any, explicitPepper: any) {
+// authenticateBeaconApiKey 的 SELECT 欄位契約:資料列欄位以此為準,
+// 讀取 SELECT 以外的欄位會在編譯期報錯(防 row.points 這類幽靈欄位)。
+interface BeaconApiKeyAuthRow {
+  id: number | string;
+  user_id: number | string;
+  name: string;
+  key_prefix: string;
+  key_suffix: string;
+  scopes: unknown;
+  model_allowlist: unknown;
+  rpm_limit: number | string;
+  max_in_flight: number | string;
+  spend_limit_usd_micros: number | null;
+  spend_used_usd_micros: number | string;
+  expires_at: string | null;
+  username: string;
+  role: string;
+  is_banned: number | boolean;
+  is_flagged: number | boolean;
+  restricted_services: unknown;
+  balance_usd_micros: number | string;
+}
+
+function getPepper(env: BeaconRuntimeEnv, explicitPepper: unknown) {
   return requireBeaconApiKeyPepper(explicitPepper || env?.BEACON_API_KEY_PEPPER);
 }
 
@@ -23,11 +47,11 @@ export function generateBeaconApiKey(environment = "live") {
   return randomToken(`sk-beacon-${safeEnvironment}`, 32);
 }
 
-export function digestBeaconApiKey(env: any, secret: any, explicitPepper?: any) {
+export function digestBeaconApiKey(env: BeaconRuntimeEnv, secret: unknown, explicitPepper?: unknown) {
   return hmacSha256Hex(getPepper(env, explicitPepper), String(secret));
 }
 
-export async function listBeaconApiKeys(env: any, userId: any) {
+export async function listBeaconApiKeys(env: BeaconRuntimeEnv, userId: string | number) {
   await ensureAiSchema(env);
   const result = await dbQuery(
     env,
@@ -60,7 +84,16 @@ function fiveMinutesAgoIso() {
   return new Date(Date.now() - 5 * 60_000).toISOString();
 }
 
-export async function ensureBeaconSessionCredential(env: any, user: any) {
+export async function ensureBeaconSessionCredential(
+  env: BeaconRuntimeEnv,
+  user: {
+    id: string | number;
+    username: string;
+    role: string;
+    is_flagged: boolean;
+    restricted_services: unknown;
+  },
+): Promise<BeaconAuthenticatedKey> {
   await ensureAiSchema(env);
   const userId = String(user?.id || "");
   if (!/^[1-9][0-9]*$/.test(userId)) {
@@ -132,7 +165,11 @@ export async function ensureBeaconSessionCredential(env: any, user: any) {
   };
 }
 
-export async function createBeaconApiKey(env: any, userId: any, options: any) {
+export async function createBeaconApiKey(
+  env: BeaconRuntimeEnv,
+  userId: string | number,
+  options: Record<string, unknown>,
+) {
   await ensureAiSchema(env);
   const clean = normalizeBeaconKeyOptions(
     options,
@@ -197,7 +234,11 @@ export async function createBeaconApiKey(env: any, userId: any, options: any) {
   return { ...serializeBeaconApiKey(result.rows[0]), secret };
 }
 
-export async function rotateBeaconApiKey(env: any, userId: any, keyId: any) {
+export async function rotateBeaconApiKey(
+  env: BeaconRuntimeEnv,
+  userId: string | number,
+  keyId: string | number,
+) {
   await ensureAiSchema(env);
   const existing = await dbGet(
     env,
@@ -228,7 +269,11 @@ export async function rotateBeaconApiKey(env: any, userId: any, keyId: any) {
   return result.rows?.[0] ? { ...serializeBeaconApiKey(result.rows[0]), secret } : null;
 }
 
-export async function revokeBeaconApiKey(env: any, userId: any, keyId: any) {
+export async function revokeBeaconApiKey(
+  env: BeaconRuntimeEnv,
+  userId: string | number,
+  keyId: string | number,
+) {
   await ensureAiSchema(env);
   const result = await dbQuery(
     env,
@@ -243,11 +288,14 @@ export async function revokeBeaconApiKey(env: any, userId: any, keyId: any) {
   return Boolean(result.rows?.length);
 }
 
-export async function authenticateBeaconApiKey(env: any, secret: any) {
+export async function authenticateBeaconApiKey(
+  env: BeaconRuntimeEnv,
+  secret: unknown,
+): Promise<BeaconAuthenticatedKey | null> {
   if (!isBeaconApiKey(secret)) return null;
   await ensureAiSchema(env);
   const digest = await digestBeaconApiKey(env, secret);
-  const row = await dbGet(
+  const row = (await dbGet(
     env,
     `
     SELECT keys.id, keys.user_id, keys.name, keys.key_prefix, keys.key_suffix,
@@ -261,11 +309,13 @@ export async function authenticateBeaconApiKey(env: any, secret: any) {
       AND keys.environment <> 'session'
       AND keys.is_active = TRUE
       AND keys.revoked_at IS NULL
-      AND (keys.expires_at IS NULL OR keys.expires_at > CURRENT_TIMESTAMP)
+      AND (keys.expires_at IS NULL OR keys.expires_at > ?)
     LIMIT 1
   `,
-    [digest],
-  );
+    // expires_at 存的是 ISO-8601 字串;CURRENT_TIMESTAMP 是空格分隔格式,
+    // 字典序比較會讓「當天到期」整日視為未過期,必須用同格式的 now 綁定比較。
+    [digest, nowIso()],
+  )) as BeaconApiKeyAuthRow | null;
   if (!row) return null;
   // model_allowlist 損毀時 fail-closed:回 null(視同無效金鑰),而不是把
   // 損毀值當成空陣列 = 解除所有模型限制。
@@ -294,13 +344,12 @@ export async function authenticateBeaconApiKey(env: any, secret: any) {
     spend_limit_usd_micros: row.spend_limit_usd_micros == null ? null : Number(row.spend_limit_usd_micros),
     spend_used_usd_micros: Number(row.spend_used_usd_micros || 0),
     user: {
-      id: row.user_id,
+      id: String(row.user_id),
       username: row.username,
       role: row.role,
       is_banned: Boolean(row.is_banned),
       is_flagged: Boolean(row.is_flagged),
       restricted_services: row.restricted_services,
-      points: Number(row.points),
     },
   };
 }

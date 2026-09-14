@@ -1,3 +1,4 @@
+import type { BeaconRuntimeEnv } from "../types.ts";
 import { randomBytesHex } from "./crypto.ts";
 import { dbGet, dbQuery } from "./db.ts";
 
@@ -20,7 +21,7 @@ export interface BeaconAccount {
 }
 
 // PBKDF2-SHA256。格式:pbkdf2$<iterations>$<salt_hex>$<hash_hex>
-export async function hashPassword(password: string, env: any): Promise<string> {
+export async function hashPassword(password: string, env: BeaconRuntimeEnv): Promise<string> {
   const configured = Number(env?.BEACON_PBKDF2_ITERATIONS);
   const iterations =
     Number.isSafeInteger(configured) && configured >= 10_000 ? configured : BEACON_PASSWORD_ITERATIONS;
@@ -81,7 +82,7 @@ function serializeAccount(row: any): BeaconAccount {
   };
 }
 
-export async function ensureUsersSchema(env: any): Promise<void> {
+export async function ensureUsersSchema(env: BeaconRuntimeEnv): Promise<void> {
   await dbQuery(
     env,
     `
@@ -103,18 +104,21 @@ export async function ensureUsersSchema(env: any): Promise<void> {
   );
 }
 
-export async function findUserByEmail(env: any, email: string): Promise<BeaconAccount | null> {
+export async function findUserByEmail(env: BeaconRuntimeEnv, email: string): Promise<BeaconAccount | null> {
   const row = await dbGet(env, `SELECT * FROM users WHERE email = ? LIMIT 1`, [email.trim().toLowerCase()]);
   return row ? serializeAccount(row) : null;
 }
 
-export async function findUserById(env: any, id: string | number): Promise<BeaconAccount | null> {
+export async function findUserById(
+  env: BeaconRuntimeEnv,
+  id: string | number,
+): Promise<BeaconAccount | null> {
   if (!/^[1-9][0-9]*$/.test(String(id))) return null;
   const row = await dbGet(env, `SELECT * FROM users WHERE id = ? LIMIT 1`, [String(id)]);
   return row ? serializeAccount(row) : null;
 }
 
-export async function findUserPasswordHash(env: any, email: string): Promise<string | null> {
+export async function findUserPasswordHash(env: BeaconRuntimeEnv, email: string): Promise<string | null> {
   const row = await dbGet(env, `SELECT password_hash FROM users WHERE email = ? LIMIT 1`, [
     email.trim().toLowerCase(),
   ]);
@@ -122,7 +126,7 @@ export async function findUserPasswordHash(env: any, email: string): Promise<str
 }
 
 export async function createUser(
-  env: any,
+  env: BeaconRuntimeEnv,
   options: {
     email: string;
     username: string;
@@ -152,7 +156,7 @@ export async function createUser(
 
 // migrate script 的管理員種子:已存在時僅確保 role = admin,不覆寫密碼。
 export async function upsertAdminUser(
-  env: any,
+  env: BeaconRuntimeEnv,
   options: { email: string; passwordHash: string; username: string; balanceUsdMicros: string },
 ): Promise<{ created: boolean }> {
   const existing = await dbGet(env, `SELECT id, role FROM users WHERE email = ? LIMIT 1`, [

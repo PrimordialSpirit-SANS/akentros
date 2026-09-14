@@ -1,10 +1,11 @@
+import type { BeaconRuntimeEnv } from "../types.ts";
 import { dbQuery } from "./db.ts";
 
 // 平台層的點數流水帳。Beacon 的計費保留/退款會寫入此表,
 // schemaMigration.ts 的部分唯一索引也建立在它之上,所以必須先於 AI schema 存在。
 // 欄位集合以 packages/core/src/billing.ts 的 INSERT 為準。
 
-export async function ensureLedgerSchema(env: any): Promise<void> {
+export async function ensureLedgerSchema(env: BeaconRuntimeEnv): Promise<void> {
   await dbQuery(
     env,
     `
