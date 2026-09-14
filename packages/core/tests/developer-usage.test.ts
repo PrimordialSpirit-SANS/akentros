@@ -10,7 +10,7 @@ function requestRow(overrides: any = {}) {
     user_id: "7",
     api_key_id: "9",
     key_name: "Production",
-    public_model: "beacon/llama-3.2-1b-instruct",
+    public_model: "beacon/qwen-3.8-27b",
     upstream_model: "owner/model",
     provider: "openrouter",
     status: "succeeded",
@@ -84,8 +84,8 @@ test("usage logs are cursor paginated and expose only Beacon-owned model metadat
   assert.equal(page.pagination.has_more, true);
   assert.equal(typeof page.pagination.next_cursor, "string");
   assert.equal(page.logs[0].request_id, "req_abcdefgh12345678");
-  assert.equal(page.logs[0].requested_model, "beacon/llama-3.2-1b-instruct");
-  assert.equal(page.logs[0].actual_model, "beacon/llama-3.2-1b-instruct");
+  assert.equal(page.logs[0].requested_model, "beacon/qwen-3.8-27b");
+  assert.equal(page.logs[0].actual_model, "beacon/qwen-3.8-27b");
   assert.equal(page.logs[0].provider, "beacon");
   assert.equal("prompt" in page.logs[0], false);
   assert.equal("completion" in page.logs[0], false);

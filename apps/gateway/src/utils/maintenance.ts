@@ -1,3 +1,4 @@
+import type { BeaconRuntimeEnv } from "../types.ts";
 // 定時維護本體:Node 進入點(nodeServer 的 in-process timer)與
 // Cloudflare Workers(cron trigger → Durable Object 維護端點)共用。
 // 過期/隔離保留單對帳 + rate limit bucket 清理;對帳可重跑、不重複扣退。
@@ -8,7 +9,7 @@ import {
   resolveQuarantinedBeaconReservations,
 } from "./aiBilling.ts";
 
-export async function runBeaconMaintenance(env: any): Promise<{
+export async function runBeaconMaintenance(env: BeaconRuntimeEnv): Promise<{
   staleReservations: number;
   quarantinedReservations: number;
 }> {

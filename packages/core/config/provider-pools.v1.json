@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0.0",
-  "revision": "2026-09-13.2",
+  "revision": "2026-09-14.1",
   "pools": {
     "openrouter-production": {
       "provider": "openrouter",

@@ -82,14 +82,14 @@ test("public catalogs match the active backend models, prices, limits and provid
 
 test("provider names use the canonical hugging-face vocabulary", () => {
   const pricing = clone(BACKEND_PRICING);
-  pricing.models["beacon/llama-3.2-1b-instruct"].routes[0].provider = "huggingface";
+  pricing.models["beacon/qwen-3.8-27b"].routes[0].provider = "huggingface";
 
   const pools = clone(providerPools);
   pools.pools["hugging-face-production"].provider = "huggingface";
 
   assert.deepEqual(validateBackendPricing(pricing), {
     valid: false,
-    errors: ["$.models.beacon/llama-3.2-1b-instruct.routes[0].provider: is unsupported"],
+    errors: ["$.models.beacon/qwen-3.8-27b.routes[0].provider: is unsupported"],
   });
   assert.deepEqual(validateProviderPools(pools), {
     valid: false,
@@ -131,11 +131,11 @@ test("bundle validation catches revision and route-to-pool drift", () => {
   });
 
   const pricingDrift = clone(BACKEND_PRICING);
-  pricingDrift.models["beacon/llama-3.2-1b-instruct"].routes[0].credential_pool = "openrouter-production";
+  pricingDrift.models["beacon/qwen-3.8-27b"].routes[0].credential_pool = "openrouter-production";
   assert.deepEqual(validateConfigBundle(pricingDrift, providerPools), {
     valid: false,
     errors: [
-      "$.models.beacon/llama-3.2-1b-instruct.routes.llama-3.2-1b-instruct-cloudflare.provider: does not match its provider pool",
+      "$.models.beacon/qwen-3.8-27b.routes.qwen-3.8-27b-cloudflare.provider: does not match its provider pool",
     ],
   });
 });

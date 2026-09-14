@@ -1,7 +1,6 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import dotenv from "dotenv";
-import { listEnabledModels } from "../../../packages/core/src/pricing.ts";
+import { listEnabledModels } from "@beacon/core/pricing";
 import {
   BeaconProviderError,
   invokeProviderRoute,
@@ -9,8 +8,9 @@ import {
   normalizeProviderUsage,
   requireProviderPool,
   resolveProviderCredential,
-} from "../../../packages/core/src/providers.ts";
-import { parseSseStream } from "../../../packages/core/src/sse.ts";
+} from "@beacon/core/providers";
+import { parseSseStream } from "@beacon/core/sse";
+import dotenv from "dotenv";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

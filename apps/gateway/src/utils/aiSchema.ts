@@ -1,13 +1,14 @@
-import { assertBeaconSchemaReady } from "../../../../packages/core/src/schemaReadiness.ts";
+import { assertBeaconSchemaReady } from "@beacon/core/schemaReadiness";
+import type { BeaconRuntimeEnv } from "../types.ts";
 import { dbQuery } from "./db.ts";
 
 const schemaPromises = new Map();
 
-function databaseKey(env: any) {
-  return env?.POSTGRES_DB_URL?.trim() || env?.DATABASE_URL?.trim() || "unconfigured-main";
+function databaseKey(env: BeaconRuntimeEnv) {
+  return env?.DATABASE_URL?.trim() || "unconfigured-main";
 }
 
-export function ensureAiSchema(env: any) {
+export function ensureAiSchema(env: BeaconRuntimeEnv) {
   const key = databaseKey(env);
   if (schemaPromises.has(key)) return schemaPromises.get(key);
 

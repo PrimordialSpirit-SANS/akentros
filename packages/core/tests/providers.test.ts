@@ -653,7 +653,7 @@ test("Cloudflare native binding normalizes OpenAI-compatible JSON output without
     route_id: "test-cloudflare-binding-chat-completion",
     provider: "cloudflare-workers-ai",
     credential_pool: "cloudflare-workers-ai-production",
-    upstream_model: "@cf/meta/llama-3.2-1b-instruct",
+    upstream_model: "@cf/qwen/qwen3.8-27b",
     timeout_ms: 1000,
   };
   let bindingCall: any;
@@ -663,7 +663,7 @@ test("Cloudflare native binding normalizes OpenAI-compatible JSON output without
     pool: requireProviderPool(route.credential_pool),
     credential: { credentialId: "native", provider: route.provider, secrets: {} },
     body: {
-      model: "beacon/llama-3.2-1b-instruct",
+      model: "beacon/qwen-3.8-27b",
       messages: [{ role: "user", content: "hello" }],
       max_completion_tokens: 12,
     },

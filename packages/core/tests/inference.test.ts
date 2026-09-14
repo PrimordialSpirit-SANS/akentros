@@ -23,7 +23,7 @@ function aiKey(overrides: any = {}) {
 
 function body(overrides: any = {}) {
   return {
-    model: "beacon/gemma-4-26b-a4b-it",
+    model: "beacon/gpt-6-astra",
     messages: [{ role: "user", content: "Hello Beacon" }],
     ...overrides,
   };
@@ -90,7 +90,7 @@ function fakeBilling(overrides: any = {}) {
 test("public model list exposes only stable Beacon model metadata", () => {
   const list = listPublicBeaconModels();
   assert.equal(list.object, "list");
-  assert.equal(list.data.length, 35);
+  assert.equal(list.data.length, 19);
   for (const model of list.data) {
     assert.match(model.id, /^beacon\//);
     assert.equal(model.object, "model");
@@ -104,7 +104,7 @@ test("chat preparation validates allowlists, features, limits, and nested finger
   await assert.rejects(
     prepareBeaconChatRequest({
       body: body(),
-      aiKey: aiKey({ model_allowlist: ["beacon/gpt-5"] }),
+      aiKey: aiKey({ model_allowlist: ["beacon/gpt-5.2"] }),
     }),
     (error: any) => error.status === 403 && error.code === "model_not_allowed",
   );
@@ -129,7 +129,7 @@ test("chat preparation validates allowlists, features, limits, and nested finger
   await assert.rejects(
     prepareBeaconChatRequest({
       body: body({
-        model: "beacon/llama-3.2-1b-instruct",
+        model: "beacon/qwen-3.8-27b",
         tools: [
           {
             type: "function",
@@ -148,7 +148,7 @@ test("chat preparation validates allowlists, features, limits, and nested finger
   await assert.rejects(
     prepareBeaconChatRequest({
       body: body({
-        model: "beacon/llama-3.2-1b-instruct",
+        model: "beacon/qwen-3.8-27b",
         messages: [
           {
             role: "assistant",
@@ -177,8 +177,11 @@ test("chat preparation validates allowlists, features, limits, and nested finger
   await assert.rejects(
     prepareBeaconChatRequest({
       body: body({
-        model: "beacon/llama-3.2-1b-instruct",
-        messages: [{ role: "user", content: "x".repeat(56_000) }],
+        model: "beacon/claude-haiku-4-5",
+        messages: [
+          { role: "user", content: "x".repeat(100_000) },
+          { role: "user", content: "x".repeat(100_000) },
+        ],
       }),
       aiKey: aiKey(),
     }),
@@ -331,7 +334,7 @@ for (const stream of [false, true]) {
 
 test("Worker runtime forwards the native Cloudflare AI binding instead of using REST", async () => {
   const prepared = await prepareBeaconChatRequest({
-    body: body({ model: "beacon/llama-3.2-1b-instruct" }),
+    body: body({ model: "beacon/qwen-3.8-27b" }),
     aiKey: aiKey(),
   });
   const billing = fakeBilling();
@@ -343,7 +346,7 @@ test("Worker runtime forwards the native Cloudflare AI binding instead of using 
     cloudflareAiBinding: {
       async run(model: any, input: any) {
         bindingCalls += 1;
-        assert.equal(model, "@cf/meta/llama-3.2-1b-instruct");
+        assert.equal(model, "@cf/qwen/qwen3.8-27b");
         assert.equal(input.stream, false);
         return {
           response: "native runtime response",
@@ -713,7 +716,7 @@ test("stream chunks use public IDs and provider usage settles the reservation", 
 
 test("Cloudflare native JSON SSE streams normalize and settle without REST", async () => {
   const prepared = await prepareBeaconChatRequest({
-    body: body({ model: "beacon/llama-3.2-1b-instruct", stream: true }),
+    body: body({ model: "beacon/qwen-3.8-27b", stream: true }),
     aiKey: aiKey(),
   });
   const encoder = new TextEncoder();
@@ -728,7 +731,7 @@ test("Cloudflare native JSON SSE streams normalize and settle without REST", asy
     cloudflareAiBinding: {
       async run(model: any, input: any) {
         bindingCalls += 1;
-        assert.equal(model, "@cf/meta/llama-3.2-1b-instruct");
+        assert.equal(model, "@cf/qwen/qwen3.8-27b");
         assert.equal(input.stream, true);
         return new ReadableStream({
           start(controller) {
@@ -859,7 +862,7 @@ test("malformed stream usage is ignored and the stream settles with a conservati
 
 test("Cloudflare native stream terminator is ignored and final response usage is preserved", async () => {
   const prepared = await prepareBeaconChatRequest({
-    body: body({ model: "beacon/llama-4-scout-17b-16e-instruct", stream: true }),
+    body: body({ model: "beacon/qwen-3.8-27b", stream: true }),
     aiKey: aiKey(),
   });
 

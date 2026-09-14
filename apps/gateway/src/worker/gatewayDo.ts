@@ -1,4 +1,5 @@
 import { createApp } from "../app.ts";
+import type { BeaconRuntimeEnv } from "../types.ts";
 import { ensureBeaconSchemaReady, seedBeaconAdminFromEnv } from "../utils/bootstrap.ts";
 import { installBeaconDbAdapter } from "../utils/db.ts";
 import { runBeaconMaintenance } from "../utils/maintenance.ts";
@@ -17,10 +18,10 @@ const MAINTENANCE_PATH = "/internal/maintenance";
 
 export class BeaconGateway {
   private readonly state: BeaconDoState;
-  private readonly env: any;
+  private readonly env: BeaconRuntimeEnv;
   private readyPromise: Promise<void> | null = null;
 
-  constructor(state: any, env: any) {
+  constructor(state: any, env: BeaconRuntimeEnv) {
     this.state = state as BeaconDoState;
     this.env = env;
     installBeaconDbAdapter(createDoBeaconDbAdapter(this.state));

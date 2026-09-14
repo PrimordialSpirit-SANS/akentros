@@ -2,6 +2,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import fs from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import type { BeaconRuntimeEnv } from "../types.ts";
 
 // Node 自架部署的 SQLite adapter:以 Node 內建的 node:sqlite 實作
 // (sql, params) => { rows } 查詢介面,供 API server 與 migrate/reconcile
@@ -22,7 +23,7 @@ type QueryResult = { rows: any[] };
 const databases = new Map<string, DatabaseSync>();
 const txStorage = new AsyncLocalStorage<{ depth: number }>();
 
-function resolveDatabasePath(env: any): string {
+function resolveDatabasePath(env: BeaconRuntimeEnv): string {
   const configured = String(env?.BEACON_DB_PATH || env?.DATABASE_URL || "").trim();
   if (!configured || configured.startsWith("sqlite://") || configured.startsWith("file:")) {
     const bare = configured.replace(/^(sqlite:\/\/|sqlite:\/\/\/|file:\/?)/, "");
@@ -31,7 +32,7 @@ function resolveDatabasePath(env: any): string {
   return configured;
 }
 
-function databaseFor(env: any): DatabaseSync {
+function databaseFor(env: BeaconRuntimeEnv): DatabaseSync {
   const file = resolveDatabasePath(env);
   let database = databases.get(file);
   if (!database) {
@@ -89,7 +90,7 @@ function flushPending(file: string) {
   }
 }
 
-export async function dbQuery(env: any, sql: string, params: any[] = []): Promise<QueryResult> {
+export async function dbQuery(env: BeaconRuntimeEnv, sql: string, params: any[] = []): Promise<QueryResult> {
   const tx = txStorage.getStore();
   if (tx) {
     // 交易內:同一連線同步執行,單一 Node 執行緒保證不交錯。
@@ -117,7 +118,7 @@ export async function dbQuery(env: any, sql: string, params: any[] = []): Promis
 
 // 交易封裝:BEGIN IMMEDIATE → fn 內的 query 直連 → COMMIT / ROLLBACK。
 // 交易進行中,同資料庫的其他查詢會被擋到交易結束,避免語句混入。
-export async function withBeaconTransaction<T>(env: any, fn: () => Promise<T>): Promise<T> {
+export async function withBeaconTransaction<T>(env: BeaconRuntimeEnv, fn: () => Promise<T>): Promise<T> {
   const outer = txStorage.getStore();
   if (outer) {
     // 巢狀呼叫:沿用外層交易。
@@ -144,14 +145,14 @@ export async function withBeaconTransaction<T>(env: any, fn: () => Promise<T>): 
   }
 }
 
-export async function dbGet(env: any, sql: string, params: any[] = []): Promise<any | null> {
+export async function dbGet(env: BeaconRuntimeEnv, sql: string, params: any[] = []): Promise<any | null> {
   const { rows } = await dbQuery(env, sql, params);
   return rows[0] ?? null;
 }
 
 // 給 core store 用的查詢物件:可呼叫 (sql, params),並帶 transaction(fn)
 // 讓 core 的多語句原子操作走 SQLite 交易。
-export function createBeaconQuery(env: any) {
+export function createBeaconQuery(env: BeaconRuntimeEnv) {
   const query = (sql: string, params: any[] = []) => dbQuery(env, sql, params);
   (query as any).transaction = (fn: () => Promise<any>) => withBeaconTransaction(env, fn);
   return query;

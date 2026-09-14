@@ -127,7 +127,7 @@ const state = {
       key_prefix: "sk-beacon-test_44cd",
       key_suffix: "91b7",
       scopes: ["chat:completions", "models:read"],
-      model_allowlist: ["beacon/llama-3.2-1b-instruct"],
+      model_allowlist: ["beacon/qwen-3.8-27b"],
       is_active: true,
       last_used_at: daysAgo(3),
       expires_at: daysAgo(-30),
@@ -141,7 +141,7 @@ const state = {
     seedLog({
       requestId: "req_demo_9f2c41a8e0b3",
       minutes: 2,
-      model: "beacon/llama-3.2-1b-instruct",
+      model: "beacon/qwen-3.8-27b",
       status: "succeeded",
       inputTokens: 412,
       outputTokens: 96,
@@ -151,7 +151,7 @@ const state = {
     seedLog({
       requestId: "req_demo_7b81d0c4a2e6",
       minutes: 26,
-      model: "beacon/gpt-5-mini",
+      model: "beacon/gpt-5.2",
       status: "succeeded",
       inputTokens: 1204,
       outputTokens: 388,
@@ -161,7 +161,7 @@ const state = {
     seedLog({
       requestId: "req_demo_1c4e9a77f3d2",
       minutes: 58,
-      model: "beacon/glm-5.2",
+      model: "beacon/glm-5.3",
       status: "succeeded",
       inputTokens: 2531,
       outputTokens: 907,
@@ -171,7 +171,7 @@ const state = {
     seedLog({
       requestId: "req_demo_44a0b8e1c5d9",
       minutes: 173,
-      model: "beacon/grok-4-fast",
+      model: "beacon/grok-4.1-fast",
       status: "refunded",
       inputTokens: 860,
       outputTokens: 212,
@@ -203,7 +203,7 @@ const state = {
     seedLog({
       requestId: "req_demo_5d90af13e7bb",
       minutes: 902,
-      model: "beacon/gemini-2.5-flash-lite",
+      model: "beacon/gemini-3.5-flash-lite",
       status: "succeeded",
       inputTokens: 988,
       outputTokens: 260,
@@ -370,7 +370,7 @@ function recordDemoUsage(
 }
 
 async function streamDemoChat(body: Record<string, unknown>, signal?: AbortSignal): Promise<Response> {
-  const modelId = typeof body.model === "string" && body.model ? body.model : "beacon/gemma-4-26b-a4b-it";
+  const modelId = typeof body.model === "string" && body.model ? body.model : "beacon/gpt-6-astra";
   const messages = Array.isArray(body.messages) ? body.messages : [];
   const prompt = messages
     .map((message) =>

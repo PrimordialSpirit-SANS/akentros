@@ -15,18 +15,19 @@ one point; existing Beacon billing rounds the combined input/output charge up on
 | Public model | Upstream model | USD input / output per 1M | Beacon points input / output per 1M |
 | --- | --- | --- | --- |
 | `beacon/qwen-3.8-max` | `qwen3.8-max` | 2 / 6 | 67 / 200 |
-| `beacon/qwen-3.8-flash` | `qwen3.8-flash` | 0.15 / 0.47 | 5 / 16 |
-| `beacon/glm-5.2` | `glm-5.2` | 1.4 / 4.4 | 47 / 147 |
+| `beacon/qwen-3.8-flash` | `qwen3.8-flash` | 0.15 / 0.48 | 5 / 16 |
+| `beacon/glm-5.3` | `glm-5.3` | 1.41 / 4.41 | 47 / 147 |
+| `beacon/glm-5.3-flash` | `glm-5.3-flash` | 0.15 / 0.6 | 5 / 20 |
 | `beacon/kimi-k3` | `kimi-k3` | 3 / 15 | 100 / 500 |
-| `beacon/deepseek-v4-flash` | `deepseek-v4-flash` | 0.2 / 0.4 | 7 / 14 |
+| `beacon/deepseek-v4.1-flash` | `deepseek-v4.1-flash` | 0.15 / 0.6 | 5 / 20 |
 | `beacon/deepseek-v4-pro` | `deepseek-v4-pro-0813` | 1.32 / 3.96 | 44 / 132 |
 
-Most routes use the undated model IDs, including `deepseek-v4-flash`; the
-separate `deepseek-v4-flash-0731` snapshot has different pricing. DeepSeek V4
-Pro is the one exception and serves the dated `deepseek-v4-pro-0813` snapshot,
-whose Singapore rates differ between peak and idle hours. Beacon bills the peak
-rates so idle-hour discounts, cache discounts and promotions are all excluded
-from the published rates.
+Most routes use the undated model IDs, including `deepseek-v4.1-flash`
+(released 2026-09-10 as an open-weight MIT model, replacing the retired
+`deepseek-v4-flash`). DeepSeek V4 Pro is the one exception and serves the dated
+`deepseek-v4-pro-0813` snapshot, whose Singapore rates differ between peak and
+idle hours. Beacon bills the peak rates so idle-hour discounts, cache discounts
+and promotions are all excluded from the published rates.
 Rates exclude temporary promotions and cache discounts.
 
 Beacon exposes text chat, streaming, reasoning output and function tools for these
@@ -53,7 +54,7 @@ Model references: [Qwen 3.8 Max](https://www.alibabacloud.com/help/en/model-stud
 [Qwen 3.8 Flash](https://www.alibabacloud.com/help/en/model-studio/qwen3-8-flash),
 [GLM](https://www.alibabacloud.com/help/en/model-studio/glm),
 [Kimi K3](https://www.alibabacloud.com/help/en/model-studio/kimi-k3),
-[DeepSeek V4 Flash](https://www.alibabacloud.com/help/en/model-studio/deepseek-v4-flash),
+[DeepSeek V4.1 Flash](https://api-docs.deepseek.com/updates/),
 [DeepSeek V4 Pro](https://www.alibabacloud.com/help/en/model-studio/deepseek-v4-pro).
 
 ## Credentials and verification

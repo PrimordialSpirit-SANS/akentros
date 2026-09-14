@@ -71,7 +71,7 @@ test("frontend usage normalization discards stale routing metadata", () => {
     created_at: "2026-07-15T00:00:00.000Z",
     api_key_id: "9",
     key_name: "Production",
-    requested_model: "beacon/llama-3.2-1b-instruct",
+    requested_model: "beacon/qwen-3.8-27b",
     actual_model: "owner/vendor-model",
     provider: "openrouter",
     status: "succeeded",

@@ -1,53 +1,18 @@
 {
   "schema_version": "1.0.0",
-  "revision": "2026-09-13.2",
-  "published_at": "2026-09-13T00:00:00Z",
-  "effective_at": "2026-09-12T00:00:00Z",
+  "revision": "2026-09-14.1",
+  "published_at": "2026-09-14T00:00:00Z",
+  "effective_at": "2026-09-14T00:00:00Z",
   "currency": {
     "code": "USD",
     "settlement_unit": "usd_micros",
     "micros_per_usd": 1000000
   },
   "models": {
-    "beacon/llama-3.2-1b-instruct": {
+    "beacon/gpt-6-astra": {
       "object": "model",
       "enabled": true,
-      "display_name": "Llama 3.2 1B Instruct",
-      "owned_by": "beacon",
-      "capabilities": {
-        "chat_completions": true,
-        "streaming": true,
-        "tools": false,
-        "json_mode": false,
-        "vision": false
-      },
-      "billing": {
-        "input_usd_per_million_tokens": "0.03",
-        "output_usd_per_million_tokens": "0.21",
-        "minimum_charge_usd": "0.0001"
-      },
-      "limits": {
-        "context_tokens": 60000,
-        "max_input_tokens": 55904,
-        "default_max_completion_tokens": 1024,
-        "max_completion_tokens": 4096
-      },
-      "routes": [
-        {
-          "route_id": "llama-3.2-1b-instruct-cloudflare",
-          "provider": "cloudflare-workers-ai",
-          "credential_pool": "cloudflare-workers-ai-production",
-          "upstream_model": "@cf/meta/llama-3.2-1b-instruct",
-          "priority": 10,
-          "timeout_ms": 120000,
-          "enabled": true
-        }
-      ]
-    },
-    "beacon/llama-4-scout-17b-16e-instruct": {
-      "object": "model",
-      "enabled": true,
-      "display_name": "Llama 4 Scout 17B 16E Instruct",
+      "display_name": "GPT-6 Astra",
       "owned_by": "beacon",
       "capabilities": {
         "chat_completions": true,
@@ -57,32 +22,277 @@
         "vision": false
       },
       "billing": {
-        "input_usd_per_million_tokens": "0.27",
-        "output_usd_per_million_tokens": "0.84",
+        "input_usd_per_million_tokens": "10.00",
+        "output_usd_per_million_tokens": "50.01",
         "minimum_charge_usd": "0.0001"
       },
       "limits": {
-        "context_tokens": 131000,
-        "max_input_tokens": 126904,
-        "default_max_completion_tokens": 1024,
-        "max_completion_tokens": 4096
+        "context_tokens": 1000000,
+        "max_input_tokens": 991808,
+        "default_max_completion_tokens": 4096,
+        "max_completion_tokens": 8192
       },
       "routes": [
         {
-          "route_id": "llama-4-scout-17b-16e-instruct-cloudflare",
-          "provider": "cloudflare-workers-ai",
-          "credential_pool": "cloudflare-workers-ai-production",
-          "upstream_model": "@cf/meta/llama-4-scout-17b-16e-instruct",
+          "route_id": "gpt-6-astra-openai",
+          "provider": "openai",
+          "credential_pool": "openai-production",
+          "upstream_model": "gpt-6-astra",
           "priority": 10,
           "timeout_ms": 120000,
           "enabled": true
         }
       ]
     },
-    "beacon/gemma-4-26b-a4b-it": {
+    "beacon/gpt-5.2": {
       "object": "model",
       "enabled": true,
-      "display_name": "Gemma 4 26B A4B IT",
+      "display_name": "GPT-5.2",
+      "owned_by": "beacon",
+      "capabilities": {
+        "chat_completions": true,
+        "streaming": true,
+        "tools": true,
+        "json_mode": false,
+        "vision": false
+      },
+      "billing": {
+        "input_usd_per_million_tokens": "1.26",
+        "output_usd_per_million_tokens": "10.02",
+        "minimum_charge_usd": "0.0001"
+      },
+      "limits": {
+        "context_tokens": 400000,
+        "max_input_tokens": 391808,
+        "default_max_completion_tokens": 4096,
+        "max_completion_tokens": 8192
+      },
+      "routes": [
+        {
+          "route_id": "gpt-5.2-openai",
+          "provider": "openai",
+          "credential_pool": "openai-production",
+          "upstream_model": "gpt-5.2",
+          "priority": 10,
+          "timeout_ms": 120000,
+          "enabled": true
+        }
+      ]
+    },
+    "beacon/gpt-5.2-codex": {
+      "object": "model",
+      "enabled": true,
+      "display_name": "GPT-5.2 Codex",
+      "owned_by": "beacon",
+      "capabilities": {
+        "chat_completions": true,
+        "streaming": true,
+        "tools": true,
+        "json_mode": false,
+        "vision": false
+      },
+      "billing": {
+        "input_usd_per_million_tokens": "1.26",
+        "output_usd_per_million_tokens": "10.02",
+        "minimum_charge_usd": "0.0001"
+      },
+      "limits": {
+        "context_tokens": 400000,
+        "max_input_tokens": 391808,
+        "default_max_completion_tokens": 4096,
+        "max_completion_tokens": 8192
+      },
+      "routes": [
+        {
+          "route_id": "gpt-5.2-codex-openai",
+          "provider": "openai",
+          "credential_pool": "openai-production",
+          "upstream_model": "gpt-5.2-codex",
+          "priority": 10,
+          "timeout_ms": 120000,
+          "enabled": true
+        }
+      ]
+    },
+    "beacon/claude-opus-4-8": {
+      "object": "model",
+      "enabled": true,
+      "display_name": "Claude Opus 4.8",
+      "owned_by": "beacon",
+      "capabilities": {
+        "chat_completions": true,
+        "streaming": true,
+        "tools": true,
+        "json_mode": false,
+        "vision": false
+      },
+      "billing": {
+        "input_usd_per_million_tokens": "5.00",
+        "output_usd_per_million_tokens": "25.01",
+        "minimum_charge_usd": "0.0001"
+      },
+      "limits": {
+        "context_tokens": 200000,
+        "max_input_tokens": 191808,
+        "default_max_completion_tokens": 4096,
+        "max_completion_tokens": 8192
+      },
+      "routes": [
+        {
+          "route_id": "claude-opus-4-8-anthropic",
+          "provider": "anthropic",
+          "credential_pool": "anthropic-production",
+          "upstream_model": "claude-opus-4-8",
+          "priority": 10,
+          "timeout_ms": 120000,
+          "enabled": true
+        }
+      ]
+    },
+    "beacon/claude-sonnet-5": {
+      "object": "model",
+      "enabled": true,
+      "display_name": "Claude Sonnet 5",
+      "owned_by": "beacon",
+      "capabilities": {
+        "chat_completions": true,
+        "streaming": true,
+        "tools": true,
+        "json_mode": false,
+        "vision": false
+      },
+      "billing": {
+        "input_usd_per_million_tokens": "2.00",
+        "output_usd_per_million_tokens": "10.01",
+        "minimum_charge_usd": "0.0001"
+      },
+      "limits": {
+        "context_tokens": 200000,
+        "max_input_tokens": 191808,
+        "default_max_completion_tokens": 4096,
+        "max_completion_tokens": 8192
+      },
+      "routes": [
+        {
+          "route_id": "claude-sonnet-5-anthropic",
+          "provider": "anthropic",
+          "credential_pool": "anthropic-production",
+          "upstream_model": "claude-sonnet-5",
+          "priority": 10,
+          "timeout_ms": 120000,
+          "enabled": true
+        }
+      ]
+    },
+    "beacon/claude-haiku-4-5": {
+      "object": "model",
+      "enabled": true,
+      "display_name": "Claude Haiku 4.5",
+      "owned_by": "beacon",
+      "capabilities": {
+        "chat_completions": true,
+        "streaming": true,
+        "tools": true,
+        "json_mode": false,
+        "vision": false
+      },
+      "billing": {
+        "input_usd_per_million_tokens": "1.02",
+        "output_usd_per_million_tokens": "5.01",
+        "minimum_charge_usd": "0.0001"
+      },
+      "limits": {
+        "context_tokens": 200000,
+        "max_input_tokens": 191808,
+        "default_max_completion_tokens": 4096,
+        "max_completion_tokens": 8192
+      },
+      "routes": [
+        {
+          "route_id": "claude-haiku-4-5-anthropic",
+          "provider": "anthropic",
+          "credential_pool": "anthropic-production",
+          "upstream_model": "claude-haiku-4-5",
+          "priority": 10,
+          "timeout_ms": 120000,
+          "enabled": true
+        }
+      ]
+    },
+    "beacon/gemini-3.5-pro": {
+      "object": "model",
+      "enabled": true,
+      "display_name": "Gemini 3.5 Pro",
+      "owned_by": "beacon",
+      "capabilities": {
+        "chat_completions": true,
+        "streaming": true,
+        "tools": true,
+        "json_mode": false,
+        "vision": false
+      },
+      "billing": {
+        "input_usd_per_million_tokens": "2.01",
+        "output_usd_per_million_tokens": "12.02",
+        "minimum_charge_usd": "0.0001"
+      },
+      "limits": {
+        "context_tokens": 1048576,
+        "max_input_tokens": 1040384,
+        "default_max_completion_tokens": 4096,
+        "max_completion_tokens": 8192
+      },
+      "routes": [
+        {
+          "route_id": "gemini-3.5-pro-google",
+          "provider": "google",
+          "credential_pool": "google-production",
+          "upstream_model": "gemini-3.5-pro",
+          "priority": 10,
+          "timeout_ms": 120000,
+          "enabled": true
+        }
+      ]
+    },
+    "beacon/gemini-3.8-flash": {
+      "object": "model",
+      "enabled": true,
+      "display_name": "Gemini 3.8 Flash",
+      "owned_by": "beacon",
+      "capabilities": {
+        "chat_completions": true,
+        "streaming": true,
+        "tools": true,
+        "json_mode": false,
+        "vision": false
+      },
+      "billing": {
+        "input_usd_per_million_tokens": "0.30",
+        "output_usd_per_million_tokens": "2.52",
+        "minimum_charge_usd": "0.0001"
+      },
+      "limits": {
+        "context_tokens": 1048576,
+        "max_input_tokens": 1040384,
+        "default_max_completion_tokens": 4096,
+        "max_completion_tokens": 8192
+      },
+      "routes": [
+        {
+          "route_id": "gemini-3.8-flash-google",
+          "provider": "google",
+          "credential_pool": "google-production",
+          "upstream_model": "gemini-3.8-flash",
+          "priority": 10,
+          "timeout_ms": 120000,
+          "enabled": true
+        }
+      ]
+    },
+    "beacon/gemini-3.5-flash-lite": {
+      "object": "model",
+      "enabled": true,
+      "display_name": "Gemini 3.5 Flash-Lite",
       "owned_by": "beacon",
       "capabilities": {
         "chat_completions": true,
@@ -93,31 +303,66 @@
       },
       "billing": {
         "input_usd_per_million_tokens": "0.12",
-        "output_usd_per_million_tokens": "0.30",
+        "output_usd_per_million_tokens": "0.42",
         "minimum_charge_usd": "0.0001"
       },
       "limits": {
-        "context_tokens": 256000,
-        "max_input_tokens": 247808,
+        "context_tokens": 1048576,
+        "max_input_tokens": 1040384,
         "default_max_completion_tokens": 4096,
         "max_completion_tokens": 8192
       },
       "routes": [
         {
-          "route_id": "gemma-4-26b-a4b-it-cloudflare",
-          "provider": "cloudflare-workers-ai",
-          "credential_pool": "cloudflare-workers-ai-production",
-          "upstream_model": "@cf/google/gemma-4-26b-a4b-it",
+          "route_id": "gemini-3.5-flash-lite-google",
+          "provider": "google",
+          "credential_pool": "google-production",
+          "upstream_model": "gemini-3.5-flash-lite",
           "priority": 10,
           "timeout_ms": 120000,
           "enabled": true
         }
       ]
     },
-    "beacon/gpt-oss-20b": {
+    "beacon/grok-4.6": {
       "object": "model",
       "enabled": true,
-      "display_name": "GPT-OSS 20B",
+      "display_name": "Grok 4.6",
+      "owned_by": "beacon",
+      "capabilities": {
+        "chat_completions": true,
+        "streaming": true,
+        "tools": true,
+        "json_mode": false,
+        "vision": false
+      },
+      "billing": {
+        "input_usd_per_million_tokens": "2.00",
+        "output_usd_per_million_tokens": "6.01",
+        "minimum_charge_usd": "0.0001"
+      },
+      "limits": {
+        "context_tokens": 2000000,
+        "max_input_tokens": 1991808,
+        "default_max_completion_tokens": 4096,
+        "max_completion_tokens": 8192
+      },
+      "routes": [
+        {
+          "route_id": "grok-4.6-xai",
+          "provider": "xai",
+          "credential_pool": "xai-production",
+          "upstream_model": "grok-4.6",
+          "priority": 10,
+          "timeout_ms": 120000,
+          "enabled": true
+        }
+      ]
+    },
+    "beacon/grok-4.1-fast": {
+      "object": "model",
+      "enabled": true,
+      "display_name": "Grok 4.1 Fast",
       "owned_by": "beacon",
       "capabilities": {
         "chat_completions": true,
@@ -128,110 +373,242 @@
       },
       "billing": {
         "input_usd_per_million_tokens": "0.21",
-        "output_usd_per_million_tokens": "0.30",
+        "output_usd_per_million_tokens": "0.51",
         "minimum_charge_usd": "0.0001"
       },
       "limits": {
-        "context_tokens": 128000,
-        "max_input_tokens": 123904,
-        "default_max_completion_tokens": 1024,
-        "max_completion_tokens": 4096
-      },
-      "routes": [
-        {
-          "route_id": "gpt-oss-20b-cloudflare",
-          "provider": "cloudflare-workers-ai",
-          "credential_pool": "cloudflare-workers-ai-production",
-          "upstream_model": "@cf/openai/gpt-oss-20b",
-          "priority": 10,
-          "timeout_ms": 120000,
-          "enabled": true
-        }
-      ]
-    },
-    "beacon/gpt-oss-120b": {
-      "object": "model",
-      "enabled": true,
-      "display_name": "GPT-OSS 120B",
-      "owned_by": "beacon",
-      "capabilities": {
-        "chat_completions": true,
-        "streaming": true,
-        "tools": true,
-        "json_mode": false,
-        "vision": false
-      },
-      "billing": {
-        "input_usd_per_million_tokens": "0.36",
-        "output_usd_per_million_tokens": "0.75",
-        "minimum_charge_usd": "0.0001"
-      },
-      "limits": {
-        "context_tokens": 128000,
-        "max_input_tokens": 123904,
-        "default_max_completion_tokens": 1024,
-        "max_completion_tokens": 4096
-      },
-      "routes": [
-        {
-          "route_id": "gpt-oss-120b-cloudflare",
-          "provider": "cloudflare-workers-ai",
-          "credential_pool": "cloudflare-workers-ai-production",
-          "upstream_model": "@cf/openai/gpt-oss-120b",
-          "priority": 10,
-          "timeout_ms": 120000,
-          "enabled": true
-        },
-        {
-          "route_id": "gpt-oss-120b-groq",
-          "provider": "groq",
-          "credential_pool": "groq-production",
-          "upstream_model": "openai/gpt-oss-120b",
-          "priority": 20,
-          "timeout_ms": 120000,
-          "enabled": true
-        },
-        {
-          "route_id": "gpt-oss-120b-bedrock",
-          "provider": "amazon-bedrock",
-          "credential_pool": "amazon-bedrock-production",
-          "upstream_model": "openai.gpt-oss-120b-1:0",
-          "priority": 30,
-          "timeout_ms": 120000,
-          "enabled": true
-        }
-      ]
-    },
-    "beacon/qwen-3.8-27b": {
-      "object": "model",
-      "enabled": true,
-      "display_name": "Qwen 3.8 27B",
-      "owned_by": "beacon",
-      "capabilities": {
-        "chat_completions": true,
-        "streaming": true,
-        "tools": true,
-        "json_mode": false,
-        "vision": false
-      },
-      "billing": {
-        "input_usd_per_million_tokens": "0.42",
-        "output_usd_per_million_tokens": "3.00",
-        "minimum_charge_usd": "0.0001"
-      },
-      "limits": {
-        "context_tokens": 262144,
-        "max_input_tokens": 253952,
+        "context_tokens": 2000000,
+        "max_input_tokens": 1991808,
         "default_max_completion_tokens": 4096,
         "max_completion_tokens": 8192
       },
       "routes": [
         {
-          "route_id": "qwen-3.8-27b-cloudflare",
-          "provider": "cloudflare-workers-ai",
-          "credential_pool": "cloudflare-workers-ai-production",
-          "upstream_model": "@cf/qwen/qwen3.8-27b",
+          "route_id": "grok-4.1-fast-xai",
+          "provider": "xai",
+          "credential_pool": "xai-production",
+          "upstream_model": "grok-4.1-fast",
           "priority": 10,
+          "timeout_ms": 120000,
+          "enabled": true
+        }
+      ]
+    },
+    "beacon/deepseek-v4-pro": {
+      "object": "model",
+      "enabled": true,
+      "display_name": "DeepSeek V4 Pro",
+      "owned_by": "beacon",
+      "capabilities": {
+        "chat_completions": true,
+        "streaming": true,
+        "tools": true,
+        "json_mode": false,
+        "vision": false
+      },
+      "billing": {
+        "input_usd_per_million_tokens": "1.32",
+        "output_usd_per_million_tokens": "3.96",
+        "minimum_charge_usd": "0.0001"
+      },
+      "limits": {
+        "context_tokens": 1000000,
+        "max_input_tokens": 991808,
+        "default_max_completion_tokens": 4096,
+        "max_completion_tokens": 8192
+      },
+      "routes": [
+        {
+          "route_id": "deepseek-v4-pro-deepseek",
+          "provider": "deepseek",
+          "credential_pool": "deepseek-production",
+          "upstream_model": "deepseek-v4-pro",
+          "priority": 10,
+          "timeout_ms": 120000,
+          "enabled": true
+        },
+        {
+          "route_id": "deepseek-v4-pro-qwencloud",
+          "provider": "qwencloud",
+          "credential_pool": "qwencloud-production",
+          "upstream_model": "deepseek-v4-pro-0813",
+          "priority": 20,
+          "timeout_ms": 120000,
+          "enabled": true
+        }
+      ]
+    },
+    "beacon/deepseek-v4.1-flash": {
+      "object": "model",
+      "enabled": true,
+      "display_name": "DeepSeek V4.1 Flash",
+      "owned_by": "beacon",
+      "capabilities": {
+        "chat_completions": true,
+        "streaming": true,
+        "tools": true,
+        "json_mode": false,
+        "vision": false
+      },
+      "billing": {
+        "input_usd_per_million_tokens": "0.15",
+        "output_usd_per_million_tokens": "0.60",
+        "minimum_charge_usd": "0.0001"
+      },
+      "limits": {
+        "context_tokens": 1000000,
+        "max_input_tokens": 991808,
+        "default_max_completion_tokens": 4096,
+        "max_completion_tokens": 8192
+      },
+      "routes": [
+        {
+          "route_id": "deepseek-v4.1-flash-deepseek",
+          "provider": "deepseek",
+          "credential_pool": "deepseek-production",
+          "upstream_model": "deepseek-v4.1-flash",
+          "priority": 10,
+          "timeout_ms": 120000,
+          "enabled": true
+        },
+        {
+          "route_id": "deepseek-v4.1-flash-qwencloud",
+          "provider": "qwencloud",
+          "credential_pool": "qwencloud-production",
+          "upstream_model": "deepseek-v4.1-flash",
+          "priority": 20,
+          "timeout_ms": 120000,
+          "enabled": true
+        }
+      ]
+    },
+    "beacon/kimi-k3": {
+      "object": "model",
+      "enabled": true,
+      "display_name": "Kimi K3",
+      "owned_by": "beacon",
+      "capabilities": {
+        "chat_completions": true,
+        "streaming": true,
+        "tools": true,
+        "json_mode": false,
+        "vision": false
+      },
+      "billing": {
+        "input_usd_per_million_tokens": "3.00",
+        "output_usd_per_million_tokens": "15.00",
+        "minimum_charge_usd": "0.0001"
+      },
+      "limits": {
+        "context_tokens": 1048576,
+        "max_input_tokens": 1040384,
+        "default_max_completion_tokens": 4096,
+        "max_completion_tokens": 8192
+      },
+      "routes": [
+        {
+          "route_id": "kimi-k3-moonshot",
+          "provider": "moonshot",
+          "credential_pool": "moonshot-production",
+          "upstream_model": "kimi-k3",
+          "priority": 10,
+          "timeout_ms": 120000,
+          "enabled": true
+        },
+        {
+          "route_id": "kimi-k3-qwencloud",
+          "provider": "qwencloud",
+          "credential_pool": "qwencloud-production",
+          "upstream_model": "kimi-k3",
+          "priority": 20,
+          "timeout_ms": 120000,
+          "enabled": true
+        }
+      ]
+    },
+    "beacon/glm-5.3": {
+      "object": "model",
+      "enabled": true,
+      "display_name": "GLM-5.3",
+      "owned_by": "beacon",
+      "capabilities": {
+        "chat_completions": true,
+        "streaming": true,
+        "tools": true,
+        "json_mode": false,
+        "vision": false
+      },
+      "billing": {
+        "input_usd_per_million_tokens": "1.41",
+        "output_usd_per_million_tokens": "4.41",
+        "minimum_charge_usd": "0.0001"
+      },
+      "limits": {
+        "context_tokens": 1000000,
+        "max_input_tokens": 991808,
+        "default_max_completion_tokens": 4096,
+        "max_completion_tokens": 8192
+      },
+      "routes": [
+        {
+          "route_id": "glm-5.3-zhipu",
+          "provider": "zhipu",
+          "credential_pool": "zhipu-production",
+          "upstream_model": "glm-5.3",
+          "priority": 10,
+          "timeout_ms": 120000,
+          "enabled": true
+        },
+        {
+          "route_id": "glm-5.3-qwencloud",
+          "provider": "qwencloud",
+          "credential_pool": "qwencloud-production",
+          "upstream_model": "glm-5.3",
+          "priority": 20,
+          "timeout_ms": 120000,
+          "enabled": true
+        }
+      ]
+    },
+    "beacon/glm-5.3-flash": {
+      "object": "model",
+      "enabled": true,
+      "display_name": "GLM-5.3 Flash",
+      "owned_by": "beacon",
+      "capabilities": {
+        "chat_completions": true,
+        "streaming": true,
+        "tools": true,
+        "json_mode": false,
+        "vision": false
+      },
+      "billing": {
+        "input_usd_per_million_tokens": "0.15",
+        "output_usd_per_million_tokens": "0.60",
+        "minimum_charge_usd": "0.0001"
+      },
+      "limits": {
+        "context_tokens": 1000000,
+        "max_input_tokens": 991808,
+        "default_max_completion_tokens": 4096,
+        "max_completion_tokens": 8192
+      },
+      "routes": [
+        {
+          "route_id": "glm-5.3-flash-zhipu",
+          "provider": "zhipu",
+          "credential_pool": "zhipu-production",
+          "upstream_model": "glm-5.3-flash",
+          "priority": 10,
+          "timeout_ms": 120000,
+          "enabled": true
+        },
+        {
+          "route_id": "glm-5.3-flash-qwencloud",
+          "provider": "qwencloud",
+          "credential_pool": "qwencloud-production",
+          "upstream_model": "glm-5.3-flash",
+          "priority": 20,
           "timeout_ms": 120000,
           "enabled": true
         }
@@ -307,633 +684,20 @@
         }
       ]
     },
-    "beacon/glm-5.2": {
+    "beacon/qwen-3.8-27b": {
       "object": "model",
       "enabled": true,
-      "display_name": "GLM-5.2",
+      "display_name": "Qwen 3.8 27B",
       "owned_by": "beacon",
       "capabilities": {
         "chat_completions": true,
         "streaming": true,
-        "tools": true,
+        "tools": false,
         "json_mode": false,
         "vision": false
       },
       "billing": {
-        "input_usd_per_million_tokens": "1.41",
-        "output_usd_per_million_tokens": "4.41",
-        "minimum_charge_usd": "0.0001"
-      },
-      "limits": {
-        "context_tokens": 1000000,
-        "max_input_tokens": 991808,
-        "default_max_completion_tokens": 4096,
-        "max_completion_tokens": 8192
-      },
-      "routes": [
-        {
-          "route_id": "glm-5.2-qwencloud",
-          "provider": "qwencloud",
-          "credential_pool": "qwencloud-production",
-          "upstream_model": "glm-5.2",
-          "priority": 10,
-          "timeout_ms": 120000,
-          "enabled": true
-        },
-        {
-          "route_id": "glm-5.2-zhipu",
-          "provider": "zhipu",
-          "credential_pool": "zhipu-production",
-          "upstream_model": "glm-5.2",
-          "priority": 20,
-          "timeout_ms": 120000,
-          "enabled": true
-        }
-      ]
-    },
-    "beacon/kimi-k3": {
-      "object": "model",
-      "enabled": true,
-      "display_name": "Kimi K3",
-      "owned_by": "beacon",
-      "capabilities": {
-        "chat_completions": true,
-        "streaming": true,
-        "tools": true,
-        "json_mode": false,
-        "vision": false
-      },
-      "billing": {
-        "input_usd_per_million_tokens": "3.00",
-        "output_usd_per_million_tokens": "15.00",
-        "minimum_charge_usd": "0.0001"
-      },
-      "limits": {
-        "context_tokens": 1048576,
-        "max_input_tokens": 1040384,
-        "default_max_completion_tokens": 4096,
-        "max_completion_tokens": 8192
-      },
-      "routes": [
-        {
-          "route_id": "kimi-k3-qwencloud",
-          "provider": "qwencloud",
-          "credential_pool": "qwencloud-production",
-          "upstream_model": "kimi-k3",
-          "priority": 10,
-          "timeout_ms": 120000,
-          "enabled": true
-        },
-        {
-          "route_id": "kimi-k3-moonshot",
-          "provider": "moonshot",
-          "credential_pool": "moonshot-production",
-          "upstream_model": "kimi-k3",
-          "priority": 20,
-          "timeout_ms": 120000,
-          "enabled": true
-        }
-      ]
-    },
-    "beacon/deepseek-v4-flash": {
-      "object": "model",
-      "enabled": true,
-      "display_name": "DeepSeek V4 Flash",
-      "owned_by": "beacon",
-      "capabilities": {
-        "chat_completions": true,
-        "streaming": true,
-        "tools": true,
-        "json_mode": false,
-        "vision": false
-      },
-      "billing": {
-        "input_usd_per_million_tokens": "0.21",
-        "output_usd_per_million_tokens": "0.42",
-        "minimum_charge_usd": "0.0001"
-      },
-      "limits": {
-        "context_tokens": 1000000,
-        "max_input_tokens": 991808,
-        "default_max_completion_tokens": 4096,
-        "max_completion_tokens": 8192
-      },
-      "routes": [
-        {
-          "route_id": "deepseek-v4-flash-qwencloud",
-          "provider": "qwencloud",
-          "credential_pool": "qwencloud-production",
-          "upstream_model": "deepseek-v4-flash",
-          "priority": 10,
-          "timeout_ms": 120000,
-          "enabled": true
-        }
-      ]
-    },
-    "beacon/deepseek-v4-pro": {
-      "object": "model",
-      "enabled": true,
-      "display_name": "DeepSeek V4 Pro",
-      "owned_by": "beacon",
-      "capabilities": {
-        "chat_completions": true,
-        "streaming": true,
-        "tools": true,
-        "json_mode": false,
-        "vision": false
-      },
-      "billing": {
-        "input_usd_per_million_tokens": "1.32",
-        "output_usd_per_million_tokens": "3.96",
-        "minimum_charge_usd": "0.0001"
-      },
-      "limits": {
-        "context_tokens": 1000000,
-        "max_input_tokens": 991808,
-        "default_max_completion_tokens": 4096,
-        "max_completion_tokens": 8192
-      },
-      "routes": [
-        {
-          "route_id": "deepseek-v4-pro-qwencloud",
-          "provider": "qwencloud",
-          "credential_pool": "qwencloud-production",
-          "upstream_model": "deepseek-v4-pro-0813",
-          "priority": 10,
-          "timeout_ms": 120000,
-          "enabled": true
-        }
-      ]
-    },
-    "beacon/gpt-5": {
-      "object": "model",
-      "enabled": true,
-      "display_name": "GPT-5",
-      "owned_by": "beacon",
-      "capabilities": {
-        "chat_completions": true,
-        "streaming": true,
-        "tools": true,
-        "json_mode": false,
-        "vision": false
-      },
-      "billing": {
-        "input_usd_per_million_tokens": "1.26",
-        "output_usd_per_million_tokens": "10.02",
-        "minimum_charge_usd": "0.0001"
-      },
-      "limits": {
-        "context_tokens": 400000,
-        "max_input_tokens": 391808,
-        "default_max_completion_tokens": 4096,
-        "max_completion_tokens": 8192
-      },
-      "routes": [
-        {
-          "route_id": "gpt-5-openai",
-          "provider": "openai",
-          "credential_pool": "openai-production",
-          "upstream_model": "gpt-5",
-          "priority": 10,
-          "timeout_ms": 120000,
-          "enabled": true
-        }
-      ]
-    },
-    "beacon/gpt-5-mini": {
-      "object": "model",
-      "enabled": true,
-      "display_name": "GPT-5 mini",
-      "owned_by": "beacon",
-      "capabilities": {
-        "chat_completions": true,
-        "streaming": true,
-        "tools": true,
-        "json_mode": false,
-        "vision": false
-      },
-      "billing": {
-        "input_usd_per_million_tokens": "0.27",
-        "output_usd_per_million_tokens": "2.01",
-        "minimum_charge_usd": "0.0001"
-      },
-      "limits": {
-        "context_tokens": 400000,
-        "max_input_tokens": 391808,
-        "default_max_completion_tokens": 4096,
-        "max_completion_tokens": 8192
-      },
-      "routes": [
-        {
-          "route_id": "gpt-5-mini-openai",
-          "provider": "openai",
-          "credential_pool": "openai-production",
-          "upstream_model": "gpt-5-mini",
-          "priority": 10,
-          "timeout_ms": 120000,
-          "enabled": true
-        }
-      ]
-    },
-    "beacon/gpt-5-nano": {
-      "object": "model",
-      "enabled": true,
-      "display_name": "GPT-5 nano",
-      "owned_by": "beacon",
-      "capabilities": {
-        "chat_completions": true,
-        "streaming": true,
-        "tools": true,
-        "json_mode": false,
-        "vision": false
-      },
-      "billing": {
-        "input_usd_per_million_tokens": "0.06",
-        "output_usd_per_million_tokens": "0.42",
-        "minimum_charge_usd": "0.0001"
-      },
-      "limits": {
-        "context_tokens": 400000,
-        "max_input_tokens": 391808,
-        "default_max_completion_tokens": 4096,
-        "max_completion_tokens": 8192
-      },
-      "routes": [
-        {
-          "route_id": "gpt-5-nano-openai",
-          "provider": "openai",
-          "credential_pool": "openai-production",
-          "upstream_model": "gpt-5-nano",
-          "priority": 10,
-          "timeout_ms": 120000,
-          "enabled": true
-        }
-      ]
-    },
-    "beacon/claude-sonnet-4-5": {
-      "object": "model",
-      "enabled": true,
-      "display_name": "Claude Sonnet 4.5",
-      "owned_by": "beacon",
-      "capabilities": {
-        "chat_completions": true,
-        "streaming": true,
-        "tools": true,
-        "json_mode": false,
-        "vision": false
-      },
-      "billing": {
-        "input_usd_per_million_tokens": "3.00",
-        "output_usd_per_million_tokens": "15.00",
-        "minimum_charge_usd": "0.0001"
-      },
-      "limits": {
-        "context_tokens": 200000,
-        "max_input_tokens": 191808,
-        "default_max_completion_tokens": 4096,
-        "max_completion_tokens": 8192
-      },
-      "routes": [
-        {
-          "route_id": "claude-sonnet-4-5-anthropic",
-          "provider": "anthropic",
-          "credential_pool": "anthropic-production",
-          "upstream_model": "claude-sonnet-4-5",
-          "priority": 10,
-          "timeout_ms": 120000,
-          "enabled": true
-        }
-      ]
-    },
-    "beacon/claude-haiku-4-5": {
-      "object": "model",
-      "enabled": true,
-      "display_name": "Claude Haiku 4.5",
-      "owned_by": "beacon",
-      "capabilities": {
-        "chat_completions": true,
-        "streaming": true,
-        "tools": true,
-        "json_mode": false,
-        "vision": false
-      },
-      "billing": {
-        "input_usd_per_million_tokens": "1.02",
-        "output_usd_per_million_tokens": "5.01",
-        "minimum_charge_usd": "0.0001"
-      },
-      "limits": {
-        "context_tokens": 200000,
-        "max_input_tokens": 191808,
-        "default_max_completion_tokens": 4096,
-        "max_completion_tokens": 8192
-      },
-      "routes": [
-        {
-          "route_id": "claude-haiku-4-5-anthropic",
-          "provider": "anthropic",
-          "credential_pool": "anthropic-production",
-          "upstream_model": "claude-haiku-4-5",
-          "priority": 10,
-          "timeout_ms": 120000,
-          "enabled": true
-        }
-      ]
-    },
-    "beacon/claude-opus-4-1": {
-      "object": "model",
-      "enabled": true,
-      "display_name": "Claude Opus 4.1",
-      "owned_by": "beacon",
-      "capabilities": {
-        "chat_completions": true,
-        "streaming": true,
-        "tools": true,
-        "json_mode": false,
-        "vision": false
-      },
-      "billing": {
-        "input_usd_per_million_tokens": "15.00",
-        "output_usd_per_million_tokens": "75.01",
-        "minimum_charge_usd": "0.0001"
-      },
-      "limits": {
-        "context_tokens": 200000,
-        "max_input_tokens": 191808,
-        "default_max_completion_tokens": 4096,
-        "max_completion_tokens": 8192
-      },
-      "routes": [
-        {
-          "route_id": "claude-opus-4-1-anthropic",
-          "provider": "anthropic",
-          "credential_pool": "anthropic-production",
-          "upstream_model": "claude-opus-4-1",
-          "priority": 10,
-          "timeout_ms": 120000,
-          "enabled": true
-        }
-      ]
-    },
-    "beacon/gemini-2.5-pro": {
-      "object": "model",
-      "enabled": true,
-      "display_name": "Gemini 2.5 Pro",
-      "owned_by": "beacon",
-      "capabilities": {
-        "chat_completions": true,
-        "streaming": true,
-        "tools": true,
-        "json_mode": false,
-        "vision": false
-      },
-      "billing": {
-        "input_usd_per_million_tokens": "1.26",
-        "output_usd_per_million_tokens": "10.02",
-        "minimum_charge_usd": "0.0001"
-      },
-      "limits": {
-        "context_tokens": 1048576,
-        "max_input_tokens": 1040384,
-        "default_max_completion_tokens": 4096,
-        "max_completion_tokens": 8192
-      },
-      "routes": [
-        {
-          "route_id": "gemini-2.5-pro-google",
-          "provider": "google",
-          "credential_pool": "google-production",
-          "upstream_model": "gemini-2.5-pro",
-          "priority": 10,
-          "timeout_ms": 120000,
-          "enabled": true
-        }
-      ]
-    },
-    "beacon/gemini-2.5-flash": {
-      "object": "model",
-      "enabled": true,
-      "display_name": "Gemini 2.5 Flash",
-      "owned_by": "beacon",
-      "capabilities": {
-        "chat_completions": true,
-        "streaming": true,
-        "tools": true,
-        "json_mode": false,
-        "vision": false
-      },
-      "billing": {
-        "input_usd_per_million_tokens": "0.30",
-        "output_usd_per_million_tokens": "2.52",
-        "minimum_charge_usd": "0.0001"
-      },
-      "limits": {
-        "context_tokens": 1048576,
-        "max_input_tokens": 1040384,
-        "default_max_completion_tokens": 4096,
-        "max_completion_tokens": 8192
-      },
-      "routes": [
-        {
-          "route_id": "gemini-2.5-flash-google",
-          "provider": "google",
-          "credential_pool": "google-production",
-          "upstream_model": "gemini-2.5-flash",
-          "priority": 10,
-          "timeout_ms": 120000,
-          "enabled": true
-        }
-      ]
-    },
-    "beacon/gemini-2.5-flash-lite": {
-      "object": "model",
-      "enabled": true,
-      "display_name": "Gemini 2.5 Flash-Lite",
-      "owned_by": "beacon",
-      "capabilities": {
-        "chat_completions": true,
-        "streaming": true,
-        "tools": true,
-        "json_mode": false,
-        "vision": false
-      },
-      "billing": {
-        "input_usd_per_million_tokens": "0.12",
-        "output_usd_per_million_tokens": "0.42",
-        "minimum_charge_usd": "0.0001"
-      },
-      "limits": {
-        "context_tokens": 1048576,
-        "max_input_tokens": 1040384,
-        "default_max_completion_tokens": 4096,
-        "max_completion_tokens": 8192
-      },
-      "routes": [
-        {
-          "route_id": "gemini-2.5-flash-lite-google",
-          "provider": "google",
-          "credential_pool": "google-production",
-          "upstream_model": "gemini-2.5-flash-lite",
-          "priority": 10,
-          "timeout_ms": 120000,
-          "enabled": true
-        }
-      ]
-    },
-    "beacon/grok-4": {
-      "object": "model",
-      "enabled": true,
-      "display_name": "Grok 4",
-      "owned_by": "beacon",
-      "capabilities": {
-        "chat_completions": true,
-        "streaming": true,
-        "tools": true,
-        "json_mode": false,
-        "vision": false
-      },
-      "billing": {
-        "input_usd_per_million_tokens": "3.00",
-        "output_usd_per_million_tokens": "15.00",
-        "minimum_charge_usd": "0.0001"
-      },
-      "limits": {
-        "context_tokens": 256000,
-        "max_input_tokens": 247808,
-        "default_max_completion_tokens": 4096,
-        "max_completion_tokens": 8192
-      },
-      "routes": [
-        {
-          "route_id": "grok-4-xai",
-          "provider": "xai",
-          "credential_pool": "xai-production",
-          "upstream_model": "grok-4",
-          "priority": 10,
-          "timeout_ms": 120000,
-          "enabled": true
-        }
-      ]
-    },
-    "beacon/grok-4-fast": {
-      "object": "model",
-      "enabled": true,
-      "display_name": "Grok 4 Fast",
-      "owned_by": "beacon",
-      "capabilities": {
-        "chat_completions": true,
-        "streaming": true,
-        "tools": true,
-        "json_mode": false,
-        "vision": false
-      },
-      "billing": {
-        "input_usd_per_million_tokens": "0.21",
-        "output_usd_per_million_tokens": "0.51",
-        "minimum_charge_usd": "0.0001"
-      },
-      "limits": {
-        "context_tokens": 2000000,
-        "max_input_tokens": 1991808,
-        "default_max_completion_tokens": 4096,
-        "max_completion_tokens": 8192
-      },
-      "routes": [
-        {
-          "route_id": "grok-4-fast-xai",
-          "provider": "xai",
-          "credential_pool": "xai-production",
-          "upstream_model": "grok-4-fast-reasoning",
-          "priority": 10,
-          "timeout_ms": 120000,
-          "enabled": true
-        }
-      ]
-    },
-    "beacon/grok-code-fast": {
-      "object": "model",
-      "enabled": true,
-      "display_name": "Grok Code Fast",
-      "owned_by": "beacon",
-      "capabilities": {
-        "chat_completions": true,
-        "streaming": true,
-        "tools": true,
-        "json_mode": false,
-        "vision": false
-      },
-      "billing": {
-        "input_usd_per_million_tokens": "0.21",
-        "output_usd_per_million_tokens": "1.50",
-        "minimum_charge_usd": "0.0001"
-      },
-      "limits": {
-        "context_tokens": 256000,
-        "max_input_tokens": 247808,
-        "default_max_completion_tokens": 4096,
-        "max_completion_tokens": 8192
-      },
-      "routes": [
-        {
-          "route_id": "grok-code-fast-xai",
-          "provider": "xai",
-          "credential_pool": "xai-production",
-          "upstream_model": "grok-code-fast-1",
-          "priority": 10,
-          "timeout_ms": 120000,
-          "enabled": true
-        }
-      ]
-    },
-    "beacon/llama-3.3-70b-instruct": {
-      "object": "model",
-      "enabled": true,
-      "display_name": "Llama 3.3 70B Instruct",
-      "owned_by": "beacon",
-      "capabilities": {
-        "chat_completions": true,
-        "streaming": true,
-        "tools": true,
-        "json_mode": false,
-        "vision": false
-      },
-      "billing": {
-        "input_usd_per_million_tokens": "0.60",
-        "output_usd_per_million_tokens": "0.81",
-        "minimum_charge_usd": "0.0001"
-      },
-      "limits": {
-        "context_tokens": 131072,
-        "max_input_tokens": 122880,
-        "default_max_completion_tokens": 4096,
-        "max_completion_tokens": 8192
-      },
-      "routes": [
-        {
-          "route_id": "llama-3.3-70b-instruct-groq",
-          "provider": "groq",
-          "credential_pool": "groq-production",
-          "upstream_model": "llama-3.3-70b-versatile",
-          "priority": 10,
-          "timeout_ms": 120000,
-          "enabled": true
-        }
-      ]
-    },
-    "beacon/kimi-k2-instruct": {
-      "object": "model",
-      "enabled": true,
-      "display_name": "Kimi K2 Instruct",
-      "owned_by": "beacon",
-      "capabilities": {
-        "chat_completions": true,
-        "streaming": true,
-        "tools": true,
-        "json_mode": false,
-        "vision": false
-      },
-      "billing": {
-        "input_usd_per_million_tokens": "1.02",
+        "input_usd_per_million_tokens": "0.42",
         "output_usd_per_million_tokens": "3.00",
         "minimum_charge_usd": "0.0001"
       },
@@ -945,343 +709,10 @@
       },
       "routes": [
         {
-          "route_id": "kimi-k2-instruct-groq",
-          "provider": "groq",
-          "credential_pool": "groq-production",
-          "upstream_model": "moonshotai/kimi-k2-instruct-0905",
-          "priority": 10,
-          "timeout_ms": 120000,
-          "enabled": true
-        },
-        {
-          "route_id": "kimi-k2-instruct-deepinfra",
-          "provider": "deepinfra",
-          "credential_pool": "deepinfra-production",
-          "upstream_model": "moonshotai/Kimi-K2",
-          "priority": 20,
-          "timeout_ms": 120000,
-          "enabled": true
-        },
-        {
-          "route_id": "kimi-k2-instruct-fireworks",
-          "provider": "fireworks",
-          "credential_pool": "fireworks-production",
-          "upstream_model": "accounts/fireworks/models/kimi-k2-instruct",
-          "priority": 30,
-          "timeout_ms": 120000,
-          "enabled": true
-        }
-      ]
-    },
-    "beacon/mistral-large": {
-      "object": "model",
-      "enabled": true,
-      "display_name": "Mistral Large",
-      "owned_by": "beacon",
-      "capabilities": {
-        "chat_completions": true,
-        "streaming": true,
-        "tools": true,
-        "json_mode": false,
-        "vision": false
-      },
-      "billing": {
-        "input_usd_per_million_tokens": "2.01",
-        "output_usd_per_million_tokens": "6.00",
-        "minimum_charge_usd": "0.0001"
-      },
-      "limits": {
-        "context_tokens": 131072,
-        "max_input_tokens": 122880,
-        "default_max_completion_tokens": 4096,
-        "max_completion_tokens": 8192
-      },
-      "routes": [
-        {
-          "route_id": "mistral-large-mistral",
-          "provider": "mistral",
-          "credential_pool": "mistral-production",
-          "upstream_model": "mistral-large-latest",
-          "priority": 10,
-          "timeout_ms": 120000,
-          "enabled": true
-        }
-      ]
-    },
-    "beacon/codestral": {
-      "object": "model",
-      "enabled": true,
-      "display_name": "Codestral",
-      "owned_by": "beacon",
-      "capabilities": {
-        "chat_completions": true,
-        "streaming": true,
-        "tools": true,
-        "json_mode": false,
-        "vision": false
-      },
-      "billing": {
-        "input_usd_per_million_tokens": "0.30",
-        "output_usd_per_million_tokens": "0.90",
-        "minimum_charge_usd": "0.0001"
-      },
-      "limits": {
-        "context_tokens": 262144,
-        "max_input_tokens": 253952,
-        "default_max_completion_tokens": 4096,
-        "max_completion_tokens": 8192
-      },
-      "routes": [
-        {
-          "route_id": "codestral-mistral",
-          "provider": "mistral",
-          "credential_pool": "mistral-production",
-          "upstream_model": "codestral-latest",
-          "priority": 10,
-          "timeout_ms": 120000,
-          "enabled": true
-        }
-      ]
-    },
-    "beacon/deepseek-v3.2": {
-      "object": "model",
-      "enabled": true,
-      "display_name": "DeepSeek V3.2",
-      "owned_by": "beacon",
-      "capabilities": {
-        "chat_completions": true,
-        "streaming": true,
-        "tools": true,
-        "json_mode": false,
-        "vision": false
-      },
-      "billing": {
-        "input_usd_per_million_tokens": "0.30",
-        "output_usd_per_million_tokens": "0.42",
-        "minimum_charge_usd": "0.0001"
-      },
-      "limits": {
-        "context_tokens": 131072,
-        "max_input_tokens": 122880,
-        "default_max_completion_tokens": 4096,
-        "max_completion_tokens": 8192
-      },
-      "routes": [
-        {
-          "route_id": "deepseek-v3.2-deepseek",
-          "provider": "deepseek",
-          "credential_pool": "deepseek-production",
-          "upstream_model": "deepseek-chat",
-          "priority": 10,
-          "timeout_ms": 120000,
-          "enabled": true
-        }
-      ]
-    },
-    "beacon/deepseek-v3.2-reasoner": {
-      "object": "model",
-      "enabled": true,
-      "display_name": "DeepSeek V3.2 Reasoner",
-      "owned_by": "beacon",
-      "capabilities": {
-        "chat_completions": true,
-        "streaming": true,
-        "tools": true,
-        "json_mode": false,
-        "vision": false
-      },
-      "billing": {
-        "input_usd_per_million_tokens": "0.30",
-        "output_usd_per_million_tokens": "0.42",
-        "minimum_charge_usd": "0.0001"
-      },
-      "limits": {
-        "context_tokens": 131072,
-        "max_input_tokens": 122880,
-        "default_max_completion_tokens": 4096,
-        "max_completion_tokens": 8192
-      },
-      "routes": [
-        {
-          "route_id": "deepseek-v3.2-reasoner-deepseek",
-          "provider": "deepseek",
-          "credential_pool": "deepseek-production",
-          "upstream_model": "deepseek-reasoner",
-          "priority": 10,
-          "timeout_ms": 120000,
-          "enabled": true
-        }
-      ]
-    },
-    "beacon/sonar": {
-      "object": "model",
-      "enabled": true,
-      "display_name": "Sonar",
-      "owned_by": "beacon",
-      "capabilities": {
-        "chat_completions": true,
-        "streaming": true,
-        "tools": false,
-        "json_mode": false,
-        "vision": false
-      },
-      "billing": {
-        "input_usd_per_million_tokens": "1.02",
-        "output_usd_per_million_tokens": "1.02",
-        "minimum_charge_usd": "0.0001"
-      },
-      "limits": {
-        "context_tokens": 128000,
-        "max_input_tokens": 119808,
-        "default_max_completion_tokens": 4096,
-        "max_completion_tokens": 8192
-      },
-      "routes": [
-        {
-          "route_id": "sonar-perplexity",
-          "provider": "perplexity",
-          "credential_pool": "perplexity-production",
-          "upstream_model": "sonar",
-          "priority": 10,
-          "timeout_ms": 120000,
-          "enabled": true
-        }
-      ]
-    },
-    "beacon/sonar-pro": {
-      "object": "model",
-      "enabled": true,
-      "display_name": "Sonar Pro",
-      "owned_by": "beacon",
-      "capabilities": {
-        "chat_completions": true,
-        "streaming": true,
-        "tools": false,
-        "json_mode": false,
-        "vision": false
-      },
-      "billing": {
-        "input_usd_per_million_tokens": "3.00",
-        "output_usd_per_million_tokens": "15.00",
-        "minimum_charge_usd": "0.0001"
-      },
-      "limits": {
-        "context_tokens": 200000,
-        "max_input_tokens": 191808,
-        "default_max_completion_tokens": 4096,
-        "max_completion_tokens": 8192
-      },
-      "routes": [
-        {
-          "route_id": "sonar-pro-perplexity",
-          "provider": "perplexity",
-          "credential_pool": "perplexity-production",
-          "upstream_model": "sonar-pro",
-          "priority": 10,
-          "timeout_ms": 120000,
-          "enabled": true
-        }
-      ]
-    },
-    "beacon/command-a": {
-      "object": "model",
-      "enabled": true,
-      "display_name": "Command A",
-      "owned_by": "beacon",
-      "capabilities": {
-        "chat_completions": true,
-        "streaming": true,
-        "tools": true,
-        "json_mode": false,
-        "vision": false
-      },
-      "billing": {
-        "input_usd_per_million_tokens": "2.52",
-        "output_usd_per_million_tokens": "10.02",
-        "minimum_charge_usd": "0.0001"
-      },
-      "limits": {
-        "context_tokens": 256000,
-        "max_input_tokens": 247808,
-        "default_max_completion_tokens": 4096,
-        "max_completion_tokens": 8192
-      },
-      "routes": [
-        {
-          "route_id": "command-a-cohere",
-          "provider": "cohere",
-          "credential_pool": "cohere-production",
-          "upstream_model": "command-a-03-2025",
-          "priority": 10,
-          "timeout_ms": 120000,
-          "enabled": true
-        }
-      ]
-    },
-    "beacon/command-r7b": {
-      "object": "model",
-      "enabled": true,
-      "display_name": "Command R7B",
-      "owned_by": "beacon",
-      "capabilities": {
-        "chat_completions": true,
-        "streaming": true,
-        "tools": true,
-        "json_mode": false,
-        "vision": false
-      },
-      "billing": {
-        "input_usd_per_million_tokens": "0.06",
-        "output_usd_per_million_tokens": "0.15",
-        "minimum_charge_usd": "0.0001"
-      },
-      "limits": {
-        "context_tokens": 128000,
-        "max_input_tokens": 119808,
-        "default_max_completion_tokens": 4096,
-        "max_completion_tokens": 8192
-      },
-      "routes": [
-        {
-          "route_id": "command-r7b-cohere",
-          "provider": "cohere",
-          "credential_pool": "cohere-production",
-          "upstream_model": "command-r7b-12-2024",
-          "priority": 10,
-          "timeout_ms": 120000,
-          "enabled": true
-        }
-      ]
-    },
-    "beacon/minimax-m2": {
-      "object": "model",
-      "enabled": true,
-      "display_name": "MiniMax M2",
-      "owned_by": "beacon",
-      "capabilities": {
-        "chat_completions": true,
-        "streaming": true,
-        "tools": true,
-        "json_mode": false,
-        "vision": false
-      },
-      "billing": {
-        "input_usd_per_million_tokens": "0.30",
-        "output_usd_per_million_tokens": "1.20",
-        "minimum_charge_usd": "0.0001"
-      },
-      "limits": {
-        "context_tokens": 200000,
-        "max_input_tokens": 191808,
-        "default_max_completion_tokens": 4096,
-        "max_completion_tokens": 8192
-      },
-      "routes": [
-        {
-          "route_id": "minimax-m2-minimax",
-          "provider": "minimax",
-          "credential_pool": "minimax-production",
-          "upstream_model": "MiniMax-M2",
+          "route_id": "qwen-3.8-27b-cloudflare",
+          "provider": "cloudflare-workers-ai",
+          "credential_pool": "cloudflare-workers-ai-production",
+          "upstream_model": "@cf/qwen/qwen3.8-27b",
           "priority": 10,
           "timeout_ms": 120000,
           "enabled": true

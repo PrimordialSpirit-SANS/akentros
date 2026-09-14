@@ -1,11 +1,12 @@
 import { cors } from "hono/cors";
 import { DEFAULT_ALLOWED_ORIGINS } from "../constants.ts";
+import type { BeaconContext, BeaconRuntimeEnv } from "../types.ts";
 
-function trimTrailingSlash(value: any) {
+function trimTrailingSlash(value: unknown) {
   return String(value || "").replace(/\/+$/, "");
 }
 
-function getAllowedOrigins(env: any = {}) {
+function getAllowedOrigins(env: BeaconRuntimeEnv = {}) {
   const configuredOrigins = String(env.FRONTEND_ORIGINS || "")
     .split(",")
     .map((origin) => trimTrailingSlash(origin.trim()))
@@ -18,7 +19,7 @@ function getAllowedOrigins(env: any = {}) {
   return new Set([...DEFAULT_ALLOWED_ORIGINS, ...configuredOrigins, ...inferredOrigins]);
 }
 
-function isLocalHostname(hostname: any) {
+function isLocalHostname(hostname: unknown) {
   const normalized = String(hostname || "")
     .toLowerCase()
     .replace(/\.$/, "");
@@ -30,7 +31,7 @@ function isLocalHostname(hostname: any) {
   );
 }
 
-function isLocalDevelopmentRequest(c: any) {
+function isLocalDevelopmentRequest(c: BeaconContext) {
   try {
     return (
       isLocalHostname(new URL(c.req.url).hostname) ||
@@ -41,7 +42,7 @@ function isLocalDevelopmentRequest(c: any) {
   }
 }
 
-function isLocalDevelopmentOrigin(value: any) {
+function isLocalDevelopmentOrigin(value: unknown) {
   try {
     const url = new URL(trimTrailingSlash(value));
     return ["http:", "https:"].includes(url.protocol) && isLocalHostname(url.hostname);
@@ -50,7 +51,7 @@ function isLocalDevelopmentOrigin(value: any) {
   }
 }
 
-export function isCredentialedOriginAllowed(c: any, origin: any) {
+export function isCredentialedOriginAllowed(c: BeaconContext, origin: unknown) {
   const normalized = trimTrailingSlash(origin);
   if (isLocalDevelopmentOrigin(normalized)) {
     return isLocalDevelopmentRequest(c);
@@ -61,7 +62,7 @@ export function isCredentialedOriginAllowed(c: any, origin: any) {
 
 // 公開推理端點的額外放行來源(例如你的 API 遊樂場、文件站),
 // 以逗號分隔的 BEACON_PUBLIC_ORIGINS 環境變數設定。
-function getBeaconPublicOrigins(env: any = {}): Set<string> {
+function getBeaconPublicOrigins(env: BeaconRuntimeEnv = {}): Set<string> {
   return new Set(
     String(env.BEACON_PUBLIC_ORIGINS || "")
       .split(",")

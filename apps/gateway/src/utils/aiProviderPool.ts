@@ -1,19 +1,20 @@
 import {
   claimConfiguredBeaconProviderCredential,
   createBeaconProviderPoolStore,
-} from "../../../../packages/core/src/providerPool.ts";
-import { PROVIDER_POOLS, requireProviderPool } from "../../../../packages/core/src/providers.ts";
+} from "@beacon/core/providerPool";
+import { PROVIDER_POOLS, requireProviderPool } from "@beacon/core/providers";
+import type { BeaconRuntimeEnv } from "../types.ts";
 import { ensureAiSchema } from "./aiSchema.ts";
 import { createBeaconQuery } from "./db.ts";
 
 const stores = new Map();
 const syncPromises = new Map();
 
-function databaseKey(env: any) {
-  return env?.POSTGRES_DB_URL?.trim() || env?.DATABASE_URL?.trim() || "unconfigured-main";
+function databaseKey(env: BeaconRuntimeEnv) {
+  return env?.DATABASE_URL?.trim() || "unconfigured-main";
 }
 
-async function ready(env: any) {
+async function ready(env: BeaconRuntimeEnv) {
   await ensureAiSchema(env);
   const key = databaseKey(env);
   if (!stores.has(key)) {
@@ -36,7 +37,7 @@ async function ready(env: any) {
 }
 
 export async function claimBeaconProviderCredential(
-  env: any,
+  env: BeaconRuntimeEnv,
   route: any,
   requestId: any,
   excludedCredentialIds = [],
@@ -59,7 +60,7 @@ export async function claimBeaconProviderCredential(
   });
 }
 
-export async function releaseBeaconProviderCredential(env: any, claim: any, outcome: any) {
+export async function releaseBeaconProviderCredential(env: BeaconRuntimeEnv, claim: any, outcome: any) {
   const store = await ready(env);
   return store.release({ ...outcome, leaseId: claim.leaseId, selection: claim.pool.selection });
 }

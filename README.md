@@ -148,7 +148,6 @@ npx wrangler deploy          # secrets 以 wrangler secret put 設定
 | `ADMIN_EMAIL` / `ADMIN_PASSWORD` | 選配 | migrate 時的管理員種子 |
 | `BEACON_SIGNUP_BONUS_USD` | 選配 | 註冊初始餘額(預設 $5.00) |
 | `BEACON_ADMIN_STARTING_CREDITS_USD` | 選配 | 管理員初始餘額(預設 $500.00) |
-| `BEACON_SIGNUP_BONUS_POINTS` | 選配 | 註冊送點(預設 1000) |
 | `BEACON_DISABLE_REGISTRATION` | 選配 | 設 `true` 關閉公開註冊 |
 | `FRONTEND_ORIGINS` | 建議 | 允許帶 cookie 的 console 來源(CSV) |
 | `OPENROUTER_API_KEY_1` … | 選配 | 供應商上游金鑰,見 `docs/PROVIDERS.md` |

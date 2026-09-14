@@ -1,15 +1,16 @@
-import { isBeaconServiceRestricted } from "../../../../packages/core/src/apiKeys.ts";
+import { isBeaconServiceRestricted } from "@beacon/core/apiKeys";
+import type { BeaconAuthenticatedKey, BeaconContext, BeaconNext } from "../types.ts";
 import { authenticateBeaconApiKey } from "../utils/aiApiKeys.ts";
 import { BeaconError, sendOpenAiError } from "../utils/aiErrors.ts";
 
-function bearerToken(c: any) {
+function bearerToken(c: BeaconContext) {
   const authorization = String(c.req.header("authorization") || "");
   const match = /^Bearer\s+(.+)$/i.exec(authorization);
   return match ? match[1].trim() : "";
 }
 
-export async function authenticateBeaconKey(c: any, next: any) {
-  let key: any = null;
+export async function authenticateBeaconKey(c: BeaconContext, next: BeaconNext) {
+  let key: BeaconAuthenticatedKey | null = null;
   try {
     const secret = bearerToken(c);
     if (!secret) {
@@ -54,10 +55,11 @@ export async function authenticateBeaconKey(c: any, next: any) {
         }),
       );
     }
-  } catch (error: any) {
+  } catch (error) {
     // 僅攔截「金鑰查驗」階段的錯誤。next() 保持在 try 之外,下游 handler
     // 拋出的應用程式錯誤必須交給 app.onError,不可被誤轉成 503 認證失效。
-    console.error("Worker Beacon authentication failed:", error?.code || error?.name || "unknown");
+    const code = (error as { code?: string })?.code;
+    console.error("Worker Beacon authentication failed:", code || "unknown");
     return sendOpenAiError(
       c,
       new BeaconError("Beacon authentication is temporarily unavailable.", {
@@ -73,8 +75,8 @@ export async function authenticateBeaconKey(c: any, next: any) {
   await next();
 }
 
-export function requireAiScope(scope: any) {
-  return async (c: any, next: any) => {
+export function requireAiScope(scope: string) {
+  return async (c: BeaconContext, next: BeaconNext) => {
     if (!c.get("aiKey")?.scopes?.includes(scope)) {
       return sendOpenAiError(
         c,

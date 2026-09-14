@@ -1,9 +1,11 @@
+import type { BeaconContext, BeaconNext, BeaconRuntimeEnv } from "../types.ts";
 import { dbQuery } from "../utils/db.ts";
 
 // 限流分兩層:
-// 1. 預設路徑:PostgreSQL 固定窗口計數,跨 Worker isolate 全域生效。
+// 1. 資料庫路徑:SQLite 固定窗口計數(經安裝的 DB adapter;Workers 部署即
+//    Durable Object 內建 SQLite),於環境設有 DATABASE_URL 時啟用。
 // 2. 降級路徑:環境未設定 DATABASE_URL,或資料庫查詢失敗時,退回 in-isolate
-//    記憶體窗口。記憶體桶滿時只淘汰過期桶,新身份直接 429——不再整表清除,
+//    記憶體視窗。記憶體桶滿時只淘汰過期桶,新身份直接 429——不再整表清除,
 //    避免攻擊者藉桶上限把既有計數一次歸零。
 //
 // 資料庫失敗時選擇 fail-open:登入/註冊本身仍需資料庫才能成功,限流器降級
@@ -43,7 +45,7 @@ export const BEACON_IP_RATE_LIMIT_SQL = Object.freeze({
 });
 
 // 純 DB 計數器,抽出以便測試注入假 query。
-export function createDbWindowStore(query: any) {
+export function createDbWindowStore(query: (sql: string, params: any[]) => Promise<{ rows: any[] }>) {
   return {
     async increment(identity: string, windowStartIso: string, sweepBeforeIso: string): Promise<number> {
       const result = await query(BEACON_IP_RATE_LIMIT_SQL.increment, [identity, windowStartIso]);
@@ -64,8 +66,8 @@ function windowStartIso(now: number, windowMs: number): string {
   return new Date(Math.floor(now / windowMs) * windowMs).toISOString();
 }
 
-function databaseConfigured(env: any): boolean {
-  return Boolean(String(env?.POSTGRES_DB_URL || env?.DATABASE_URL || "").trim());
+function databaseConfigured(env: BeaconRuntimeEnv): boolean {
+  return Boolean(String(env?.DATABASE_URL || "").trim());
 }
 
 function identityKey(prefix: string, identity: string): string {
@@ -86,13 +88,12 @@ export function createRateLimit(options: {
   keyPrefix: string;
   windowMs: number;
   max: number;
-  distributed?: boolean;
-  keyGenerator?: (c: any) => string;
+  keyGenerator?: (c: BeaconContext) => string;
 }) {
   const windowMs = Math.max(1000, options.windowMs);
   const max = Math.max(1, options.max);
 
-  return async (c: any, next: any) => {
+  return async (c: BeaconContext, next: BeaconNext) => {
     const identity = options.keyGenerator ? String(options.keyGenerator(c) || "anonymous") : "global";
     const key = identityKey(options.keyPrefix, identity);
     const now = Date.now();
@@ -100,7 +101,7 @@ export function createRateLimit(options: {
     if (databaseConfigured(c.env)) {
       try {
         // limiter 在模組載入期建構,env 要等請求才有;以資料庫 URL 為鍵快取 store。
-        const dbUrl = String(c.env?.POSTGRES_DB_URL || c.env?.DATABASE_URL).trim();
+        const dbUrl = String(c.env?.DATABASE_URL).trim();
         let dbStore = dbStores.get(dbUrl);
         if (!dbStore) {
           dbStore = createDbWindowStore((sql: string, params: any[] = []) => dbQuery(c.env, sql, params));
