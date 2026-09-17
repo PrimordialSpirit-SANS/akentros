@@ -42,6 +42,7 @@ export function DocsPage() {
           {(Object.keys(examples) as CodeLanguage[]).map((item) => (
             <button
               key={item}
+              type="button"
               role="tab"
               aria-selected={language === item}
               className={language === item ? "active" : ""}

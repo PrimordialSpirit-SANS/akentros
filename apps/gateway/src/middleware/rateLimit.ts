@@ -1,5 +1,6 @@
 import type { BeaconContext, BeaconNext, BeaconRuntimeEnv } from "../types.ts";
 import { dbQuery } from "../utils/db.ts";
+import { logBeaconEvent } from "../utils/logger.ts";
 
 // 限流分兩層:
 // 1. 資料庫路徑:SQLite 固定窗口計數(經安裝的 DB adapter;Workers 部署即
@@ -129,10 +130,9 @@ export function createRateLimit(options: {
         await next();
         return;
       } catch (error: any) {
-        console.error(
-          "Distributed rate limit unavailable, falling back to in-isolate window:",
-          error?.code || error?.name || "unknown",
-        );
+        logBeaconEvent("warn", "rate_limit_db_unavailable_fallback_memory", {
+          errorCode: error?.code || error?.name || "unknown",
+        });
         // 落到下面的記憶體降級路徑。
       }
     }

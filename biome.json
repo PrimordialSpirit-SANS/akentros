@@ -24,13 +24,6 @@
       },
       "style": {
         "noNonNullAssertion": "off"
-      },
-      "a11y": {
-        "noSvgWithoutTitle": "warn",
-        "useAriaPropsSupportedByRole": "warn",
-        "useButtonType": "warn",
-        "useSemanticElements": "warn",
-        "noStaticElementInteractions": "warn"
       }
     }
   },

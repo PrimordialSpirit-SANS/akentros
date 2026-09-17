@@ -11,6 +11,7 @@ import {
 } from "../utils/aiApiKeys.ts";
 import { BeaconError, sendOpenAiError } from "../utils/aiErrors.ts";
 import { getBeaconUsageDetail, getBeaconUsageSummary, listBeaconUsageLogs } from "../utils/aiUsage.ts";
+import { logBeaconEvent } from "../utils/logger.ts";
 import { readJsonObject } from "../utils/request.ts";
 import { handleBeaconChatCompletions } from "./aiPublic.ts";
 import { authenticateToken } from "./auth.ts";
@@ -47,7 +48,7 @@ function sendKeyError(c: BeaconContext, error: unknown) {
     );
   }
   const name = (error as { name?: string })?.name;
-  console.error("Worker Beacon key management failed:", code || name || "unknown");
+  logBeaconEvent("error", "beacon_key_management_failed", { errorCode: code || name || "unknown" });
   return c.json(
     {
       error: "Beacon key management is temporarily unavailable.",
@@ -63,7 +64,7 @@ function sendUsageError(c: BeaconContext, error: unknown) {
   }
   const code = (error as { code?: string })?.code;
   const name = (error as { name?: string })?.name;
-  console.error("Worker Beacon usage query failed:", code || name || "unknown");
+  logBeaconEvent("error", "beacon_usage_query_failed", { errorCode: code || name || "unknown" });
   return c.json(
     {
       error: "Beacon usage data is temporarily unavailable.",

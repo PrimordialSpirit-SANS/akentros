@@ -268,7 +268,7 @@ export function PlaygroundPage() {
         <form className="card card-pad form-grid" onSubmit={start}>
           <div className="field">
             <span>認證方式</span>
-            <div className="choice" role="group" aria-label="認證方式">
+            <fieldset className="choice" aria-label="認證方式">
               <button
                 type="button"
                 className={authMode === "account" ? "active" : ""}
@@ -285,7 +285,7 @@ export function PlaygroundPage() {
               >
                 API 金鑰
               </button>
-            </div>
+            </fieldset>
             <small>
               {authMode === "account"
                 ? "免填金鑰,直接使用帳戶餘額測試。"

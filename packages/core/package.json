@@ -17,6 +17,7 @@
     "./providerAttempts": "./src/providerAttempts.ts",
     "./providerPool": "./src/providerPool.ts",
     "./providers": "./src/providers.ts",
+    "./query": "./src/query.ts",
     "./schemaMigration": "./src/schemaMigration.ts",
     "./schemaReadiness": "./src/schemaReadiness.ts",
     "./sse": "./src/sse.ts",

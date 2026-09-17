@@ -1,4 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+  <title>Beacon</title>
   <path d="M12 21v-3.2" />
   <circle cx="12" cy="14.6" r="2.1" fill="#2563eb" stroke="none" />
   <path d="M7.6 10.9a6.2 6.2 0 0 1 8.8 0" />

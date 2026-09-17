@@ -50,8 +50,11 @@ function jsonProviderResponse(content = "Hello back") {
 function openRouterClaim() {
   return {
     leaseId: "lease-test",
+    requestId: "req_test",
     credentialId: "openrouter-primary",
     provider: "openrouter",
+    poolId: "openrouter-production",
+    expiresAt: "2030-01-01T00:00:00.000Z",
     secrets: { api_key: "provider-secret" },
     pool: requireProviderPool("openrouter-production"),
   };
@@ -60,8 +63,11 @@ function openRouterClaim() {
 function cloudflareClaim() {
   return {
     leaseId: "lease-cloudflare-test",
+    requestId: "req_test",
     credentialId: "cloudflare-native",
     provider: "cloudflare-workers-ai",
+    poolId: "cloudflare-workers-ai-production",
+    expiresAt: "2030-01-01T00:00:00.000Z",
     secrets: {},
     pool: requireProviderPool("cloudflare-workers-ai-production"),
   };
@@ -285,8 +291,11 @@ for (const stream of [false, true]) {
       billing,
       claimCredential: async () => ({
         leaseId: "reasoning-lease",
+        requestId: "req_test",
         credentialId: "qwencloud-primary",
         provider: "qwencloud",
+        poolId: "qwencloud-production",
+        expiresAt: "2030-01-01T00:00:00.000Z",
         secrets: { api_key: "test-secret" },
         pool: requireProviderPool("qwencloud-production"),
       }),

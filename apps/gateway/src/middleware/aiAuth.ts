@@ -2,6 +2,7 @@ import { isBeaconServiceRestricted } from "@beacon/core/apiKeys";
 import type { BeaconAuthenticatedKey, BeaconContext, BeaconNext } from "../types.ts";
 import { authenticateBeaconApiKey } from "../utils/aiApiKeys.ts";
 import { BeaconError, sendOpenAiError } from "../utils/aiErrors.ts";
+import { logBeaconEvent } from "../utils/logger.ts";
 
 function bearerToken(c: BeaconContext) {
   const authorization = String(c.req.header("authorization") || "");
@@ -59,7 +60,7 @@ export async function authenticateBeaconKey(c: BeaconContext, next: BeaconNext) 
     // 僅攔截「金鑰查驗」階段的錯誤。next() 保持在 try 之外,下游 handler
     // 拋出的應用程式錯誤必須交給 app.onError,不可被誤轉成 503 認證失效。
     const code = (error as { code?: string })?.code;
-    console.error("Worker Beacon authentication failed:", code || "unknown");
+    logBeaconEvent("error", "beacon_key_auth_failed", { errorCode: code || "unknown" });
     return sendOpenAiError(
       c,
       new BeaconError("Beacon authentication is temporarily unavailable.", {

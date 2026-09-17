@@ -3,6 +3,7 @@ import test from "node:test";
 import { Hono } from "hono";
 import { createApp } from "../src/app.ts";
 import { BEACON_CSRF_COOKIE, requireCsrfToken } from "../src/routes/auth.ts";
+import { installBeaconDbAdapter } from "../src/utils/db.ts";
 
 // 只覆蓋不需要資料庫的行為:fail-closed 開關、CSRF 雙提交、輸入驗證,
 // 以及錯誤路徑在 DB 之前的分支。需要 DB 的端點由整合測試覆蓋。
@@ -161,4 +162,28 @@ test("session token verification fails closed on weak configuration", async () =
 
   const anonymous = await aiRequest("/api/auth/me", { JWT_SECRET: SECRET });
   assert.equal(anonymous.status, 401);
+});
+
+test("/healthz is available without the fail-closed gate and reports database state", async () => {
+  // adapter 未安裝(DB 探測失敗):仍可達,但回 503 degraded。
+  const degraded = await aiRequest("/healthz", { BEACON_ENABLED: "false" });
+  assert.equal(degraded.status, 503);
+  const degradedBody = (await degraded.json()) as any;
+  assert.equal(degradedBody.status, "degraded");
+  assert.equal(degradedBody.database, "unavailable");
+  assert.equal(degraded.headers.get("cache-control"), "no-store");
+
+  // 安裝可用 adapter 後回 200 ok。放在本測試檔最後,避免污染其他案例。
+  installBeaconDbAdapter({
+    dbQuery: async () => ({ rows: [{ ok: 1 }] }),
+    dbGet: async () => null,
+    withBeaconTransaction: async (_env: any, fn: () => Promise<any>) => fn(),
+    createBeaconQuery: () => async () => ({ rows: [] }),
+    closePostgresClients: async () => {},
+  });
+  const ok = await aiRequest("/healthz", {});
+  assert.equal(ok.status, 200);
+  const okBody = (await ok.json()) as any;
+  assert.equal(okBody.status, "ok");
+  assert.equal(okBody.database, "ok");
 });

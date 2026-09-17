@@ -9,6 +9,7 @@ import { serve } from "@hono/node-server";
 import dotenv from "dotenv";
 import { createApp } from "./app.ts";
 import { installNodeBeaconDbAdapter } from "./utils/db.ts";
+import { logBeaconEvent } from "./utils/logger.ts";
 import { runBeaconMaintenance } from "./utils/maintenance.ts";
 
 // .dev.vars 相對於此檔;dotenv/config 預設只讀 .env,這裡補載 .dev.vars。
@@ -34,16 +35,18 @@ const server = serve(
     port,
   },
   (info) => {
-    console.log(
-      `Beacon gateway listening on http://localhost:${info.port} ` +
-        `(maintenance every ${Math.round(intervalMs / 60_000)} min)`,
-    );
+    logBeaconEvent("info", "beacon_gateway_listening", {
+      port: info.port,
+      maintenanceIntervalMinutes: Math.round(intervalMs / 60_000),
+    });
   },
 );
 
 const maintenanceTimer = setInterval(() => {
   runBeaconMaintenance(env).catch((error: any) => {
-    console.error("Beacon scheduled maintenance failed:", error?.code || error?.name || "unknown");
+    logBeaconEvent("error", "beacon_scheduled_maintenance_failed", {
+      errorCode: error?.code || error?.name || "unknown",
+    });
   });
 }, intervalMs);
 maintenanceTimer.unref?.();

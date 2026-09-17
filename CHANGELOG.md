@@ -8,13 +8,26 @@ versioning follows [SemVer](https://semver.org/).
 
 ### Fixed
 
+- **`BEACON_DB_PATH` was resolved against `process.cwd()`, so `npm run
+  migrate` and `npm run dev:gateway` opened different databases.** `migrate`
+  is a workspace script (cwd `apps/gateway/`) while `dev:gateway` /
+  `start:gateway` run from the repo root; with the documented default
+  `./beacon.db` the schema landed in `apps/gateway/beacon.db` but the server
+  opened a fresh, empty `beacon.db` at the repo root, and the first request
+  failed with `500 no such table: users`. Relative paths — including the
+  `sqlite://` / `file:` forms — now anchor to the gateway package directory
+  regardless of cwd; absolute paths and `:memory:` keep their literal
+  meaning. In passing, the `file:` prefix strip no longer eats the root
+  slash of `file:///abs/path` (which previously degraded absolute paths to
+  package-relative ones). Regression tests pin cwd-invariance from both the
+  repo root and `apps/gateway/`.
 - **Same-UTC-day API key expiry bypass.** `authenticateBeaconApiKey` compared
   `expires_at` (stored as UTC ISO-8601 text, e.g. `2026-09-15T10:00:00.000Z`)
   against SQLite `CURRENT_TIMESTAMP` (rendered with a space separator,
   `2026-09-15 10:00:00`). Lexicographically `T` > ` `, so a key expiring
   earlier on the current UTC day was treated as valid for the whole day. The
-  comparison now binds a same-format ISO `now` parameter (matching the billing
-  path). Regression tests pin the expired-same-day, expired-prior-day,
+  comparison now binds a same-format ISO `now` parameter (matching the
+  billing path). Regression tests pin the expired-same-day, expired-prior-day,
   unexpired and create/round-trip paths.
 - **Phantom `points` field on authenticated keys.** The key-authentication
   SELECT never returned a `points` column (the users table has no such
@@ -27,6 +40,27 @@ versioning follows [SemVer](https://semver.org/).
 
 ### Added
 
+- **`GET /healthz` liveness/readiness probe.** Reports `200 ok` or
+  `503 degraded` (with `database: ok|unavailable`) based on a `SELECT 1`
+  probe through the installed DB adapter. The endpoint sits outside the
+  `BEACON_ENABLED` fail-closed gate and sends `Cache-Control: no-store`, so
+  load balancers can distinguish "alive but not ready" even before the
+  gateway is enabled. Covered by a gateway surface test (degraded path via
+  the missing adapter, ok path via a fake adapter).
+- **Structured JSON logging.** New `src/utils/logger.ts`
+  (`logBeaconEvent(level, event, fields)`) emits one JSON line per event
+  (`time`, `level`, `event`, plus event metadata) on both runtimes; all
+  free-text `console.error` call sites (gateway onError, key auth, key
+  management, usage queries, rate-limit degradation, scheduled maintenance)
+  were switched over. Only event metadata is logged — the no-prompts /
+  no-keys rule from the security model is unchanged.
+- **Opt-in provider smoke test** (`apps/gateway/tests/providerSmoke.test.ts`).
+  Skipped by default so local runs and CI are unaffected; with
+  `BEACON_SMOKE_TEST=1` (plus `BEACON_SMOKE_PROVIDER` / `BEACON_SMOKE_MODEL`
+  to narrow scope and the matching provider credentials) it sends a minimal
+  live completion over an enabled route, asserting route enablement,
+  credential resolution, a 200 upstream response and the usage source — the
+  real-upstream integration face the unit/contract suites cannot cover.
 - Behavior tests for `reconcileStale`: stale reservations that already
   dispatched are quarantined (`needs_reconciliation`, balance untouched,
   awaiting the `resolveQuarantined` refund exit), while never-dispatched
@@ -35,6 +69,41 @@ versioning follows [SemVer](https://semver.org/).
 
 ### Changed
 
+- **PBKDF2 password-hashing default raised from 25,000 to 600,000
+  iterations** (OWASP Password Storage Cheat Sheet recommendation for
+  PBKDF2-HMAC-SHA256). Old-format hashes still verify: the iteration count
+  is stored inside the hash string, so no migration is needed. The
+  timing-safe dummy hash used when an account does not exist now derives
+  from `BEACON_PASSWORD_ITERATIONS` instead of a hardcoded `25000` literal,
+  keeping both login paths equally expensive, and `verifyPassword` rejects
+  iteration counts below the 10,000 floor the hasher already enforced.
+  Cloudflare Workers free-plan CPU limits may require lowering
+  `BEACON_PBKDF2_ITERATIONS` on that topology (documented in
+  `.dev.vars.example`).
+- **The core billing/provider-pool/attempt interfaces are fully typed.** New
+  `packages/core/src/query.ts` defines the DB query contract
+  (`BeaconQuery`/`BeaconQueryResult`) shared by the node:sqlite and Durable
+  Object adapters; `billing.ts` exports `BeaconBillingStore`,
+  `BeaconBillableBilling` (the runtime-consumed subset), typed
+  reserve/settle/refund inputs and `BeaconBillingRow`; `providerPool.ts`
+  exports `BeaconCredentialClaim`/`BeaconProviderPoolClaimStore`;
+  `providerAttempts.ts` exports `BeaconAttemptAuditor`;
+  `inference.ts`'s `createBeaconInferenceRuntime` now takes
+  `BeaconInferenceRuntimeOptions` instead of `any`. The gateway side
+  (`aiBilling.ts`, `aiProviderPool.ts`, `aiProviderAttempts.ts`,
+  `createBeaconQuery`) and its runtime wiring lost their `any` annotations;
+  a wrong field on a billing call is now a compile error instead of a
+  runtime surprise. Test doubles were updated to the typed contracts.
+- **All Biome a11y warnings fixed and the severity overrides removed.** The
+  five `warn` downgrades in `biome.json` (`noSvgWithoutTitle`,
+  `useAriaPropsSupportedByRole`, `useButtonType`, `useSemanticElements`,
+  `noStaticElementInteractions`) are gone — these rules now fail CI at
+  their default severity. Fixes: `role="group"` divs became semantic
+  `<fieldset>` (key expiry / spend limit / auth mode pickers, with CSS
+  resets), the log-detail backdrop became a real `<button>`, the code-tab
+  buttons got `type="button"`, the brand-mark and modality badges declare
+  `role="img"` for their `aria-label`s, a decorative `aria-label` on
+  `<code>` became a `title`, and every brand SVG gained a `<title>`.
 - **The gateway's Hono layer is fully typed.** New `src/types.ts` defines the
   shared `BeaconEnv` (Bindings: `BeaconRuntimeEnv`; Variables: `user`,
   `aiKey`, `aiUser`, `aiRequestId`) plus `BeaconAuthenticatedKey`; all

@@ -30,6 +30,7 @@ See [Quick start](#快速開始) below, [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)
 - **API 金鑰管理**:`sk-beacon-live_/sk-beacon-test_` 金鑰、只顯示一次、pepper-HMAC digest 落庫;可設定過期時間、模型白名單、RPM、最大併發與美元消費上限。金鑰級 RPM/併發由資料庫交易內原子計數強制;登入與金鑰管理的 IP 限流同樣以 SQLite 固定窗口計數(單程序全域生效),資料庫不可用時降級為 in-process 記憶體視窗。
 - **內建帳號系統**:註冊/登入(JWT cookie + CSRF 雙提交)、migrate 時可種子管理員、新戶送點、可關閉公開註冊。
 - **開發者控制台**:總覽、金鑰、串流測試(逐字渲染、usage 統計)、模型目錄(含免費額度)、請求紀錄與單筆詳情;提供 `?demo=1` 離線示範模式。
+- **維運探針與結構化日誌**:`GET /healthz` 回報程序與資料庫狀態(200 ok / 503 degraded),供負載平衡與監控探測;內部日誌以單行 JSON 輸出,可直接交由 Cloudflare observability、journald 等採集。
 - **契約測試護欄**:openapi.yaml、前後端 catalog、路由與安全不變式都有測試釘死,漂移即擋建置。Biome lint/format 與 `npm audit`(high 以上)同樣在 CI 強制。
 
 ## 架構
@@ -141,7 +142,7 @@ npx wrangler deploy          # secrets 以 wrangler secret put 設定
 
 | 環境變數 | 必填 | 說明 |
 | --- | --- | --- |
-| `BEACON_DB_PATH` | 建議 | SQLite 資料庫檔案路徑(預設 `./beacon.db`,相對 `apps/gateway/`) |
+| `BEACON_DB_PATH` | 建議 | SQLite 資料庫檔案路徑(預設 `./beacon.db`,相對 `apps/gateway/`;相對路徑一律以此目錄為基準,不受啟動目錄影響) |
 | `JWT_SECRET` | ✅ | 會話 cookie 簽名金鑰(≥32 bytes) |
 | `BEACON_API_KEY_PEPPER` | ✅ | API 金鑰 HMAC pepper(≥32 bytes) |
 | `BEACON_ENABLED` | 建議 | fail-closed 開關;僅 `true` 時啟用 `/api/ai/*` |

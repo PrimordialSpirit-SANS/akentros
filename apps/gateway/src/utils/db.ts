@@ -1,3 +1,4 @@
+import type { BeaconQuery } from "@beacon/core/query";
 import type { BeaconRuntimeEnv } from "../types.ts";
 // DB adapter 註冊點:gateway 其餘程式只依賴這個模組的查詢介面,實作可替換:
 // - Node 自架部署:進入點(nodeServer、migrate/reconcile scripts)啟動時呼叫
@@ -16,7 +17,7 @@ export type BeaconDbAdapter = {
   dbQuery: (env: BeaconRuntimeEnv, sql: string, params?: any[]) => Promise<BeaconDbQueryResult>;
   dbGet: (env: BeaconRuntimeEnv, sql: string, params?: any[]) => Promise<any | null>;
   withBeaconTransaction: (env: BeaconRuntimeEnv, fn: () => Promise<any>) => Promise<any>;
-  createBeaconQuery: (env: BeaconRuntimeEnv) => any;
+  createBeaconQuery: (env: BeaconRuntimeEnv) => BeaconQuery;
   closePostgresClients: () => Promise<void>;
 };
 
@@ -59,7 +60,7 @@ export function withBeaconTransaction<T>(env: BeaconRuntimeEnv, fn: () => Promis
   return requireAdapter().withBeaconTransaction(env, fn) as Promise<T>;
 }
 
-export function createBeaconQuery(env: BeaconRuntimeEnv) {
+export function createBeaconQuery(env: BeaconRuntimeEnv): BeaconQuery {
   return requireAdapter().createBeaconQuery(env);
 }
 

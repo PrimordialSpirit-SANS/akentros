@@ -8,6 +8,8 @@
 
 export { BeaconGateway } from "./worker/gatewayDo.ts";
 
+import { logBeaconEvent } from "./utils/logger.ts";
+
 interface BeaconDoId {
   toString(): string;
 }
@@ -54,7 +56,9 @@ export default {
         .fetch(new Request(`https://beacon-gateway.internal${MAINTENANCE_PATH}`))
         .then((response) => {
           if (!response.ok) {
-            console.error(`Beacon scheduled maintenance failed: HTTP ${response.status}`);
+            logBeaconEvent("error", "beacon_scheduled_maintenance_failed", {
+              httpStatus: response.status,
+            });
           }
         }),
     );
