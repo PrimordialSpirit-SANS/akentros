@@ -1,3 +1,4 @@
+import type { BeaconBillableBilling } from "./billing.ts";
 import { createBeaconRequestFingerprint } from "./billing.ts";
 import { BeaconError, invalidRequest } from "./openaiErrors.ts";
 import {
@@ -10,6 +11,8 @@ import {
   listEnabledModels,
   requireModelPricing,
 } from "./pricing.ts";
+import type { BeaconAttemptAuditor } from "./providerAttempts.ts";
+import type { BeaconCredentialClaim } from "./providerPool.ts";
 import { BeaconProviderError, invokeProviderRoute, normalizeProviderUsage } from "./providers.ts";
 import { parseSseStream } from "./sse.ts";
 
@@ -251,7 +254,7 @@ function validateToolChoice(value: any, tools: any[]) {
   return { type: "function", function: { name: value.function.name } };
 }
 
-function replayError(reserved: { status: string; requestId: string }) {
+function replayError(reserved: { status?: string; requestId: string }) {
   const inProgress = reserved.status === "dispatched" || reserved.status === "reserved";
   const error = new BeaconError(
     inProgress
@@ -664,6 +667,22 @@ function completionPayloadOutputChars(payload: any) {
   return chars;
 }
 
+// 推論 runtime 的組裝契約:billing/attempts/claim/release 由宿主(gateway、
+// 測試)注入,core 只定義介面,不依賴宿主型別。過去此邊界整個是 any,
+// 計費呼叫的形狀錯誤只能在執行期被發現;現在由編譯期檢查。
+export interface BeaconInferenceRuntimeOptions {
+  billing: BeaconBillableBilling;
+  attempts?: BeaconAttemptAuditor | null;
+  claimCredential: (
+    route: unknown,
+    requestId: string,
+    excludedCredentialIds: string[],
+  ) => Promise<BeaconCredentialClaim | null | undefined>;
+  releaseCredential: (claim: BeaconCredentialClaim, outcome: unknown) => Promise<unknown>;
+  fetchImpl?: typeof fetch;
+  cloudflareAiBinding?: unknown;
+}
+
 export function createBeaconInferenceRuntime({
   billing,
   attempts = null,
@@ -671,7 +690,7 @@ export function createBeaconInferenceRuntime({
   releaseCredential,
   fetchImpl = globalThis.fetch,
   cloudflareAiBinding = null,
-}: any) {
+}: BeaconInferenceRuntimeOptions) {
   if (!billing || typeof billing.reserve !== "function") throw new TypeError("billing is required.");
   if (typeof claimCredential !== "function" || typeof releaseCredential !== "function") {
     throw new TypeError("Provider claim and release functions are required.");
@@ -717,7 +736,7 @@ export function createBeaconInferenceRuntime({
         attemptedCredentialIds.add(claim.credentialId);
         attemptNumber += 1;
         const started = Date.now();
-        let attempt: any = null;
+        let attempt: Awaited<ReturnType<BeaconAttemptAuditor["start"]>> = null;
         if (attempts?.start) {
           try {
             attempt = await attempts.start({

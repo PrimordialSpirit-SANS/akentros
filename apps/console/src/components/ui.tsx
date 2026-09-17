@@ -148,7 +148,7 @@ export function BrandMark({
   const [failed, setFailed] = React.useState(false);
   const letter = (alt || fallback || "?").slice(0, 1).toUpperCase();
   return (
-    <span className="brand-mark" aria-label={alt || fallback}>
+    <span className="brand-mark" role="img" aria-label={alt || fallback}>
       {assetUrl && !failed ? (
         <img src={assetUrl} alt="" loading="lazy" onError={() => setFailed(true)} />
       ) : (

@@ -2,6 +2,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import fs from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { fileURLToPath } from "node:url";
 import type { BeaconRuntimeEnv } from "../types.ts";
 
 // Node 自架部署的 SQLite adapter:以 Node 內建的 node:sqlite 實作
@@ -20,17 +21,33 @@ import type { BeaconRuntimeEnv } from "../types.ts";
 
 type QueryResult = { rows: any[] };
 
+// 相對 DB 路徑的錨點:gateway 套件目錄(apps/gateway/),與 process.cwd()
+// 無關。根目錄 script(npm run dev:gateway / start:gateway 由 repo 根執行)
+// 與 workspace script(npm run migrate 在 apps/gateway 內執行)的 cwd 不同;
+// 若以 cwd 解析 BEACON_DB_PATH=./beacon.db,兩者會開到不同的檔案——
+// migrate 成功、server 卻 no such table: users。
+const GATEWAY_PACKAGE_ROOT = fileURLToPath(new URL("../../", import.meta.url));
+
+/**
+ * 解析 SQLite 資料庫檔案路徑。相對路徑(含 sqlite://、file: 前綴剝離後的
+ * 相對路徑)一律錨定在 gateway 套件目錄;絕對路徑與 `:memory:` 維持原義。
+ * 匯出供測試釘死 cwd 不變式。
+ */
+export function resolveDatabasePath(env: BeaconRuntimeEnv): string {
+  const configured = String(env?.BEACON_DB_PATH || env?.DATABASE_URL || "").trim();
+  let candidate = configured;
+  // sqlite:// 剝到雙斜線為止,file: 只剝 scheme:三斜線 URI(file:///var/…)
+  // 的第三條斜線是路徑根,剝掉會把絕對路徑誤判成相對路徑。
+  if (!candidate || candidate.startsWith("sqlite://") || candidate.startsWith("file:")) {
+    candidate = decodeURIComponent(candidate.replace(/^(?:sqlite:\/\/|file:)/, "")) || "beacon.db";
+  }
+  if (candidate === ":memory:") return candidate;
+  if (path.isAbsolute(candidate)) return candidate;
+  return path.join(GATEWAY_PACKAGE_ROOT, candidate);
+}
+
 const databases = new Map<string, DatabaseSync>();
 const txStorage = new AsyncLocalStorage<{ depth: number }>();
-
-function resolveDatabasePath(env: BeaconRuntimeEnv): string {
-  const configured = String(env?.BEACON_DB_PATH || env?.DATABASE_URL || "").trim();
-  if (!configured || configured.startsWith("sqlite://") || configured.startsWith("file:")) {
-    const bare = configured.replace(/^(sqlite:\/\/|sqlite:\/\/\/|file:\/?)/, "");
-    return decodeURIComponent(bare) || "beacon.db";
-  }
-  return configured;
-}
 
 function databaseFor(env: BeaconRuntimeEnv): DatabaseSync {
   const file = resolveDatabasePath(env);

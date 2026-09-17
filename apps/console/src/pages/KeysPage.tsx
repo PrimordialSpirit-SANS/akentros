@@ -149,7 +149,7 @@ export function KeysPage() {
           </label>
           <div className="field">
             <span>過期時間</span>
-            <div className="choice" role="group" aria-label="金鑰過期方式">
+            <fieldset className="choice" aria-label="金鑰過期方式">
               <button
                 type="button"
                 className={expiryMode === "never" ? "active" : ""}
@@ -164,7 +164,7 @@ export function KeysPage() {
               >
                 自訂期限
               </button>
-            </div>
+            </fieldset>
             {expiryMode === "custom" ? (
               <>
                 <input
@@ -184,7 +184,7 @@ export function KeysPage() {
           </div>
           <div className="field">
             <span>消費上限(USD)</span>
-            <div className="choice" role="group" aria-label="消費上限">
+            <fieldset className="choice" aria-label="消費上限">
               <button
                 type="button"
                 className={pointLimitMode === "unlimited" ? "active" : ""}
@@ -199,7 +199,7 @@ export function KeysPage() {
               >
                 設定上限
               </button>
-            </div>
+            </fieldset>
             {pointLimitMode === "limited" ? (
               <>
                 <input

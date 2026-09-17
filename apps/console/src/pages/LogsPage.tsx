@@ -178,7 +178,13 @@ export function LogsPage() {
 
       {detail && (
         <>
-          <div className="drawer-backdrop" onClick={() => setDetail(null)} role="presentation" />
+          <button
+            type="button"
+            className="drawer-backdrop"
+            onClick={() => setDetail(null)}
+            aria-label="關閉請求詳細資料"
+            tabIndex={-1}
+          />
           <aside className="drawer" role="dialog" aria-modal="true" aria-label="請求詳細資料">
             <button
               type="button"

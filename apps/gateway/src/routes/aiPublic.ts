@@ -20,7 +20,6 @@ import type {
 import {
   markBeaconDispatched,
   markBeaconNeedsReconciliation,
-  readBeaconBilling,
   refundBeaconSpend,
   reserveBeaconSpend,
   settleBeaconSpend,
@@ -42,25 +41,30 @@ function setPublicHeaders(c: BeaconContext, requestId: string) {
   c.header("X-Beacon-Pricing-Revision", BACKEND_PRICING.revision);
 }
 
-// createBeaconInferenceRuntime 的 options 在 core 端刻意未型別化(可攜核心
-// 不依賴 gateway 型別);此處的 input/attempt 參數即為該未型別化邊界。
+// createBeaconInferenceRuntime 的 options 由 @beacon/core/inference 的
+// BeaconInferenceRuntimeOptions 契約定型;此處的注入 lambda 參數型別由該
+// 契約推導,不必再以 any 標註。
 function runtimeFor(env: BeaconRuntimeEnv) {
   return createBeaconInferenceRuntime({
     billing: {
-      reserve: (input: any) => reserveBeaconSpend(env, input),
-      read: (requestId: any) => readBeaconBilling(env, requestId),
-      markDispatched: (requestId: any) => markBeaconDispatched(env, requestId),
-      settle: (input: any) => settleBeaconSpend(env, input),
-      refund: (input: any) => refundBeaconSpend(env, input),
-      markNeedsReconciliation: (input: any) => markBeaconNeedsReconciliation(env, input),
+      reserve: (input) => reserveBeaconSpend(env, input),
+      markDispatched: (requestId) => markBeaconDispatched(env, requestId),
+      settle: (input) => settleBeaconSpend(env, input),
+      refund: (input) => refundBeaconSpend(env, input),
+      markNeedsReconciliation: (input) => markBeaconNeedsReconciliation(env, input),
     },
     attempts: {
-      start: (input: any) => startBeaconProviderAttempt(env, input),
-      finish: (attempt: any, outcome: any) => finishBeaconProviderAttempt(env, attempt, outcome),
+      start: (input) => startBeaconProviderAttempt(env, input),
+      finish: (attempt, outcome) => finishBeaconProviderAttempt(env, attempt, outcome),
     },
-    claimCredential: (route: any, requestId: any, excludedCredentialIds: any) =>
-      claimBeaconProviderCredential(env, route, requestId, excludedCredentialIds),
-    releaseCredential: (claim: any, outcome: any) => releaseBeaconProviderCredential(env, claim, outcome),
+    claimCredential: (route, requestId, excludedCredentialIds) =>
+      claimBeaconProviderCredential(
+        env,
+        route as { credential_pool: string },
+        requestId,
+        excludedCredentialIds,
+      ),
+    releaseCredential: (claim, outcome) => releaseBeaconProviderCredential(env, claim, outcome),
     cloudflareAiBinding: null, // Bypassed to prevent using Wrangler CLI logged-in account
   });
 }

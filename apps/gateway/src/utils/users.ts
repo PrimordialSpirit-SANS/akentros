@@ -6,7 +6,9 @@ import { dbGet, dbQuery } from "./db.ts";
 // 欄位集合涵蓋 packages/core/src/billing.ts(扣點)與 aiApiKeys.ts(金鑰查驗)
 // 實際讀取的欄位,不可任意改名。
 
-export const BEACON_PASSWORD_ITERATIONS = 25_000;
+// OWASP Password Storage Cheat Sheet 對 PBKDF2-HMAC-SHA256 的建議值
+// (600,000)。舊格式雜湊仍可驗證:迭代數記錄在雜湊字串本身。
+export const BEACON_PASSWORD_ITERATIONS = 600_000;
 
 export interface BeaconAccount {
   id: string;
@@ -35,7 +37,10 @@ export async function verifyPassword(password: string, stored: string | null | u
   const [scheme, iterationsText, salt, hash] = String(stored).split("$");
   if (scheme !== "pbkdf2" || !iterationsText || !salt || !hash) return false;
   const iterations = Number(iterationsText);
-  if (!Number.isSafeInteger(iterations) || iterations < 1) return false;
+  // 本系統產生的雜湊迭代數一律 ≥ BEACON_PASSWORD_ITERATIONS(歷史版本)或
+  // 設定下限 10,000;低於下限的「雜湊」不是本系統寫入的,拒絕以免弱雜湊被
+  // 塞進資料庫後通過驗證。
+  if (!Number.isSafeInteger(iterations) || iterations < 10_000) return false;
   const derived = await derivePasswordBits(password, salt, iterations);
   // 常數時間比較,避免逐位元洩漏。
   if (derived.length !== hash.length) return false;

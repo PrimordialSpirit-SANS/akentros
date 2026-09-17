@@ -1,6 +1,5 @@
-function rows(result: any): any[] {
-  return Array.isArray(result?.rows) ? result.rows : [];
-}
+import type { BeaconQuery } from "./query.ts";
+import { beaconQueryRows as rows } from "./query.ts";
 
 // SQLite 方言:finish 的「更新 attempt + 成功時回寫 ai_requests」由
 // transaction(fn) 保證原子性;時間由呼叫端綁定。
@@ -43,9 +42,9 @@ export const BEACON_PROVIDER_ATTEMPT_SQL = Object.freeze({
 });
 
 // 執行交易:query 介面可選提供 transaction(fn)。
-async function withTransaction(query: any, fn: () => Promise<any>) {
+async function withTransaction<T>(query: BeaconQuery, fn: () => Promise<T>): Promise<T> {
   if (typeof query?.transaction === "function") {
-    return query.transaction(fn);
+    return (await query.transaction(fn)) as T;
   }
   return fn();
 }
@@ -66,10 +65,47 @@ function bounded(value: unknown, label: string, maximum: number, optional = fals
   return normalized;
 }
 
-export function createBeaconProviderAttemptStore(query: any) {
+export interface BeaconAttemptAuditRecord {
+  id: string;
+  requestId: string;
+  attemptNumber: number;
+}
+
+/** 嘗試稽核的消費端契約:runtime 只讀 start 回傳的 id,並以 finish? 記錄
+ * 結果;完整 store 回傳 BeaconAttemptAuditRecord(為 { id } 的超集)。 */
+export interface BeaconAttemptAuditor {
+  start(input: {
+    requestId: string;
+    attemptNumber: number;
+    route: unknown;
+    credentialId: string | null;
+  }): Promise<{ id: string } | null | undefined>;
+  finish?(
+    attempt: unknown,
+    outcome: {
+      success: boolean;
+      httpStatus?: number | null;
+      errorCategory?: string | null;
+      upstreamRequestId?: string | null;
+      latencyMs?: number | null;
+    },
+  ): Promise<unknown>;
+}
+
+export function createBeaconProviderAttemptStore(query: BeaconQuery) {
   if (typeof query !== "function") throw new TypeError("A database query function is required.");
   return Object.freeze({
-    async start({ requestId, attemptNumber, route, credentialId }: any) {
+    async start({
+      requestId,
+      attemptNumber,
+      route,
+      credentialId,
+    }: {
+      requestId: string;
+      attemptNumber: number;
+      route: any;
+      credentialId: string | null;
+    }): Promise<BeaconAttemptAuditRecord | null> {
       const result = await query(BEACON_PROVIDER_ATTEMPT_SQL.start, [
         positiveInteger(attemptNumber, "attemptNumber"),
         bounded(route.provider, "route.provider", 40),
@@ -88,7 +124,19 @@ export function createBeaconProviderAttemptStore(query: any) {
 
     async finish(
       attempt: any,
-      { success, httpStatus = null, errorCategory = null, upstreamRequestId = null, latencyMs = null }: any,
+      {
+        success,
+        httpStatus = null,
+        errorCategory = null,
+        upstreamRequestId = null,
+        latencyMs = null,
+      }: {
+        success: boolean;
+        httpStatus?: number | null;
+        errorCategory?: string | null;
+        upstreamRequestId?: string | null;
+        latencyMs?: number | null;
+      },
     ) {
       if (!attempt?.id) return null;
       const latency = latencyMs === null ? null : Math.max(0, Math.round(Number(latencyMs)));

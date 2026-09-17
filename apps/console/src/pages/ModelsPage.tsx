@@ -16,6 +16,7 @@ function InputModalityBadge({ modalities }: { modalities: string[] }) {
     <span
       className={`tag${supported ? " badge-warn" : ""}`}
       title={description}
+      role="img"
       aria-label={description}
       style={supported ? { color: "var(--accent-strong)", borderColor: "var(--accent-line)" } : undefined}
     >
@@ -83,7 +84,7 @@ export function ModelsPage() {
                   <div style={{ minWidth: 0 }}>
                     <h2>{model.display_name}</h2>
                     <div className="model-route">
-                      <code aria-label={`型號路由 ${model.id}`}>{model.id}</code>
+                      <code title={`型號路由 ${model.id}`}>{model.id}</code>
                       <CopyButton value={model.id} label="複製型號路由" compact />
                     </div>
                   </div>

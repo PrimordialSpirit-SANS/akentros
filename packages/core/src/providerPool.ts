@@ -1,7 +1,25 @@
 import { PROVIDER_POOLS, resolveProviderCredential } from "./providers.ts";
+import type { BeaconQuery } from "./query.ts";
+import { beaconQueryRows as rows } from "./query.ts";
 
-function rows(result: any): any[] {
-  return Array.isArray(result?.rows) ? result.rows : [];
+/** pool store 的 claim 在設定解析前的租約形狀(normalizeClaim 輸出)。 */
+export interface BeaconCredentialLease {
+  leaseId: string;
+  requestId: string;
+  credentialId: string;
+  provider: string;
+  poolId: string;
+  expiresAt: string;
+}
+
+/** claimConfiguredBeaconProviderCredential 的輸出:租約 + 已解析的 secret
+ * 與 pool 設定文件。secrets 的值只存在記憶體,不落庫、不落 log。 */
+export interface BeaconCredentialClaim extends BeaconCredentialLease {
+  secrets: Readonly<Record<string, string>>;
+  // pool 為 provider-pools 設定文件(含 selection 策略),形狀由
+  // provider-pools.v1.json 決定,此處僅整體傳遞。
+  pool: any;
+  [key: string]: unknown;
 }
 
 function requiredString(value: unknown, label: string, maxLength = 160) {
@@ -32,7 +50,7 @@ function normalizeExcludedCredentialIds(value: any): string[] {
   ];
 }
 
-function normalizeClaim(row: any) {
+function normalizeClaim(row: any): BeaconCredentialLease | null {
   if (!row) return null;
   return {
     leaseId: String(row.lease_id),
@@ -143,7 +161,7 @@ export const BEACON_PROVIDER_POOL_SQL = Object.freeze({
   `,
 });
 
-export async function syncBeaconProviderCredentials(query: any, config: any = PROVIDER_POOLS) {
+export async function syncBeaconProviderCredentials(query: BeaconQuery, config: any = PROVIDER_POOLS) {
   if (typeof query !== "function") throw new TypeError("A database query function is required.");
   const credentialIds: string[] = [];
   for (const [poolId, pool] of Object.entries(config.pools || {}) as Array<[string, any]>) {
@@ -170,14 +188,14 @@ export async function syncBeaconProviderCredentials(query: any, config: any = PR
 }
 
 // 執行交易:query 介面可選提供 transaction(fn)。
-async function withTransaction(query: any, fn: () => Promise<any>) {
+async function withTransaction<T>(query: BeaconQuery, fn: () => Promise<T>): Promise<T> {
   if (typeof query?.transaction === "function") {
-    return query.transaction(fn);
+    return (await query.transaction(fn)) as T;
   }
   return fn();
 }
 
-export function createBeaconProviderPoolStore(query: any) {
+export function createBeaconProviderPoolStore(query: BeaconQuery) {
   if (typeof query !== "function") throw new TypeError("A database query function is required.");
   return Object.freeze({
     sync: (config: any) => syncBeaconProviderCredentials(query, config),
@@ -188,7 +206,13 @@ export function createBeaconProviderPoolStore(query: any) {
       leaseTtlMs,
       excludedCredentialIds = [],
       leaseId = globalThis.crypto.randomUUID(),
-    }: any) {
+    }: {
+      poolId: string;
+      requestId: string;
+      leaseTtlMs: number;
+      excludedCredentialIds?: string[];
+      leaseId?: string;
+    }): Promise<BeaconCredentialLease | null> {
       const normalizedPool = requiredString(poolId, "poolId", 120);
       const normalizedRequest = requiredString(requestId, "requestId", 80);
       const normalizedExcludedCredentialIds = normalizeExcludedCredentialIds(excludedCredentialIds);
@@ -240,7 +264,14 @@ export function createBeaconProviderPoolStore(query: any) {
       latencyMs = null,
       retryAfter = null,
       selection,
-    }: any) {
+    }: {
+      leaseId: string;
+      success: boolean;
+      category?: string | null;
+      latencyMs?: number | null;
+      retryAfter?: number | string | null;
+      selection?: any;
+    }) {
       const normalizedLease = requiredString(leaseId, "leaseId", 80);
       const latency =
         latencyMs === null || latencyMs === undefined
@@ -304,6 +335,24 @@ export function createBeaconProviderPoolStore(query: any) {
   });
 }
 
+/** claimConfiguredBeaconProviderCredential 需要的 pool store 子集
+ * (完整的 createBeaconProviderPoolStore 回傳值為其超集)。 */
+export interface BeaconProviderPoolClaimStore {
+  claim(input: {
+    poolId: string;
+    requestId: string;
+    leaseTtlMs?: number;
+    excludedCredentialIds?: string[];
+  }): Promise<BeaconCredentialLease | null>;
+  release(input: {
+    leaseId: string;
+    success: boolean;
+    category?: string | null;
+    selection?: any;
+    [key: string]: unknown;
+  }): Promise<unknown>;
+}
+
 export async function claimConfiguredBeaconProviderCredential({
   store,
   pool,
@@ -313,7 +362,16 @@ export async function claimConfiguredBeaconProviderCredential({
   excludedCredentialIds = [],
   leaseTtlMs = pool?.selection?.lease_ttl_ms,
   resolveSecrets = true,
-}: any) {
+}: {
+  store: BeaconProviderPoolClaimStore;
+  pool: any;
+  poolId: string;
+  requestId: string;
+  environment: Record<string, string | undefined>;
+  excludedCredentialIds?: string[] | Set<string>;
+  leaseTtlMs?: number;
+  resolveSecrets?: boolean;
+}): Promise<BeaconCredentialClaim | null> {
   if (!store || typeof store.claim !== "function" || typeof store.release !== "function") {
     throw new TypeError("A provider pool store with claim and release functions is required.");
   }

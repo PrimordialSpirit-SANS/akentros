@@ -7,6 +7,7 @@ import { randomBytesHex } from "../utils/crypto.ts";
 import { signBeaconJwt, verifyBeaconJwt } from "../utils/jwt.ts";
 import type { BeaconAccount } from "../utils/users.ts";
 import {
+  BEACON_PASSWORD_ITERATIONS,
   createUser,
   findUserByEmail,
   findUserById,
@@ -232,8 +233,12 @@ authRoutes.post("/login", async (c: BeaconContext) => {
   const password = String(body?.password || "");
 
   // 帳號不存在時仍執行一次雜湊驗證,讓回應時間不洩漏帳號存在性。
+  // dummy hash 的迭代數必須跟著預設值走,兩條路徑的運算成本才會一致。
   const storedHash = await findUserPasswordHash(c.env, email);
-  const passwordOk = await verifyPassword(password, storedHash || "pbkdf2$25000$00$00");
+  const passwordOk = await verifyPassword(
+    password,
+    storedHash || `pbkdf2$${BEACON_PASSWORD_ITERATIONS}$00$00`,
+  );
   const user = passwordOk ? await findUserByEmail(c.env, email) : null;
   if (!user || user.is_banned || !passwordOk) {
     return c.json({ error: "Email or password is incorrect.", code: "invalid_credentials" }, 401);

@@ -388,6 +388,13 @@ code {
   background: var(--surface-2);
 }
 
+/* choice 以 fieldset 取代 div[role=group](語義化 group);重置 fieldset
+ * 預設樣式,讓外觀與原 div 完全一致。 */
+fieldset.choice {
+  margin: 0;
+  min-inline-size: 0;
+}
+
 .choice button {
   border: 0;
   padding: 6px 12px;
@@ -1129,6 +1136,13 @@ code {
   z-index: 50;
   background: rgba(4, 5, 8, 0.72);
   backdrop-filter: blur(3px);
+}
+
+/* 抽屜背景改為 button(語義化點擊關閉);重置 button 預設樣式。 */
+button.drawer-backdrop {
+  border: 0;
+  padding: 0;
+  cursor: pointer;
 }
 
 .drawer {

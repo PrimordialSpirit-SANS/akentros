@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import type { BeaconBillableBilling } from "../src/billing.ts";
 import {
   BEACON_BILLING_SQL,
   createBeaconBillingStore,
@@ -289,6 +290,7 @@ test("stale reservations are found by expiry", async () => {
 
 test("insufficient points stop before provider dispatch", async () => {
   let providerCalls = 0;
+  // 此場景 reserve 必然拋出,其餘計費方法不可達,以型別斷言標記部分替身。
   const billing = {
     reserve: async () => {
       const error = new Error("insufficient") as Error & { status?: number; code?: string };
@@ -296,13 +298,14 @@ test("insufficient points stop before provider dispatch", async () => {
       error.code = "insufficient_balance";
       throw error;
     },
-  };
+  } as unknown as BeaconBillableBilling;
   await assert.rejects(
     runBillableBeaconRequest({
       billing,
       reservation: reservation(),
       providerCall: async () => {
         providerCalls += 1;
+        return { actualCostMicros: 0, inputTokens: 0, outputTokens: 0 };
       },
     }),
     (error: any) => error.code === "insufficient_balance",
@@ -320,11 +323,16 @@ test("idempotent replay skips provider and every billing mutation", async () => 
     }),
     markDispatched: async () => calls.push("dispatch"),
     settle: async () => calls.push("settle"),
+    refund: async () => calls.push("refund"),
+    markNeedsReconciliation: async () => calls.push("reconcile"),
   };
   const result = await runBillableBeaconRequest({
     billing,
     reservation: reservation(),
-    providerCall: async () => calls.push("provider"),
+    providerCall: async () => {
+      calls.push("provider");
+      return { actualCostMicros: 0, inputTokens: 0, outputTokens: 0 };
+    },
   });
   assert.equal(result.kind, "idempotent_replay");
   assert.deepEqual(calls, []);
@@ -360,6 +368,7 @@ test("definitive fake-provider failure refunds, unknown usage reconciles", async
     const billing = {
       reserve: async () => ({ requestId: "req_test_1", idempotentReplay: false }),
       markDispatched: async () => calls.push("dispatch"),
+      settle: async () => calls.push("settle"),
       refund: async () => calls.push("refund"),
       markNeedsReconciliation: async () => calls.push("reconcile"),
     };

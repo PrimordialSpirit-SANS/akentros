@@ -1,12 +1,120 @@
 import { BeaconError, invalidRequest } from "./openaiErrors.ts";
+import type { BeaconQuery } from "./query.ts";
+import { beaconQueryRows as rows } from "./query.ts";
+
+// 計費對外的型別契約:reserve→settle→refund 狀態機的輸入/輸出與 store
+// 介面。inference runtime 與 gateway 的計費包裝都依賴這些型別,讓「錢」的
+// 邊界在編譯期就被檢查;SQL 列在讀取當下仍是未定型資料,驗證留在 runtime
+// (requiredString/integerString/…)。
+
+/** 微美元整數的接受形狀:內部一律經 integerString 轉成十進位字串。 */
+export type BeaconMicrosInput = string | number | bigint;
+
+/** normalizeBillingRow 的輸出:計費狀態的權威呈現(所有 store 方法回傳它)。 */
+export interface BeaconBillingRow {
+  requestId: string;
+  aiRequestId: string;
+  requestFingerprint: string;
+  status: string;
+  reservationState: string | null;
+  reservedCostMicros: number | string;
+  chargedCostMicros: number | string;
+  refundedCostMicros: number | string;
+  errorCode: string | null;
+  httpStatus: number | null;
+  idempotentReplay: boolean;
+}
+
+export interface BeaconBillingReserveInput {
+  requestId: string;
+  userId: string | number | bigint;
+  apiKeyId: string | number | bigint;
+  idempotencyKey?: string | null;
+  requestFingerprint: string;
+  endpoint?: string;
+  stream?: boolean;
+  publicModel: string;
+  pricingRevision: string;
+  pricingSnapshot?: unknown;
+  reservedCostMicros: BeaconMicrosInput;
+  expiresAt: string;
+}
+
+export interface BeaconBillingSettleInput {
+  requestId: string;
+  actualCostMicros: BeaconMicrosInput;
+  inputTokens: BeaconMicrosInput;
+  outputTokens: BeaconMicrosInput;
+  usageSource?: string;
+  status?: "succeeded" | "partially_succeeded";
+  totalLatencyMs?: number | null;
+}
+
+export interface BeaconBillingRefundInput {
+  requestId: string;
+  reason?: string;
+  errorCode?: string;
+  httpStatus?: number;
+}
+
+export interface BeaconBillingRefundFromStateInput extends BeaconBillingRefundInput {
+  fromState: string;
+  description: string;
+}
+
+export interface BeaconBillingMarkNeedsReconciliationInput {
+  requestId: string;
+  errorCode?: string;
+}
+
+export interface BeaconBillingReconcileOptions {
+  limit?: number;
+}
+
+export interface BeaconBillingQuarantineOptions extends BeaconBillingReconcileOptions {
+  olderThanMs?: number;
+}
+
+/** 對帳批次中單列的結果:成功是 BillingRow;併發衝突是標記物件。 */
+export type BeaconReconciliationOutcome =
+  | BeaconBillingRow
+  | { requestId: string; reservationState: "conflict_resolved_concurrently" };
+
+/** reserve 結果中消費端(inference runtime、runBillableBeaconRequest)實際
+ * 讀取的欄位;BeaconBillingRow 為其超集,測試替身可只回傳此最小形狀。 */
+export interface BeaconReservationResult {
+  requestId: string;
+  idempotentReplay: boolean;
+  status?: string;
+}
+
+/**
+ * 推論 runtime 與 runBillableBeaconRequest 依賴的計費方法子集。完整的
+ * BeaconBillingStore 滿足此介面;測試可注入僅實作被觸發路徑的替身。
+ */
+export interface BeaconBillableBilling {
+  reserve(input: BeaconBillingReserveInput): Promise<BeaconReservationResult>;
+  markDispatched(requestId: string): Promise<unknown>;
+  settle(input: BeaconBillingSettleInput): Promise<unknown>;
+  refund(input: BeaconBillingRefundInput): Promise<unknown>;
+  markNeedsReconciliation(input: BeaconBillingMarkNeedsReconciliationInput): Promise<unknown>;
+}
+
+export interface BeaconBillingStore {
+  reserve(input: BeaconBillingReserveInput): Promise<BeaconBillingRow>;
+  read(requestId: string): Promise<BeaconBillingRow | null>;
+  markDispatched(requestId: string): Promise<BeaconBillingRow | null>;
+  settle(input: BeaconBillingSettleInput): Promise<BeaconBillingRow>;
+  refund(input: BeaconBillingRefundInput): Promise<BeaconBillingRow>;
+  refundFromState(input: BeaconBillingRefundFromStateInput): Promise<BeaconBillingRow>;
+  markNeedsReconciliation(input: BeaconBillingMarkNeedsReconciliationInput): Promise<BeaconBillingRow | null>;
+  reconcileStale(options?: BeaconBillingReconcileOptions): Promise<BeaconReconciliationOutcome[]>;
+  resolveQuarantined(options?: BeaconBillingQuarantineOptions): Promise<BeaconReconciliationOutcome[]>;
+}
 
 const DECIMAL_INTEGER = /^(0|[1-9][0-9]*)$/;
 const SHA256_HEX = /^[a-f0-9]{64}$/;
 const FINAL_STATUSES = new Set(["succeeded", "partially_succeeded"]);
-
-function rows(result: any): any[] {
-  return Array.isArray(result?.rows) ? result.rows : [];
-}
 
 function requiredString(value: unknown, label: string, maxLength: number) {
   const normalized = typeof value === "string" ? value.trim() : "";
@@ -34,7 +142,10 @@ function safeNumber(value: unknown) {
   return Number.isSafeInteger(parsed) ? parsed : String(value);
 }
 
-function normalizeBillingRow(row: any, idempotentReplay = Boolean(row?.idempotent_replay)) {
+function normalizeBillingRow(
+  row: any,
+  idempotentReplay = Boolean(row?.idempotent_replay),
+): BeaconBillingRow | null {
   if (!row) return null;
   return {
     requestId: String(row.request_id),
@@ -170,14 +281,14 @@ function invalidBillingState(message: string) {
 
 // 執行交易:query 介面可選提供 transaction(fn)(SQLite adapter 有提供;
 // 測試的假 query 沒有時,退回逐語句執行)。
-async function withTransaction(query: any, fn: () => Promise<any>) {
+async function withTransaction<T>(query: BeaconQuery, fn: () => Promise<T>): Promise<T> {
   if (typeof query?.transaction === "function") {
-    return query.transaction(fn);
+    return (await query.transaction(fn)) as T;
   }
   return fn();
 }
 
-export function createBeaconBillingStore(query: any) {
+export function createBeaconBillingStore(query: BeaconQuery): BeaconBillingStore {
   if (typeof query !== "function") {
     throw new TypeError("createBeaconBillingStore requires a database query function.");
   }
@@ -784,7 +895,32 @@ export function createBeaconBillingStore(query: any) {
   });
 }
 
-export async function runBillableBeaconRequest({ billing, reservation, providerCall }: any) {
+/** providerCall 的預期回傳:usage 來源與實際成本由 provider 端決定。 */
+export interface BeaconBillableProviderResult {
+  actualCostMicros: BeaconMicrosInput;
+  inputTokens: BeaconMicrosInput;
+  outputTokens: BeaconMicrosInput;
+  usageSource?: string;
+  status?: "succeeded" | "partially_succeeded";
+  totalLatencyMs?: number | null;
+}
+
+export async function runBillableBeaconRequest({
+  billing,
+  reservation,
+  providerCall,
+}: {
+  billing: BeaconBillableBilling;
+  reservation: BeaconBillingReserveInput;
+  providerCall: (input: { requestId: string }) => Promise<BeaconBillableProviderResult>;
+}): Promise<
+  | { kind: "idempotent_replay"; billing: BeaconReservationResult }
+  | {
+      kind: "succeeded";
+      billing: unknown;
+      provider: BeaconBillableProviderResult;
+    }
+> {
   if (!billing || typeof billing.reserve !== "function") {
     throw new TypeError("A Beacon billing store is required.");
   }

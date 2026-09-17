@@ -211,6 +211,7 @@ test("provider pool releases unusable claims and advances to the next healthy cr
     excludedCredentialIds: ["caller-excluded"],
   });
 
+  assert.ok(claim);
   assert.equal(claim.credentialId, "healthy");
   assert.equal(claim.secrets.api_key, "healthy-secret");
   assert.deepEqual(
@@ -275,6 +276,7 @@ test("native provider binding claims capacity without requiring REST secrets", a
     resolveSecrets: false,
   });
 
+  assert.ok(claim);
   assert.equal(claim.credentialId, "native-capacity-slot");
   assert.equal(claim.provider, "cloudflare-workers-ai");
   assert.deepEqual(claim.secrets, {});
@@ -359,8 +361,12 @@ test("lease bookkeeping failure after provider success never repeats inference",
       markNeedsReconciliation: async () => billingCalls.push("reconcile"),
     },
     claimCredential: async () => ({
+      leaseId: "lease-test",
+      requestId: prepared.requestId,
       credentialId: "openrouter-primary",
       provider: "openrouter",
+      poolId: "openrouter-production",
+      expiresAt: "2030-01-01T00:00:00.000Z",
       secrets: { api_key: "secret" },
       pool: requireProviderPool("openrouter-production"),
     }),

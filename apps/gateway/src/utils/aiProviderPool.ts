@@ -1,3 +1,4 @@
+import type { BeaconCredentialClaim } from "@beacon/core/providerPool";
 import {
   claimConfiguredBeaconProviderCredential,
   createBeaconProviderPoolStore,
@@ -7,8 +8,8 @@ import type { BeaconRuntimeEnv } from "../types.ts";
 import { ensureAiSchema } from "./aiSchema.ts";
 import { createBeaconQuery } from "./db.ts";
 
-const stores = new Map();
-const syncPromises = new Map();
+const stores = new Map<string, ReturnType<typeof createBeaconProviderPoolStore>>();
+const syncPromises = new Map<string, Promise<unknown>>();
 
 function databaseKey(env: BeaconRuntimeEnv) {
   return env?.DATABASE_URL?.trim() || "unconfigured-main";
@@ -24,7 +25,7 @@ async function ready(env: BeaconRuntimeEnv) {
     syncPromises.set(
       key,
       stores
-        .get(key)
+        .get(key)!
         .sync(PROVIDER_POOLS)
         .catch((error: any) => {
           syncPromises.delete(key);
@@ -33,21 +34,19 @@ async function ready(env: BeaconRuntimeEnv) {
     );
   }
   await syncPromises.get(key);
-  return stores.get(key);
+  return stores.get(key)!;
 }
 
 export async function claimBeaconProviderCredential(
   env: BeaconRuntimeEnv,
-  route: any,
-  requestId: any,
-  excludedCredentialIds = [],
-) {
+  route: { credential_pool: string; timeout_ms?: number },
+  requestId: string,
+  excludedCredentialIds: string[] = [],
+): Promise<BeaconCredentialClaim | null> {
   const store = await ready(env);
   const pool = requireProviderPool(route.credential_pool);
-  const environment = {
-    ...(globalThis.process?.env || {}),
-    ...(env || {}),
-  };
+  const environment: Record<string, string | undefined> = {};
+  Object.assign(environment, globalThis.process?.env || {}, env || {});
   return claimConfiguredBeaconProviderCredential({
     store,
     pool,
@@ -60,7 +59,11 @@ export async function claimBeaconProviderCredential(
   });
 }
 
-export async function releaseBeaconProviderCredential(env: BeaconRuntimeEnv, claim: any, outcome: any) {
+export async function releaseBeaconProviderCredential(
+  env: BeaconRuntimeEnv,
+  claim: Pick<BeaconCredentialClaim, "leaseId" | "pool">,
+  outcome: unknown,
+) {
   const store = await ready(env);
-  return store.release({ ...outcome, leaseId: claim.leaseId, selection: claim.pool.selection });
+  return store.release({ ...(outcome as any), leaseId: claim.leaseId, selection: claim.pool.selection });
 }

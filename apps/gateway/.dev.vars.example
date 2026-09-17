@@ -22,7 +22,10 @@ ADMIN_USERNAME=admin
 BEACON_SIGNUP_BONUS_USD=1000
 # 設為 true 時關閉公開註冊(僅管理員能開帳號)
 BEACON_DISABLE_REGISTRATION=
-# PBKDF2 迭代次數(建議 ≥10000)
+# PBKDF2 迭代次數。預設 600,000(OWASP Password Storage Cheat Sheet 對
+# PBKDF2-HMAC-SHA256 的建議值);已存在的舊格式雜湊(迭代數記錄在雜湊字串
+# 內)不受影響,仍可驗證。Cloudflare Workers 免費方案的 CPU 上限可能跑不完
+# 600,000 次,該拓撲可視需要調低(下限 10,000)。
 BEACON_PBKDF2_ITERATIONS=
 
 # Beacon 入口開關(fail-closed):設為 true 才會啟用 /api/ai/* 路由。
