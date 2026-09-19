@@ -50,11 +50,29 @@ test("key options are strict, bounded, and model-aware", () => {
     maxInFlight: 8,
     spendLimitUsdMicros: 500000000,
     expiresAt,
+    idempotencyReplayTtlSeconds: 0,
   });
+  // 冪等重放 TTL:0-604800 秒(7 天),非整數或超界一律拒絕。
+  assert.equal(
+    normalizeAkentrosKeyOptions({ name: "Replay", idempotency_replay_ttl_seconds: 3600 })
+      .idempotencyReplayTtlSeconds,
+    3600,
+  );
+  assert.throws(
+    () => normalizeAkentrosKeyOptions({ name: "Replay", idempotency_replay_ttl_seconds: 604801 }),
+    /idempotency_replay_ttl_seconds/,
+  );
+  assert.throws(
+    () => normalizeAkentrosKeyOptions({ name: "Replay", idempotency_replay_ttl_seconds: 1.5 }),
+    /idempotency_replay_ttl_seconds/,
+  );
   assert.throws(() => normalizeAkentrosKeyOptions({ name: "" }), /1 to 80/);
   assert.throws(() => normalizeAkentrosKeyOptions({ name: "bad", rpm_limit: 1.5 }), /rpm_limit/);
   assert.throws(
-    () => normalizeAkentrosKeyOptions({ name: "bad", model_allowlist: ["akentros/unknown"] }, ["akentros/model-a"]),
+    () =>
+      normalizeAkentrosKeyOptions({ name: "bad", model_allowlist: ["akentros/unknown"] }, [
+        "akentros/model-a",
+      ]),
     /Unknown or disabled/,
   );
   assert.throws(() => normalizeAkentrosKeyOptions({ name: "bad", extra: true }), /Unsupported/);

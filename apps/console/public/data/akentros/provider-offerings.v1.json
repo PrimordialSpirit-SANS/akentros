@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
-  "pricing_revision": "2026-09-14.1",
-  "effective_at": "2026-09-14T00:00:00Z",
-  "updated_at": "2026-09-14",
+  "pricing_revision": "2026-09-19.1",
+  "effective_at": "2026-09-19T00:00:00Z",
+  "updated_at": "2026-09-19",
   "currency": "usd",
   "billing_unit": "per_million_tokens",
   "offerings": [
@@ -340,6 +340,34 @@
       "note": "Workers AI 原生綁定與 REST 路由",
       "input_usd_per_million_tokens": "0.42",
       "output_usd_per_million_tokens": "3.00",
+      "minimum_charge_usd": "0.0001"
+    },
+    {
+      "id": "text-embedding-3-small-openai",
+      "model_id": "akentros/text-embedding-3-small",
+      "provider_id": "openai",
+      "provider_name": "OpenAI",
+      "brand_asset_id": "openai-provider",
+      "status": "available",
+      "capabilities": ["embeddings"],
+      "official_docs_url": "https://platform.openai.com/docs/models/text-embedding-3-small",
+      "note": "OpenAI API 官方端點",
+      "input_usd_per_million_tokens": "0.02",
+      "output_usd_per_million_tokens": "0",
+      "minimum_charge_usd": "0.0001"
+    },
+    {
+      "id": "text-embedding-3-large-openai",
+      "model_id": "akentros/text-embedding-3-large",
+      "provider_id": "openai",
+      "provider_name": "OpenAI",
+      "brand_asset_id": "openai-provider",
+      "status": "available",
+      "capabilities": ["embeddings"],
+      "official_docs_url": "https://platform.openai.com/docs/models/text-embedding-3-large",
+      "note": "OpenAI API 官方端點",
+      "input_usd_per_million_tokens": "0.13",
+      "output_usd_per_million_tokens": "0",
       "minimum_charge_usd": "0.0001"
     }
   ]

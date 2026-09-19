@@ -1,8 +1,8 @@
 {
   "schema_version": "1.0.0",
-  "revision": "2026-09-14.1",
-  "published_at": "2026-09-14T00:00:00Z",
-  "effective_at": "2026-09-14T00:00:00Z",
+  "revision": "2026-09-19.1",
+  "published_at": "2026-09-19T00:00:00Z",
+  "effective_at": "2026-09-19T00:00:00Z",
   "currency": {
     "code": "USD",
     "settlement_unit": "usd_micros",
@@ -715,6 +715,78 @@
           "upstream_model": "@cf/qwen/qwen3.8-27b",
           "priority": 10,
           "timeout_ms": 120000,
+          "enabled": true
+        }
+      ]
+    },
+    "akentros/text-embedding-3-small": {
+      "object": "model",
+      "enabled": true,
+      "display_name": "Text Embedding 3 Small",
+      "owned_by": "akentros",
+      "capabilities": {
+        "chat_completions": false,
+        "embeddings": true,
+        "streaming": false,
+        "tools": false,
+        "json_mode": false,
+        "vision": false
+      },
+      "billing": {
+        "input_usd_per_million_tokens": "0.02",
+        "output_usd_per_million_tokens": "0",
+        "minimum_charge_usd": "0.0001"
+      },
+      "limits": {
+        "context_tokens": 8192,
+        "max_input_tokens": 8191,
+        "default_max_completion_tokens": 1,
+        "max_completion_tokens": 1
+      },
+      "routes": [
+        {
+          "route_id": "text-embedding-3-small-openai",
+          "provider": "openai",
+          "credential_pool": "openai-production",
+          "upstream_model": "text-embedding-3-small",
+          "priority": 10,
+          "timeout_ms": 60000,
+          "enabled": true
+        }
+      ]
+    },
+    "akentros/text-embedding-3-large": {
+      "object": "model",
+      "enabled": true,
+      "display_name": "Text Embedding 3 Large",
+      "owned_by": "akentros",
+      "capabilities": {
+        "chat_completions": false,
+        "embeddings": true,
+        "streaming": false,
+        "tools": false,
+        "json_mode": false,
+        "vision": false
+      },
+      "billing": {
+        "input_usd_per_million_tokens": "0.13",
+        "output_usd_per_million_tokens": "0",
+        "minimum_charge_usd": "0.0001"
+      },
+      "limits": {
+        "context_tokens": 8192,
+        "max_input_tokens": 8191,
+        "default_max_completion_tokens": 1,
+        "max_completion_tokens": 1
+      },
+      "routes": [
+        {
+          "route_id": "text-embedding-3-large-openai",
+          "provider": "openai",
+          "credential_pool": "openai-production",
+          "upstream_model": "text-embedding-3-large",
+          "priority": 10,
+          "timeout_ms": 60000,
           "enabled": true
         }
       ]

@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Akentros API
-  version: 0.4.0
+  version: 0.6.0
   description: |
     Akentros text-only OpenAI-compatible inference surface and signed-in developer
     management surface. Public inference routes use Akentros API keys; developer
@@ -82,6 +82,61 @@ paths:
                 data: {"id":"chatcmpl_example","object":"chat.completion.chunk"}
 
                 data: [DONE]
+        '400':
+          $ref: '#/components/responses/PublicError'
+        '401':
+          $ref: '#/components/responses/PublicError'
+        '402':
+          $ref: '#/components/responses/PublicError'
+        '403':
+          $ref: '#/components/responses/PublicError'
+        '404':
+          $ref: '#/components/responses/PublicError'
+        '408':
+          $ref: '#/components/responses/PublicError'
+        '409':
+          $ref: '#/components/responses/PublicError'
+        '413':
+          $ref: '#/components/responses/PublicError'
+        '429':
+          $ref: '#/components/responses/PublicError'
+        '503':
+          $ref: '#/components/responses/PublicError'
+
+  /api/ai/v1/embeddings:
+    post:
+      tags: [Inference]
+      operationId: createAkentrosEmbeddings
+      summary: Create embeddings for text input
+      description: |
+        OpenAI-compatible embeddings endpoint for Akentros models whose
+        capabilities declare `embeddings`. Returns one vector per input item.
+        Billing charges input tokens only; usage omits completion tokens and
+        reports `prompt_tokens`/`total_tokens`. Requires the `embeddings`
+        scope; keys granted `chat:completions` before the embeddings release
+        are also accepted for backward compatibility.
+      security:
+        - AkentrosKey: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmbeddingRequest'
+      responses:
+        '200':
+          description: A list of embedding vectors, one per input item.
+          headers:
+            X-Request-Id:
+              $ref: '#/components/headers/XRequestId'
+            X-Akentros-Pricing-Revision:
+              $ref: '#/components/headers/XPricingRevision'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmbeddingResponse'
         '400':
           $ref: '#/components/responses/PublicError'
         '401':
@@ -335,12 +390,17 @@ components:
       required: false
       description: |
         Prevents a second model execution and double charge for the same API key and
-        payload. Semantics differ from OpenAI, which replays the stored original
-        response for a completed key: Akentros never persists prompts or completions,
-        so it cannot replay content. Sending a key that is currently in progress
-        returns 409 with code `idempotent_request_in_progress`; resending a key
-        whose request already completed returns 409 with code
-        `idempotent_request_replayed` plus the original X-Request-Id. Clients that
+        payload. Semantics depend on the key's opt-in replay window
+        (idempotency_replay_ttl_seconds). With the window at 0 (default), Akentros
+        never persists prompts or completions and cannot replay content: resending a
+        key whose request already completed returns 409 with code
+        `idempotent_request_replayed` plus the original X-Request-Id. With an
+        opt-in window greater than zero, successful responses (JSON and SSE) are
+        stored for that long, and resending a completed key with an identical body
+        replays the stored response (X-Akentros-Idempotent-Replay: true) without a
+        second execution or charge. Sending a key that is currently in progress
+        returns 409 with code `idempotent_request_in_progress`; reusing a key with a
+        different body returns 409 with code `idempotency_conflict`. Clients that
         rely on OpenAI-style idempotent replay should treat these 409 responses
         as terminal outcomes rather than retriable errors.
       schema:
@@ -691,6 +751,78 @@ components:
         usage:
           $ref: '#/components/schemas/TokenUsage'
 
+    EmbeddingRequest:
+      type: object
+      required: [model, input]
+      additionalProperties: false
+      properties:
+        model:
+          type: string
+        input:
+          oneOf:
+            - type: string
+              minLength: 1
+              maxLength: 100000
+            - type: array
+              minItems: 1
+              maxItems: 2048
+              items:
+                type: string
+                minLength: 1
+                maxLength: 100000
+        dimensions:
+          type: integer
+          minimum: 1
+          maximum: 3072
+          description: Optional reduced dimensionality; upstream models may reject unsupported values.
+        encoding_format:
+          type: string
+          enum: [float, base64]
+          default: float
+
+    EmbeddingResponse:
+      type: object
+      required: [object, data, model, usage]
+      additionalProperties: false
+      properties:
+        object:
+          const: list
+        data:
+          type: array
+          items:
+            type: object
+            required: [object, index, embedding]
+            additionalProperties: false
+            properties:
+              object:
+                const: embedding
+              index:
+                type: integer
+                minimum: 0
+              embedding:
+                oneOf:
+                  - type: array
+                    items:
+                      type: number
+                  - type: string
+                    description: Base64-encoded vector when encoding_format is base64.
+        model:
+          type: string
+        usage:
+          type: object
+          required: [prompt_tokens, total_tokens]
+          additionalProperties: false
+          properties:
+            prompt_tokens:
+              type: integer
+              minimum: 0
+            total_tokens:
+              type: integer
+              minimum: 0
+          description: |
+            Embeddings billing covers input tokens only; completion tokens do
+            not exist for this endpoint and are omitted from usage.
+
     ApiKeyMetadata:
       type: object
       required:
@@ -739,6 +871,10 @@ components:
           type: integer
           minimum: 0
           description: Points cumulatively consumed by successful requests using this key.
+        idempotency_replay_ttl_seconds:
+          type: integer
+          minimum: 0
+          description: Opt-in idempotent replay window in seconds; 0 disables response storage.
         is_active:
           type: boolean
         expires_at:
@@ -797,6 +933,17 @@ components:
             - string
             - "null"
           description: Maximum cumulative spend in USD; null means unlimited.
+        idempotency_replay_ttl_seconds:
+          type: integer
+          minimum: 0
+          maximum: 604800
+          default: 0
+          description: |
+            Opt-in idempotent replay window in seconds. When greater than zero,
+            successful responses (JSON and SSE) are stored for this long and a
+            retry with the same Idempotency-Key and identical body replays the
+            stored response instead of re-executing; 0 keeps the default
+            no-storage semantics (completed keys return 409).
         expires_at:
           type: [string, 'null']
           format: date-time
@@ -942,6 +1089,12 @@ components:
         error_code:
           type: [string, 'null']
           description: Stable public Akentros error code; internal execution codes are never returned.
+        replay_of_request_id:
+          type: [string, 'null']
+          description: |
+            Set only on status=replayed rows: the request ID whose stored
+            response was replayed. Replayed rows carry zero tokens and zero
+            cost and never appear here as executions.
         pricing_revision:
           type: [string, 'null']
           description: Present only on request-detail responses.

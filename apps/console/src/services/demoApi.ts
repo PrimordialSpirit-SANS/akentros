@@ -39,6 +39,7 @@ interface DemoApiKey {
   revoked_at: string | null;
   spend_limit_usd: string | null;
   spend_used_usd: string;
+  idempotency_replay_ttl_seconds: number;
 }
 
 interface DemoLog {
@@ -119,6 +120,7 @@ const state = {
       revoked_at: null,
       spend_limit_usd: null,
       spend_used_usd: "108.600000",
+      idempotency_replay_ttl_seconds: 0,
     },
     {
       id: "key_demo_staging",
@@ -135,6 +137,7 @@ const state = {
       revoked_at: null,
       spend_limit_usd: "50.000000",
       spend_used_usd: "3.540000",
+      idempotency_replay_ttl_seconds: 3600,
     },
   ] as DemoApiKey[],
   logs: [
@@ -508,6 +511,7 @@ async function handleDeveloperRequest(pathname: string, request: Request): Promi
       typeof body.spend_limit_usd === "string" && body.spend_limit_usd !== ""
         ? Number(body.spend_limit_usd).toFixed(6)
         : null;
+    const replayTtl = Number(body.idempotency_replay_ttl_seconds);
     const secret = `sk-akentros-live_${randomHex(32)}`;
     const key: DemoApiKey = {
       id: `key_demo_${randomHex(8)}`,
@@ -524,6 +528,8 @@ async function handleDeveloperRequest(pathname: string, request: Request): Promi
       revoked_at: null,
       spend_limit_usd: spendLimitUsd,
       spend_used_usd: "0.000000",
+      idempotency_replay_ttl_seconds:
+        Number.isSafeInteger(replayTtl) && replayTtl > 0 && replayTtl <= 604800 ? replayTtl : 0,
     };
     state.keys.unshift(key);
     return json({ key, api_key: secret });

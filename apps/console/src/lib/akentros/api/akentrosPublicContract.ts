@@ -68,6 +68,7 @@ const REQUEST_STATUSES = new Set<AkentrosRequestStatus>([
   "rejected",
   "refunded",
   "needs_reconciliation",
+  "replayed",
 ]);
 
 const FINISH_REASONS = new Set(["stop", "length", "content_filter"]);
@@ -181,6 +182,7 @@ function normalizeUsageLog(value: unknown): AkentrosUsageLog {
     refunded_usd: String(number(record.refunded_usd)),
     latency_ms: nullableNumber(record.latency_ms),
     error_code: normalizeAkentrosUsageErrorCode(record.error_code),
+    replay_of_request_id: nullableText(record.replay_of_request_id),
   };
 }
 

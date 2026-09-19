@@ -10,6 +10,7 @@ import { createAkentrosBillingStore } from "@akentros/core/billing";
 import type { AkentrosRuntimeEnv } from "../types.ts";
 import { ensureAiSchema } from "./aiSchema.ts";
 import { createAkentrosQuery, dbQuery } from "./db.ts";
+import { recordAkentrosSettlement } from "./metrics.ts";
 
 const stores = new Map<string, ReturnType<typeof createAkentrosBillingStore>>();
 
@@ -39,8 +40,13 @@ export const readAkentrosBilling = (env: AkentrosRuntimeEnv, requestId: string) 
   withStore(env, (store) => store.read(requestId));
 export const markAkentrosDispatched = (env: AkentrosRuntimeEnv, requestId: string) =>
   withStore(env, (store) => store.markDispatched(requestId));
-export const settleAkentrosSpend = (env: AkentrosRuntimeEnv, input: AkentrosBillingSettleInput) =>
-  withStore(env, (store) => store.settle(input));
+// 結算成功後累計 tokens/spend 指標(供 /metrics 輸出)。settle 失敗時拋錯,
+// 不會記入——指標只反映實際落帳的金額與用量。
+export const settleAkentrosSpend = async (env: AkentrosRuntimeEnv, input: AkentrosBillingSettleInput) => {
+  const result = await withStore(env, (store) => store.settle(input));
+  recordAkentrosSettlement(input);
+  return result;
+};
 export const refundAkentrosSpend = (env: AkentrosRuntimeEnv, input: AkentrosBillingRefundInput) =>
   withStore(env, (store) => store.refund(input));
 export const markAkentrosNeedsReconciliation = (

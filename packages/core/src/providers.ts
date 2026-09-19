@@ -217,6 +217,13 @@ function cloudflareRequestBody(body: any) {
   return { ...request, ...(maxTokens ? { max_tokens: maxTokens } : {}), stream };
 }
 
+// Embeddings 上游請求體:僅把公開模型 ID 換成上游模型,其餘欄位(input、
+// dimensions、encoding_format)已由 core 的 prepare 驗證過,原樣轉發。
+function embeddingsUpstreamBody(body: any, route: any) {
+  const { model: _publicModel, ...request } = body || {};
+  return { ...request, model: route.upstream_model };
+}
+
 function anthropicTextBlocks(content: unknown) {
   if (typeof content === "string" && content) return [{ type: "text", text: content }];
   return [];
@@ -545,7 +552,7 @@ function anthropicSseToOpenAiStream(source: ReadableStream<Uint8Array>, provider
   });
 }
 
-export function buildProviderRequest({ route, pool, credential, body }: any) {
+export function buildProviderRequest({ route, pool, credential, body, endpoint = "chat.completions" }: any) {
   const provider = requiredString(route?.provider, "route.provider");
   if (provider !== pool?.provider || provider !== credential?.provider) {
     throw new TypeError("Provider route, pool, and credential do not match.");
@@ -563,18 +570,31 @@ export function buildProviderRequest({ route, pool, credential, body }: any) {
   if (apiStyle === "openai-compatible") {
     const apiKey = requiredString(credential.secrets?.api_key, "provider api key");
     headers.authorization = `Bearer ${apiKey}`;
-    url = `${baseUrl}/chat/completions`;
-    requestBody = upstreamBody(body, route, stream, {
-      maxTokensField: MAX_COMPLETION_TOKENS_PROVIDERS.has(provider) ? "max_completion_tokens" : "max_tokens",
-      streamOptionsUsage: !NO_STREAM_OPTIONS_PROVIDERS.has(provider),
-    });
+    if (endpoint === "embeddings") {
+      url = `${baseUrl}/embeddings`;
+      requestBody = embeddingsUpstreamBody(body, route);
+    } else {
+      url = `${baseUrl}/chat/completions`;
+      requestBody = upstreamBody(body, route, stream, {
+        maxTokensField: MAX_COMPLETION_TOKENS_PROVIDERS.has(provider)
+          ? "max_completion_tokens"
+          : "max_tokens",
+        streamOptionsUsage: !NO_STREAM_OPTIONS_PROVIDERS.has(provider),
+      });
+    }
   } else if (apiStyle === "anthropic-messages") {
+    if (endpoint === "embeddings") {
+      throw new RangeError("Provider does not support the embeddings API.");
+    }
     const apiKey = requiredString(credential.secrets?.api_key, "provider api key");
     headers["x-api-key"] = apiKey;
     headers["anthropic-version"] = "2023-06-01";
     url = `${baseUrl}/messages`;
     requestBody = anthropicRequestBody(body, route, stream);
   } else if (apiStyle === "cloudflare-rest" && provider === "cloudflare-workers-ai") {
+    if (endpoint === "embeddings") {
+      throw new RangeError("Provider does not support the embeddings API.");
+    }
     const apiToken = requiredString(credential.secrets?.api_token, "Cloudflare API token");
     const accountId = requiredString(credential.secrets?.account_id, "Cloudflare account ID");
     headers.authorization = `Bearer ${apiToken}`;
@@ -720,6 +740,59 @@ async function readJsonBody(response: Response): Promise<any> {
     reader.releaseLock();
   }
   return JSON.parse(text);
+}
+
+// OpenAI embeddings 端點的回應正規化:usage 只含 prompt_tokens/total_tokens
+// (無 completion_tokens),輸出 token 恆為 0,計費僅按輸入。embedding 向量
+// 本體為數字陣列或 base64 字串(encoding_format=base64),原樣轉發。
+function normalizeOpenAiEmbeddings(provider: string, payload: any, response: Response) {
+  if (payload?.error) {
+    throw new AkentrosProviderError("The upstream provider failed after accepting the request.", {
+      provider,
+      status: Number(payload.error.code) || 502,
+      category: "embedded_provider_error",
+      retryable: false,
+      fallbackAllowed: false,
+      usageUnknown: true,
+      responseStarted: true,
+      upstreamRequestId: upstreamRequestId(response) || payload?.id || null,
+    });
+  }
+  if (!payload || !Array.isArray(payload.data)) {
+    throw new AkentrosProviderError("The upstream provider returned an invalid response.", {
+      provider,
+      category: "invalid_provider_response",
+      fallbackAllowed: false,
+      responseStarted: true,
+      usageUnknown: true,
+      upstreamRequestId: upstreamRequestId(response),
+    });
+  }
+  const promptTokens = Number(payload.usage?.prompt_tokens);
+  const usage =
+    Number.isSafeInteger(promptTokens) && promptTokens >= 0
+      ? normalizeProviderUsage({
+          prompt_tokens: promptTokens,
+          completion_tokens: 0,
+          total_tokens: promptTokens,
+        })
+      : null;
+  const normalizedPayload = { ...payload };
+  if (usage) {
+    normalizedPayload.usage = {
+      prompt_tokens: usage.prompt_tokens,
+      total_tokens: usage.total_tokens,
+    };
+  } else {
+    delete normalizedPayload.usage;
+  }
+  return {
+    payload: normalizedPayload,
+    inputTokens: usage?.prompt_tokens ?? 0,
+    outputTokens: 0,
+    usageSource: usage ? "provider" : "estimated",
+    upstreamRequestId: upstreamRequestId(response) || payload.id || null,
+  };
 }
 
 function normalizeOpenAiCompletion(provider: string, payload: any, response: Response) {
@@ -897,6 +970,7 @@ export async function invokeProviderRoute({
   pool,
   credential,
   body,
+  endpoint = "chat.completions",
   fetchImpl = globalThis.fetch,
   signal,
   cloudflareAiBinding,
@@ -914,7 +988,7 @@ export async function invokeProviderRoute({
     });
   }
   if (typeof fetchImpl !== "function") throw new TypeError("A fetch implementation is required.");
-  const request = buildProviderRequest({ route, pool, credential, body });
+  const request = buildProviderRequest({ route, pool, credential, body, endpoint });
   const timeout = timeoutSignal(asNonNegativeInteger(route.timeout_ms, 60_000), signal);
   let response: Response;
   try {
@@ -995,11 +1069,13 @@ export async function invokeProviderRoute({
     timeout.dispose();
   }
   const normalized =
-    route.provider === "cloudflare-workers-ai"
-      ? normalizeCloudflareCompletion(payload, route, response)
-      : pool.api_style === "anthropic-messages"
-        ? normalizeAnthropicCompletion(payload, route, response)
-        : normalizeOpenAiCompletion(route.provider, payload, response);
+    endpoint === "embeddings"
+      ? normalizeOpenAiEmbeddings(route.provider, payload, response)
+      : route.provider === "cloudflare-workers-ai"
+        ? normalizeCloudflareCompletion(payload, route, response)
+        : pool.api_style === "anthropic-messages"
+          ? normalizeAnthropicCompletion(payload, route, response)
+          : normalizeOpenAiCompletion(route.provider, payload, response);
   return { stream: false, provider: route.provider, ...normalized };
 }
 

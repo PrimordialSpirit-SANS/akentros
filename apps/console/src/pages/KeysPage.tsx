@@ -10,6 +10,7 @@ import type { AkentrosApiKey } from "../lib/akentros/types";
 import { formatAkentrosTimestamp, formatUsd } from "../lib/akentros/utils/formatAkentros";
 
 const MIN_KEY_TTL_MS = 60 * 60 * 1000;
+const MAX_REPLAY_TTL_HOURS = 168; // 7 天,與後端上限一致
 
 function toDateTimeLocalValue(date: Date): string {
   const pad = (value: number) => String(value).padStart(2, "0");
@@ -27,6 +28,13 @@ function formatKeyExpiry(value: string | null): string {
   return value ? formatAkentrosTimestamp(value) : "永不過期";
 }
 
+function formatReplayTtl(seconds: number | undefined): string {
+  const ttl = Number(seconds || 0);
+  if (ttl <= 0) return "關閉";
+  const hours = ttl / 3600;
+  return Number.isInteger(hours) ? `${hours} 小時` : `${hours.toFixed(1)} 小時`;
+}
+
 export function KeysPage() {
   const [keys, setKeys] = React.useState<AkentrosApiKey[]>([]);
   const [loading, setLoading] = React.useState(true);
@@ -36,6 +44,8 @@ export function KeysPage() {
   const [expiryValue, setExpiryValue] = React.useState(defaultKeyExpiryValue);
   const [pointLimitMode, setPointLimitMode] = React.useState<"unlimited" | "limited">("unlimited");
   const [pointLimitValue, setPointLimitValue] = React.useState("50.00");
+  const [replayMode, setReplayMode] = React.useState<"off" | "on">("off");
+  const [replayHours, setReplayHours] = React.useState("24");
   const [secret, setSecret] = React.useState("");
   const [busy, setBusy] = React.useState("");
   const [pendingRevoke, setPendingRevoke] = React.useState<AkentrosApiKey | null>(null);
@@ -80,6 +90,16 @@ export function KeysPage() {
       spendLimitUsd = amount.toFixed(2);
     }
 
+    let replayTtlSeconds = 0;
+    if (replayMode === "on") {
+      const hours = Number(replayHours);
+      if (!Number.isFinite(hours) || hours <= 0 || hours > MAX_REPLAY_TTL_HOURS) {
+        setError(`冪等重放時限必須是 1 到 ${MAX_REPLAY_TTL_HOURS} 小時(7 天)。`);
+        return;
+      }
+      replayTtlSeconds = Math.round(hours * 3600);
+    }
+
     setBusy("create");
     setError("");
     try {
@@ -87,6 +107,7 @@ export function KeysPage() {
         name: name.trim(),
         expires_at: expiresAt,
         spend_limit_usd: spendLimitUsd,
+        idempotency_replay_ttl_seconds: replayTtlSeconds,
       });
       setSecret(result.api_key);
       await reload();
@@ -219,6 +240,46 @@ export function KeysPage() {
               <small>不限制此金鑰可累積消費的金額。</small>
             )}
           </div>
+          <div className="field">
+            <span>冪等重放</span>
+            <fieldset className="choice" aria-label="冪等重放">
+              <button
+                type="button"
+                className={replayMode === "off" ? "active" : ""}
+                onClick={() => setReplayMode("off")}
+              >
+                關閉(預設)
+              </button>
+              <button
+                type="button"
+                className={replayMode === "on" ? "active" : ""}
+                onClick={() => setReplayMode("on")}
+              >
+                落地並重放
+              </button>
+            </fieldset>
+            {replayMode === "on" ? (
+              <>
+                <input
+                  className="input"
+                  aria-label="冪等重放時限(小時)"
+                  type="number"
+                  min={1}
+                  max={MAX_REPLAY_TTL_HOURS}
+                  step="1"
+                  value={replayHours}
+                  onChange={(event) => setReplayHours(event.target.value)}
+                  required
+                />
+                <small>
+                  成功回應會以此時限落地(最長 7 天),同金鑰的 Idempotency-Key
+                  重送且請求體一致時直接重放,不會重複計費。
+                </small>
+              </>
+            ) : (
+              <small>不落地回應;完成鍵重送會回 409,請求內容不會被保存。</small>
+            )}
+          </div>
         </div>
         <div
           style={{
@@ -289,6 +350,7 @@ export function KeysPage() {
                     消費 {formatUsd(key.spend_used_usd)} /{" "}
                     {key.spend_limit_usd == null ? "無限制" : formatUsd(key.spend_limit_usd)}
                   </span>
+                  <span>冪等重放 {formatReplayTtl(key.idempotency_replay_ttl_seconds)}</span>
                 </div>
                 <div className="key-actions">
                   <button

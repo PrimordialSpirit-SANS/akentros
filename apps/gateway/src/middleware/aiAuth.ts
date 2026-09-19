@@ -92,3 +92,24 @@ export function requireAiScope(scope: string) {
     await next();
   };
 }
+
+// 任一 scope 即放行。embeddings 端點以 "embeddings" OR "chat:completions" 判定:
+// 既有金鑰僅有 chat:completions 時不必換鑰即可用 embeddings(向後相容),
+// 新金鑰則由 AKENTROS_DEFAULT_SCOPES 直接取得 embeddings。
+export function requireAnyAiScope(...scopes: string[]) {
+  return async (c: AkentrosContext, next: AkentrosNext) => {
+    const granted = c.get("aiKey")?.scopes || [];
+    if (!scopes.some((scope) => granted.includes(scope))) {
+      return sendOpenAiError(
+        c,
+        new AkentrosError("The API key does not grant this operation.", {
+          status: 403,
+          type: "permission_error",
+          code: "insufficient_scope",
+        }),
+        c.get("aiRequestId"),
+      );
+    }
+    await next();
+  };
+}

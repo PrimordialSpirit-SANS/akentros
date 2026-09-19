@@ -1,11 +1,14 @@
 import { parseUsdToMicros, usdMicrosToDecimalString } from "./pricing.ts";
 
 const AKENTROS_API_KEY_PATTERN = /^sk-akentros-(live|test)_[A-Za-z0-9_-]{40,}$/;
-export const AKENTROS_DEFAULT_SCOPES = Object.freeze(["chat:completions", "models:read"]);
+export const AKENTROS_DEFAULT_SCOPES = Object.freeze(["chat:completions", "embeddings", "models:read"]);
 export const AKENTROS_MAX_ACTIVE_KEYS = 10;
 export const AKENTROS_MIN_KEY_TTL_MS = 60 * 60 * 1000;
 
 const MAX_BIGINT_ID = 9_223_372_036_854_775_807n;
+// 冪等重放 TTL 上限:7 天。0 = 關閉(完成鍵重送回 409,OpenAI 相容的
+// 「不落地回應」預設立場)。
+export const AKENTROS_MAX_IDEMPOTENCY_REPLAY_TTL_SECONDS = 604_800;
 const ALLOWED_OPTION_KEYS = new Set([
   "name",
   "environment",
@@ -14,6 +17,7 @@ const ALLOWED_OPTION_KEYS = new Set([
   "max_in_flight",
   "spend_limit_usd",
   "expires_at",
+  "idempotency_replay_ttl_seconds",
 ]);
 const AI_SERVICE_ALIASES = new Set(["/developer", "/developer/ai-api", "#ai-api"]);
 
@@ -171,6 +175,12 @@ export function normalizeAkentrosKeyOptions(options: any, enabledModelIds: strin
     expiresAt = parsedExpiry.toISOString();
   }
 
+  const idempotencyReplayTtlSeconds = optionalBoundedInteger(
+    options.idempotency_replay_ttl_seconds,
+    "idempotency_replay_ttl_seconds",
+    { minimum: 0, maximum: AKENTROS_MAX_IDEMPOTENCY_REPLAY_TTL_SECONDS, fallback: 0 },
+  )!;
+
   return {
     name,
     environment,
@@ -179,6 +189,7 @@ export function normalizeAkentrosKeyOptions(options: any, enabledModelIds: strin
     maxInFlight,
     spendLimitUsdMicros,
     expiresAt,
+    idempotencyReplayTtlSeconds,
   };
 }
 
@@ -207,6 +218,7 @@ export function serializeAkentrosApiKey(row: any) {
     spend_limit_usd:
       row.spend_limit_usd_micros == null ? null : usdMicrosToDecimalString(row.spend_limit_usd_micros),
     spend_used_usd: usdMicrosToDecimalString(row.spend_used_usd_micros || 0),
+    idempotency_replay_ttl_seconds: Number(row.idempotency_replay_ttl_seconds || 0),
     is_active: Boolean(row.is_active),
     expires_at: normalizeTimestamp(row.expires_at),
     last_used_at: normalizeTimestamp(row.last_used_at),

@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "pricing_revision": "2026-09-14.1",
-  "updated_at": "2026-09-14",
+  "pricing_revision": "2026-09-19.1",
+  "updated_at": "2026-09-19",
   "billing_disclaimer": "點數依實際輸入與輸出 Token 計算，每次請求至少扣 1 點。",
   "models": [
     {
@@ -400,6 +400,48 @@
       "billing": {
         "input_usd_per_million_tokens": "0.42",
         "output_usd_per_million_tokens": "3.00",
+        "minimum_charge_usd": "0.0001"
+      }
+    },
+    {
+      "id": "akentros/text-embedding-3-small",
+      "display_name": "Text Embedding 3 Small",
+      "owner": "OpenAI",
+      "owner_brand_asset_id": "openai",
+      "description": "OpenAI 高性價比文字向量模型,適合語意搜尋、分類與 RAG 檢索;透過 /v1/embeddings 端點使用,僅計輸入 token 費用。",
+      "status": "available",
+      "capabilities": ["embeddings"],
+      "input_modalities": ["text"],
+      "output_modalities": ["embedding"],
+      "context_window_tokens": 8192,
+      "max_output_tokens": 1,
+      "provider_ids": ["openai"],
+      "tags": ["embeddings", "rag", "search"],
+      "official_docs_url": "https://platform.openai.com/docs/models/text-embedding-3-small",
+      "billing": {
+        "input_usd_per_million_tokens": "0.02",
+        "output_usd_per_million_tokens": "0",
+        "minimum_charge_usd": "0.0001"
+      }
+    },
+    {
+      "id": "akentros/text-embedding-3-large",
+      "display_name": "Text Embedding 3 Large",
+      "owner": "OpenAI",
+      "owner_brand_asset_id": "openai",
+      "description": "OpenAI 最高品質文字向量模型,適合需要更高召回率的語意搜尋與 RAG 場景;透過 /v1/embeddings 端點使用,僅計輸入 token 費用。",
+      "status": "available",
+      "capabilities": ["embeddings"],
+      "input_modalities": ["text"],
+      "output_modalities": ["embedding"],
+      "context_window_tokens": 8192,
+      "max_output_tokens": 1,
+      "provider_ids": ["openai"],
+      "tags": ["embeddings", "rag", "search"],
+      "official_docs_url": "https://platform.openai.com/docs/models/text-embedding-3-large",
+      "billing": {
+        "input_usd_per_million_tokens": "0.13",
+        "output_usd_per_million_tokens": "0",
         "minimum_charge_usd": "0.0001"
       }
     }
