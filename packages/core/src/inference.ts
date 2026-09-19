@@ -617,7 +617,8 @@ function publicCompletion(result: any, prepared: any) {
 // 成功回應但 provider 未回報合法 usage 時的保守估計結算:不再進入隔離佇列
 // 等待一小時後全額退款(平台吸收成本),改以「保留時的輸入估計 + 實際輸出
 // 長度」計費並標記 usage_source='estimated'。settle 的 SQL 以
-// LEAST(actual, reserved) 夾制,估計永不超過原保留額,維持絕不多收立場。
+// MIN(CAST(actual AS INTEGER), reserved) 夾制,估計永不超過原保留額,
+// 維持絕不多收立場。
 // 輸出以 ~4 字元/token 估計並加固定開銷,確保空回應也計入最低成本。
 function estimateOutputTokensFromChars(chars: any) {
   return Math.ceil(Number(chars || 0) / 4) + 8;
