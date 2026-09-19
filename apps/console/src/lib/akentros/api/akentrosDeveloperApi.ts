@@ -1,30 +1,30 @@
 import { apiFetch, getExternalDeveloperApiBase } from "../../../services/api";
 import type {
-  BeaconApiKey,
-  BeaconKeyCreateOptions,
-  BeaconKeyMutationResult,
-  BeaconLogsPage,
-  BeaconLogsQuery,
-  BeaconPublicErrorCode,
-  BeaconRequestDetail,
-  BeaconUsageSummary,
+  AkentrosApiKey,
+  AkentrosKeyCreateOptions,
+  AkentrosKeyMutationResult,
+  AkentrosLogsPage,
+  AkentrosLogsQuery,
+  AkentrosPublicErrorCode,
+  AkentrosRequestDetail,
+  AkentrosUsageSummary,
 } from "../types";
 import {
-  normalizeBeaconError,
-  normalizeBeaconLogsPage,
-  normalizeBeaconRequestDetail,
-  normalizeBeaconUsageSummary,
-} from "./beaconPublicContract";
+  normalizeAkentrosError,
+  normalizeAkentrosLogsPage,
+  normalizeAkentrosRequestDetail,
+  normalizeAkentrosUsageSummary,
+} from "./akentrosPublicContract";
 
 const DEVELOPER_ROOT = "/ai/developer";
 
-export class BeaconApiError extends Error {
+export class AkentrosApiError extends Error {
   readonly status: number;
-  readonly code: BeaconPublicErrorCode | null;
+  readonly code: AkentrosPublicErrorCode | null;
 
-  constructor(message: string, status: number, code: BeaconPublicErrorCode | null = null) {
+  constructor(message: string, status: number, code: AkentrosPublicErrorCode | null = null) {
     super(message);
-    this.name = "BeaconApiError";
+    this.name = "AkentrosApiError";
     this.status = status;
     this.code = code;
   }
@@ -43,16 +43,16 @@ async function readJson<T>(response: Response): Promise<T> {
   }
 
   if (!response.ok) {
-    const error = normalizeBeaconError(payload, {
+    const error = normalizeAkentrosError(payload, {
       status: response.status,
       context: "developer",
     });
-    throw new BeaconApiError(error.message, response.status, error.code);
+    throw new AkentrosApiError(error.message, response.status, error.code);
   }
 
   if (payload === null) {
-    const error = normalizeBeaconError(null, { fallbackCode: "invalid_response" });
-    throw new BeaconApiError(error.message, response.status, error.code);
+    const error = normalizeAkentrosError(null, { fallbackCode: "invalid_response" });
+    throw new AkentrosApiError(error.message, response.status, error.code);
   }
 
   return payload as T;
@@ -67,8 +67,8 @@ async function developerFetch(path: string, init: RequestInit): Promise<Response
     return await apiFetch(`${DEVELOPER_ROOT}${path}`, init);
   } catch (cause) {
     if (init.signal?.aborted || isAbortError(cause)) throw cause;
-    const error = normalizeBeaconError(null, { fallbackCode: "connection_error" });
-    throw new BeaconApiError(error.message, 0, error.code);
+    const error = normalizeAkentrosError(null, { fallbackCode: "connection_error" });
+    throw new AkentrosApiError(error.message, 0, error.code);
   }
 }
 
@@ -85,40 +85,40 @@ async function requestJson<T>(path: string, init: RequestInit = {}): Promise<T> 
   return readJson<T>(response);
 }
 
-export function getBeaconPublicApiRoot(): string {
+export function getAkentrosPublicApiRoot(): string {
   const base = getExternalDeveloperApiBase()
     .replace(/\/$/, "")
     .replace(/\/api$/, "");
   return `${base}/api/ai/v1`;
 }
 
-export function getBeaconChatCompletionsUrl(): string {
-  return `${getBeaconPublicApiRoot()}/chat/completions`;
+export function getAkentrosChatCompletionsUrl(): string {
+  return `${getAkentrosPublicApiRoot()}/chat/completions`;
 }
 
-export function getBeaconAccountChatCompletionsPath(): string {
+export function getAkentrosAccountChatCompletionsPath(): string {
   return `${DEVELOPER_ROOT}/chat/completions`;
 }
 
-export async function listBeaconKeys(signal?: AbortSignal): Promise<BeaconApiKey[]> {
-  const payload = await requestJson<{ keys: BeaconApiKey[] }>("/keys", { signal });
+export async function listAkentrosKeys(signal?: AbortSignal): Promise<AkentrosApiKey[]> {
+  const payload = await requestJson<{ keys: AkentrosApiKey[] }>("/keys", { signal });
   return payload.keys;
 }
 
-export async function createBeaconKey(options: BeaconKeyCreateOptions): Promise<BeaconKeyMutationResult> {
-  return requestJson<BeaconKeyMutationResult>("/keys", {
+export async function createAkentrosKey(options: AkentrosKeyCreateOptions): Promise<AkentrosKeyMutationResult> {
+  return requestJson<AkentrosKeyMutationResult>("/keys", {
     method: "POST",
     body: JSON.stringify(options),
   });
 }
 
-export async function rotateBeaconKey(id: string): Promise<BeaconKeyMutationResult> {
-  return requestJson<BeaconKeyMutationResult>(`/keys/${encodeURIComponent(id)}/rotate`, {
+export async function rotateAkentrosKey(id: string): Promise<AkentrosKeyMutationResult> {
+  return requestJson<AkentrosKeyMutationResult>(`/keys/${encodeURIComponent(id)}/rotate`, {
     method: "POST",
   });
 }
 
-export async function revokeBeaconKey(id: string): Promise<void> {
+export async function revokeAkentrosKey(id: string): Promise<void> {
   const response = await developerFetch(`/keys/${encodeURIComponent(id)}`, {
     method: "DELETE",
   });
@@ -127,12 +127,12 @@ export async function revokeBeaconKey(id: string): Promise<void> {
   }
 }
 
-export async function getBeaconUsageSummary(signal?: AbortSignal): Promise<BeaconUsageSummary> {
-  const payload = await requestJson<{ usage: BeaconUsageSummary }>("/usage/summary", { signal });
-  return normalizeBeaconUsageSummary(payload?.usage);
+export async function getAkentrosUsageSummary(signal?: AbortSignal): Promise<AkentrosUsageSummary> {
+  const payload = await requestJson<{ usage: AkentrosUsageSummary }>("/usage/summary", { signal });
+  return normalizeAkentrosUsageSummary(payload?.usage);
 }
 
-export async function listBeaconLogs(query: BeaconLogsQuery, signal?: AbortSignal): Promise<BeaconLogsPage> {
+export async function listAkentrosLogs(query: AkentrosLogsQuery, signal?: AbortSignal): Promise<AkentrosLogsPage> {
   const params = new URLSearchParams();
   if (query.cursor) params.set("cursor", query.cursor);
   if (query.limit) params.set("limit", String(query.limit));
@@ -142,13 +142,13 @@ export async function listBeaconLogs(query: BeaconLogsQuery, signal?: AbortSigna
   if (query.to) params.set("to", query.to);
   const suffix = params.size ? `?${params.toString()}` : "";
   const payload = await requestJson<unknown>(`/logs${suffix}`, { signal });
-  return normalizeBeaconLogsPage(payload);
+  return normalizeAkentrosLogsPage(payload);
 }
 
-export async function getBeaconRequestDetail(
+export async function getAkentrosRequestDetail(
   requestId: string,
   signal?: AbortSignal,
-): Promise<BeaconRequestDetail> {
+): Promise<AkentrosRequestDetail> {
   const payload = await requestJson<unknown>(`/requests/${encodeURIComponent(requestId)}`, { signal });
-  return normalizeBeaconRequestDetail(payload);
+  return normalizeAkentrosRequestDetail(payload);
 }

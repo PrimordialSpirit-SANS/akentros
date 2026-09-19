@@ -1,65 +1,65 @@
 import type {
-  BeaconBillingMarkNeedsReconciliationInput,
-  BeaconBillingQuarantineOptions,
-  BeaconBillingReconcileOptions,
-  BeaconBillingRefundInput,
-  BeaconBillingReserveInput,
-  BeaconBillingSettleInput,
-} from "@beacon/core/billing";
-import { createBeaconBillingStore } from "@beacon/core/billing";
-import type { BeaconRuntimeEnv } from "../types.ts";
+  AkentrosBillingMarkNeedsReconciliationInput,
+  AkentrosBillingQuarantineOptions,
+  AkentrosBillingReconcileOptions,
+  AkentrosBillingRefundInput,
+  AkentrosBillingReserveInput,
+  AkentrosBillingSettleInput,
+} from "@akentros/core/billing";
+import { createAkentrosBillingStore } from "@akentros/core/billing";
+import type { AkentrosRuntimeEnv } from "../types.ts";
 import { ensureAiSchema } from "./aiSchema.ts";
-import { createBeaconQuery, dbQuery } from "./db.ts";
+import { createAkentrosQuery, dbQuery } from "./db.ts";
 
-const stores = new Map<string, ReturnType<typeof createBeaconBillingStore>>();
+const stores = new Map<string, ReturnType<typeof createAkentrosBillingStore>>();
 
-function databaseKey(env: BeaconRuntimeEnv) {
+function databaseKey(env: AkentrosRuntimeEnv) {
   return env?.DATABASE_URL?.trim() || "unconfigured-main";
 }
 
-function billingStore(env: BeaconRuntimeEnv) {
+function billingStore(env: AkentrosRuntimeEnv) {
   const key = databaseKey(env);
   if (!stores.has(key)) {
-    stores.set(key, createBeaconBillingStore(createBeaconQuery(env)));
+    stores.set(key, createAkentrosBillingStore(createAkentrosQuery(env)));
   }
   return stores.get(key);
 }
 
 async function withStore<T>(
-  env: BeaconRuntimeEnv,
-  run: (store: ReturnType<typeof createBeaconBillingStore>) => Promise<T>,
+  env: AkentrosRuntimeEnv,
+  run: (store: ReturnType<typeof createAkentrosBillingStore>) => Promise<T>,
 ): Promise<T> {
   await ensureAiSchema(env);
   return run(billingStore(env)!);
 }
 
-export const reserveBeaconSpend = (env: BeaconRuntimeEnv, input: BeaconBillingReserveInput) =>
+export const reserveAkentrosSpend = (env: AkentrosRuntimeEnv, input: AkentrosBillingReserveInput) =>
   withStore(env, (store) => store.reserve(input));
-export const readBeaconBilling = (env: BeaconRuntimeEnv, requestId: string) =>
+export const readAkentrosBilling = (env: AkentrosRuntimeEnv, requestId: string) =>
   withStore(env, (store) => store.read(requestId));
-export const markBeaconDispatched = (env: BeaconRuntimeEnv, requestId: string) =>
+export const markAkentrosDispatched = (env: AkentrosRuntimeEnv, requestId: string) =>
   withStore(env, (store) => store.markDispatched(requestId));
-export const settleBeaconSpend = (env: BeaconRuntimeEnv, input: BeaconBillingSettleInput) =>
+export const settleAkentrosSpend = (env: AkentrosRuntimeEnv, input: AkentrosBillingSettleInput) =>
   withStore(env, (store) => store.settle(input));
-export const refundBeaconSpend = (env: BeaconRuntimeEnv, input: BeaconBillingRefundInput) =>
+export const refundAkentrosSpend = (env: AkentrosRuntimeEnv, input: AkentrosBillingRefundInput) =>
   withStore(env, (store) => store.refund(input));
-export const markBeaconNeedsReconciliation = (
-  env: BeaconRuntimeEnv,
-  input: BeaconBillingMarkNeedsReconciliationInput,
+export const markAkentrosNeedsReconciliation = (
+  env: AkentrosRuntimeEnv,
+  input: AkentrosBillingMarkNeedsReconciliationInput,
 ) => withStore(env, (store) => store.markNeedsReconciliation(input));
-export const reconcileStaleBeaconReservations = (
-  env: BeaconRuntimeEnv,
-  input: BeaconBillingReconcileOptions = {},
+export const reconcileStaleAkentrosReservations = (
+  env: AkentrosRuntimeEnv,
+  input: AkentrosBillingReconcileOptions = {},
 ) => withStore(env, (store) => store.reconcileStale(input));
-export const resolveQuarantinedBeaconReservations = (
-  env: BeaconRuntimeEnv,
-  input: BeaconBillingQuarantineOptions = {},
+export const resolveQuarantinedAkentrosReservations = (
+  env: AkentrosRuntimeEnv,
+  input: AkentrosBillingQuarantineOptions = {},
 ) => withStore(env, (store) => store.resolveQuarantined(input));
 
 // ai_rate_limit_buckets 以 (api_key_id, window_start) 為鍵逐請求寫入:
 // 分鐘視窗(正數 key id)與免費額度月視窗(負數合成 id)都不會再被讀取,
 // 需定期清除,否則表格無限成長並拖慢熱路徑的 ON CONFLICT upsert。
-export async function cleanupBeaconRateLimitBuckets(env: BeaconRuntimeEnv) {
+export async function cleanupAkentrosRateLimitBuckets(env: AkentrosRuntimeEnv) {
   await ensureAiSchema(env);
   await dbQuery(
     env,

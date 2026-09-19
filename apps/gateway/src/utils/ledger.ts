@@ -1,11 +1,11 @@
-import type { BeaconRuntimeEnv } from "../types.ts";
+import type { AkentrosRuntimeEnv } from "../types.ts";
 import { dbQuery } from "./db.ts";
 
-// 平台層的點數流水帳。Beacon 的計費保留/退款會寫入此表,
+// 平台層的點數流水帳。Akentros 的計費保留/退款會寫入此表,
 // schemaMigration.ts 的部分唯一索引也建立在它之上,所以必須先於 AI schema 存在。
 // 欄位集合以 packages/core/src/billing.ts 的 INSERT 為準。
 
-export async function ensureLedgerSchema(env: BeaconRuntimeEnv): Promise<void> {
+export async function ensureLedgerSchema(env: AkentrosRuntimeEnv): Promise<void> {
   await dbQuery(
     env,
     `
@@ -46,17 +46,17 @@ export async function ensureLedgerSchema(env: BeaconRuntimeEnv): Promise<void> {
   await dbQuery(
     env,
     `
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_ledger_entries_beacon_ai_reservation
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_ledger_entries_akentros_ai_reservation
     ON ledger_entries (source_id, transaction_type)
-    WHERE source_type = 'beacon_ai' AND transaction_type = 'ai_usage_reservation'
+    WHERE source_type = 'akentros_ai' AND transaction_type = 'ai_usage_reservation'
   `,
   );
   await dbQuery(
     env,
     `
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_ledger_entries_beacon_ai_refund
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_ledger_entries_akentros_ai_refund
     ON ledger_entries (source_id, transaction_type)
-    WHERE source_type = 'beacon_ai' AND transaction_type = 'ai_usage_refund'
+    WHERE source_type = 'akentros_ai' AND transaction_type = 'ai_usage_refund'
   `,
   );
 }

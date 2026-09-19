@@ -1,13 +1,13 @@
 import { fileURLToPath } from "node:url";
-import { BEACON_SCHEMA_VERSION } from "@beacon/core/schemaMigration";
+import { AKENTROS_SCHEMA_VERSION } from "@akentros/core/schemaMigration";
 import dotenv from "dotenv";
-import { ensureBeaconSchemaReady, seedBeaconAdminFromEnv } from "../src/utils/bootstrap.ts";
-import { closePostgresClients, installNodeBeaconDbAdapter } from "../src/utils/db.ts";
+import { ensureAkentrosSchemaReady, seedAkentrosAdminFromEnv } from "../src/utils/bootstrap.ts";
+import { closePostgresClients, installNodeAkentrosDbAdapter } from "../src/utils/db.ts";
 
-// 遷移流程(與 Workers DO 首次啟動共用 ensureBeaconSchemaReady/
-// seedBeaconAdminFromEnv,見 src/utils/bootstrap.ts):
+// 遷移流程(與 Workers DO 首次啟動共用 ensureAkentrosSchemaReady/
+// seedAkentrosAdminFromEnv,見 src/utils/bootstrap.ts):
 //   1. point_transactions(AI 計費流水的平台層底表)
-//   2. Beacon schema(版本化遷移)
+//   2. Akentros schema(版本化遷移)
 //   3. users(內建帳號系統)+ 可選管理員種子(ADMIN_EMAIL / ADMIN_PASSWORD)
 
 dotenv.config({
@@ -16,11 +16,11 @@ dotenv.config({
 });
 
 try {
-  await installNodeBeaconDbAdapter();
+  await installNodeAkentrosDbAdapter();
 
-  const { migrated } = await ensureBeaconSchemaReady(process.env);
+  const { migrated } = await ensureAkentrosSchemaReady(process.env);
 
-  const seeded = await seedBeaconAdminFromEnv(process.env);
+  const seeded = await seedAkentrosAdminFromEnv(process.env);
   if (seeded) {
     const adminEmail = process.env.ADMIN_EMAIL?.trim();
     console.log(
@@ -33,11 +33,11 @@ try {
   }
 
   console.log(
-    `Beacon schema is ready at version ${BEACON_SCHEMA_VERSION} ` +
+    `Akentros schema is ready at version ${AKENTROS_SCHEMA_VERSION} ` +
       `(${migrated ? "migrated" : "already ready"}).`,
   );
 } catch (error: any) {
-  console.error("Beacon schema migration failed:", error?.message || error);
+  console.error("Akentros schema migration failed:", error?.message || error);
   process.exitCode = 1;
 } finally {
   await closePostgresClients();

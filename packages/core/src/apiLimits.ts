@@ -1,4 +1,4 @@
-import { BeaconError } from "./openaiErrors.ts";
+import { AkentrosError } from "./openaiErrors.ts";
 
 function rows(result: any): any[] {
   return Array.isArray(result?.rows) ? result.rows : [];
@@ -15,7 +15,7 @@ function positiveInteger(value: unknown, label: string, maximum: number) {
 // SQLite 方言:計數視窗以「分鐘起點的 UTC ISO 字串」為鍵,由呼叫端計算後
 // 綁定;原子性由 transaction(fn) 保證。RPM / max_in_flight 以資料表內的
 // 現值為準(與 authenticate 階段讀到的值可能不同時,以這裡為準)。
-export const BEACON_API_LIMIT_SQL = Object.freeze({
+export const AKENTROS_API_LIMIT_SQL = Object.freeze({
   acquireKey: `
     SELECT rpm_limit, max_in_flight
     FROM ai_api_keys
@@ -69,7 +69,7 @@ function minuteWindowStart(now: number): string {
   return new Date(Math.floor(now / ms) * ms).toISOString();
 }
 
-export function createBeaconApiLimitStore(query: any) {
+export function createAkentrosApiLimitStore(query: any) {
   if (typeof query !== "function") throw new TypeError("A database query function is required.");
   return Object.freeze({
     async acquire({ apiKeyId, requestId, rpmLimit, maxInFlight, leaseTtlMs = 120_000 }: any) {
@@ -80,10 +80,10 @@ export function createBeaconApiLimitStore(query: any) {
       const windowStart = minuteWindowStart(Date.now());
 
       return withTransaction(query, async () => {
-        const keyRows = await query(BEACON_API_LIMIT_SQL.acquireKey, [String(apiKeyId)]);
+        const keyRows = await query(AKENTROS_API_LIMIT_SQL.acquireKey, [String(apiKeyId)]);
         const key: any = rows(keyRows)[0];
         if (!key) {
-          throw new BeaconError("This API key has exceeded its request rate limit.", {
+          throw new AkentrosError("This API key has exceeded its request rate limit.", {
             status: 429,
             type: "rate_limit_error",
             code: "rate_limit_exceeded",
@@ -91,13 +91,13 @@ export function createBeaconApiLimitStore(query: any) {
           });
         }
 
-        const counts = await query(BEACON_API_LIMIT_SQL.activeLeaseCount, [
+        const counts = await query(AKENTROS_API_LIMIT_SQL.activeLeaseCount, [
           String(apiKeyId),
           new Date().toISOString(),
         ]);
         const activeCount = Number(rows(counts)[0]?.active_count || 0);
         if (activeCount >= Number(key.max_in_flight)) {
-          throw new BeaconError("This API key has too many requests in flight.", {
+          throw new AkentrosError("This API key has too many requests in flight.", {
             status: 429,
             type: "rate_limit_error",
             code: "max_in_flight_exceeded",
@@ -105,14 +105,14 @@ export function createBeaconApiLimitStore(query: any) {
           });
         }
 
-        const bucket = await query(BEACON_API_LIMIT_SQL.incrementBucket, [
+        const bucket = await query(AKENTROS_API_LIMIT_SQL.incrementBucket, [
           String(apiKeyId),
           windowStart,
           Number(key.rpm_limit),
         ]);
         const bucketRow: any = rows(bucket)[0];
         if (!bucketRow) {
-          throw new BeaconError("This API key has exceeded its request rate limit.", {
+          throw new AkentrosError("This API key has exceeded its request rate limit.", {
             status: 429,
             type: "rate_limit_error",
             code: "rate_limit_exceeded",
@@ -120,15 +120,15 @@ export function createBeaconApiLimitStore(query: any) {
           });
         }
 
-        const lease = await query(BEACON_API_LIMIT_SQL.lease, [
+        const lease = await query(AKENTROS_API_LIMIT_SQL.lease, [
           String(requestId),
           String(apiKeyId),
           expiresAt,
         ]);
         const leaseRow: any = rows(lease)[0];
         if (!leaseRow) {
-          await query(BEACON_API_LIMIT_SQL.decrementBucket, [String(apiKeyId), windowStart]);
-          throw new BeaconError("This API key has exceeded its request rate limit.", {
+          await query(AKENTROS_API_LIMIT_SQL.decrementBucket, [String(apiKeyId), windowStart]);
+          throw new AkentrosError("This API key has exceeded its request rate limit.", {
             status: 429,
             type: "rate_limit_error",
             code: "request_already_in_flight",
@@ -141,7 +141,7 @@ export function createBeaconApiLimitStore(query: any) {
     },
 
     async release(requestId: string) {
-      const result = await query(BEACON_API_LIMIT_SQL.release, [new Date().toISOString(), String(requestId)]);
+      const result = await query(AKENTROS_API_LIMIT_SQL.release, [new Date().toISOString(), String(requestId)]);
       return Boolean(rows(result)[0]);
     },
   });

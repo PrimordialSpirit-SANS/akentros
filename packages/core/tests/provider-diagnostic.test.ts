@@ -18,7 +18,7 @@ test("provider diagnostic is offline by default and exposes only public model ID
   });
   const available = listDiagnosticModels();
   assert.ok(available.length > 0);
-  assert.ok(available.every(({ publicModel }: any) => /^beacon\//.test(publicModel)));
+  assert.ok(available.every(({ publicModel }: any) => /^akentros\//.test(publicModel)));
   assert.ok(available.every(({ upstreamModel }: any) => /^@cf\//.test(upstreamModel)));
   assert.ok(available.every(({ route }: any) => route.provider === "cloudflare-workers-ai"));
 });

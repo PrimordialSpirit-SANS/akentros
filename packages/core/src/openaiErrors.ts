@@ -1,4 +1,4 @@
-export interface BeaconErrorOptions {
+export interface AkentrosErrorOptions {
   status?: number;
   type?: string;
   code?: string;
@@ -7,7 +7,7 @@ export interface BeaconErrorOptions {
   expose?: boolean;
 }
 
-export class BeaconError extends Error {
+export class AkentrosError extends Error {
   status: number;
   type: string;
   code: string;
@@ -25,10 +25,10 @@ export class BeaconError extends Error {
       param = null,
       retryAfter = null,
       expose = true,
-    }: BeaconErrorOptions = {},
+    }: AkentrosErrorOptions = {},
   ) {
     super(message);
-    this.name = "BeaconError";
+    this.name = "AkentrosError";
     this.status = status;
     this.type = type;
     this.code = code;
@@ -40,12 +40,12 @@ export class BeaconError extends Error {
 
 export function openAiErrorBody(error: unknown) {
   const safe =
-    error instanceof BeaconError
+    error instanceof AkentrosError
       ? error
-      : new BeaconError("Beacon could not complete the request.", { expose: false });
+      : new AkentrosError("Akentros could not complete the request.", { expose: false });
   return {
     error: {
-      message: safe.expose ? safe.message : "Beacon could not complete the request.",
+      message: safe.expose ? safe.message : "Akentros could not complete the request.",
       type: safe.type,
       param: safe.param ?? null,
       code: safe.code,
@@ -54,7 +54,7 @@ export function openAiErrorBody(error: unknown) {
 }
 
 export function invalidRequest(message: string, param: string | null = null, code = "invalid_request") {
-  return new BeaconError(message, {
+  return new AkentrosError(message, {
     status: 400,
     type: "invalid_request_error",
     code,

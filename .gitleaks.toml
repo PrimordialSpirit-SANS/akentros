@@ -1,23 +1,23 @@
 # gitleaks 設定:本 repo 不應出現任何真實金鑰。
 # 供應商金鑰只允許以「環境變數名稱」(如 OPENROUTER_API_KEY_1)出現於設定與文件。
-# 預設規則集之外,額外攔截 Beacon 金鑰形態的明文。
+# 預設規則集之外,額外攔截 Akentros 金鑰形態的明文。
 
-title = "Beacon Gateway secret scan"
+title = "Akentros Gateway secret scan"
 
 [extend]
 useDefault = true
 
 [[rules]]
-id = "beacon-key-plaintext"
-description = "Beacon API key plaintext"
-regex = '''sk-beacon-(live|test)_[A-Za-z0-9]{16,}'''
-keywords = ["sk-beacon"]
-tags = ["key", "beacon"]
+id = "akentros-key-plaintext"
+description = "Akentros API key plaintext"
+regex = '''sk-akentros-(live|test)_[A-Za-z0-9]{16,}'''
+keywords = ["sk-akentros"]
+tags = ["key", "akentros"]
 
 [allowlist]
 description = "文件中的佔位與遮罩形式"
 regexes = [
-  '''sk-beacon-live_…''',
-  '''sk-beacon-live_…''',
-  '''sk-beacon-(live|test)_(YOUR|xxx|\$\{)''',
+  '''sk-akentros-live_…''',
+  '''sk-akentros-live_…''',
+  '''sk-akentros-(live|test)_(YOUR|xxx|\$\{)''',
 ]

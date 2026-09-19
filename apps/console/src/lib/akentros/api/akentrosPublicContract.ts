@@ -1,65 +1,65 @@
 import type {
-  BeaconLogsPage,
-  BeaconPublicErrorCode,
-  BeaconRequestDetail,
-  BeaconRequestStatus,
-  BeaconStreamChoice,
-  BeaconStreamChunk,
-  BeaconUsageLog,
-  BeaconUsageSummary,
+  AkentrosLogsPage,
+  AkentrosPublicErrorCode,
+  AkentrosRequestDetail,
+  AkentrosRequestStatus,
+  AkentrosStreamChoice,
+  AkentrosStreamChunk,
+  AkentrosUsageLog,
+  AkentrosUsageSummary,
 } from "../types";
 
-type BeaconErrorContext = "developer" | "inference" | "stream";
+type AkentrosErrorContext = "developer" | "inference" | "stream";
 
 interface NormalizeErrorOptions {
   status?: number;
-  context?: BeaconErrorContext;
-  fallbackCode?: BeaconPublicErrorCode;
+  context?: AkentrosErrorContext;
+  fallbackCode?: AkentrosPublicErrorCode;
 }
 
-export interface NormalizedBeaconError {
-  code: BeaconPublicErrorCode;
+export interface NormalizedAkentrosError {
+  code: AkentrosPublicErrorCode;
   message: string;
 }
 
 const ERROR_MESSAGES = Object.freeze({
-  invalid_request: "Beacon 請求內容無效，請檢查後再試。",
-  unsupported_parameter: "請求包含 Beacon 不支援的參數。",
-  unsupported_feature: "指定的 Beacon 功能目前不受支援。",
-  invalid_api_key: "Beacon API 金鑰無效或已失效。",
-  authentication_required: "請先登入以使用 Beacon。",
-  insufficient_scope: "此 API 金鑰尚未取得所需的 Beacon 權限。",
-  access_denied: "目前無法使用此 Beacon 功能。",
-  model_not_found: "找不到指定的 Beacon 模型。",
-  model_not_allowed: "此 API 金鑰未開放指定的 Beacon 模型。",
+  invalid_request: "Akentros 請求內容無效，請檢查後再試。",
+  unsupported_parameter: "請求包含 Akentros 不支援的參數。",
+  unsupported_feature: "指定的 Akentros 功能目前不受支援。",
+  invalid_api_key: "Akentros API 金鑰無效或已失效。",
+  authentication_required: "請先登入以使用 Akentros。",
+  insufficient_scope: "此 API 金鑰尚未取得所需的 Akentros 權限。",
+  access_denied: "目前無法使用此 Akentros 功能。",
+  model_not_found: "找不到指定的 Akentros 模型。",
+  model_not_allowed: "此 API 金鑰未開放指定的 Akentros 模型。",
   spend_limit_exceeded: "此 API 金鑰已達消費上限。",
-  insufficient_balance: "Beacon 餘額不足，無法完成此請求。",
-  free_quota_exceeded: "此 Beacon 免費額度已用完。",
-  rate_limit_exceeded: "Beacon 請求過於頻繁，請稍後再試。",
-  max_in_flight_exceeded: "同時進行的 Beacon 請求已達上限，請稍後再試。",
-  request_cancelled: "Beacon 請求已取消。",
-  service_unavailable: "Beacon 暫時無法完成此請求，請稍後再試。",
-  request_failed: "Beacon 無法完成此請求，請稍後再試。",
-  not_found: "找不到指定的 Beacon 資料。",
-  conflict: "Beacon 無法套用此項變更，請重新整理後再試。",
-  connection_error: "目前無法連線至 Beacon，請稍後再試。",
-  invalid_response: "Beacon 傳回了無法處理的回應。",
-  invalid_stream_payload: "Beacon 傳回了無法解析的串流資料。",
-  invalid_stream_response: "Beacon 未傳回有效的串流資料。",
-  stream_interrupted: "Beacon 串流已中斷，請稍後再試。",
-  stream_truncated: "Beacon 串流在完成前中斷。",
-  AI_KEY_LIMIT: "Beacon 金鑰數量已達上限。",
-  INVALID_AI_KEY_OPTIONS: "Beacon 金鑰設定無效。",
-  AI_KEY_UNAVAILABLE: "Beacon 金鑰管理暫時無法使用。",
-  INVALID_AI_KEY_ID: "Beacon 金鑰識別碼無效。",
-  AI_KEY_NOT_FOUND: "找不到指定的 Beacon 金鑰。",
-  INVALID_AI_USAGE_QUERY: "Beacon 用量查詢條件無效。",
-  AI_USAGE_UNAVAILABLE: "Beacon 用量資料暫時無法使用。",
-  USER_NOT_FOUND: "找不到 Beacon 帳號資料。",
-  AI_REQUEST_NOT_FOUND: "找不到指定的 Beacon 請求。",
-} satisfies Record<BeaconPublicErrorCode, string>);
+  insufficient_balance: "Akentros 餘額不足，無法完成此請求。",
+  free_quota_exceeded: "此 Akentros 免費額度已用完。",
+  rate_limit_exceeded: "Akentros 請求過於頻繁，請稍後再試。",
+  max_in_flight_exceeded: "同時進行的 Akentros 請求已達上限，請稍後再試。",
+  request_cancelled: "Akentros 請求已取消。",
+  service_unavailable: "Akentros 暫時無法完成此請求，請稍後再試。",
+  request_failed: "Akentros 無法完成此請求，請稍後再試。",
+  not_found: "找不到指定的 Akentros 資料。",
+  conflict: "Akentros 無法套用此項變更，請重新整理後再試。",
+  connection_error: "目前無法連線至 Akentros，請稍後再試。",
+  invalid_response: "Akentros 傳回了無法處理的回應。",
+  invalid_stream_payload: "Akentros 傳回了無法解析的串流資料。",
+  invalid_stream_response: "Akentros 未傳回有效的串流資料。",
+  stream_interrupted: "Akentros 串流已中斷，請稍後再試。",
+  stream_truncated: "Akentros 串流在完成前中斷。",
+  AI_KEY_LIMIT: "Akentros 金鑰數量已達上限。",
+  INVALID_AI_KEY_OPTIONS: "Akentros 金鑰設定無效。",
+  AI_KEY_UNAVAILABLE: "Akentros 金鑰管理暫時無法使用。",
+  INVALID_AI_KEY_ID: "Akentros 金鑰識別碼無效。",
+  AI_KEY_NOT_FOUND: "找不到指定的 Akentros 金鑰。",
+  INVALID_AI_USAGE_QUERY: "Akentros 用量查詢條件無效。",
+  AI_USAGE_UNAVAILABLE: "Akentros 用量資料暫時無法使用。",
+  USER_NOT_FOUND: "找不到 Akentros 帳號資料。",
+  AI_REQUEST_NOT_FOUND: "找不到指定的 Akentros 請求。",
+} satisfies Record<AkentrosPublicErrorCode, string>);
 
-const REQUEST_STATUSES = new Set<BeaconRequestStatus>([
+const REQUEST_STATUSES = new Set<AkentrosRequestStatus>([
   "pending_reservation",
   "reserved",
   "dispatched",
@@ -80,11 +80,11 @@ function hasOwn(record: Record<string, unknown>, key: string): boolean {
   return Object.hasOwn(record, key);
 }
 
-function knownErrorCode(value: unknown): BeaconPublicErrorCode | null {
+function knownErrorCode(value: unknown): AkentrosPublicErrorCode | null {
   if (typeof value !== "string") return null;
   const code = value.trim();
   if (!code || code.length > 100) return null;
-  if (hasOwn(ERROR_MESSAGES, code)) return code as BeaconPublicErrorCode;
+  if (hasOwn(ERROR_MESSAGES, code)) return code as AkentrosPublicErrorCode;
 
   return null;
 }
@@ -95,7 +95,7 @@ function payloadErrorCode(payload: unknown): unknown {
   return payload.code;
 }
 
-function statusErrorCode(status: number, context: BeaconErrorContext): BeaconPublicErrorCode {
+function statusErrorCode(status: number, context: AkentrosErrorContext): AkentrosPublicErrorCode {
   if (status === 400 || status === 422) return "invalid_request";
   if (status === 401) {
     return context === "developer" ? "authentication_required" : "invalid_api_key";
@@ -112,10 +112,10 @@ function statusErrorCode(status: number, context: BeaconErrorContext): BeaconPub
   return "request_failed";
 }
 
-export function normalizeBeaconError(
+export function normalizeAkentrosError(
   payload: unknown,
   options: NormalizeErrorOptions = {},
-): NormalizedBeaconError {
+): NormalizedAkentrosError {
   const status = Number.isInteger(options.status) ? Number(options.status) : 0;
   const context = options.context ?? "inference";
   const code =
@@ -123,12 +123,12 @@ export function normalizeBeaconError(
   return { code, message: ERROR_MESSAGES[code] };
 }
 
-export function normalizeBeaconUsageErrorCode(value: unknown): BeaconPublicErrorCode | null {
+export function normalizeAkentrosUsageErrorCode(value: unknown): AkentrosPublicErrorCode | null {
   if (value === null || value === undefined || value === "") return null;
   return knownErrorCode(value) ?? "request_failed";
 }
 
-export function hasBeaconErrorEnvelope(payload: unknown): boolean {
+export function hasAkentrosErrorEnvelope(payload: unknown): boolean {
   if (!isRecord(payload)) return false;
   if (hasOwn(payload, "error") && payload.error !== null && payload.error !== undefined) {
     return true;
@@ -155,13 +155,13 @@ function nullableNumber(value: unknown): number | null {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
 }
 
-function requestStatus(value: unknown): BeaconRequestStatus {
-  return typeof value === "string" && REQUEST_STATUSES.has(value as BeaconRequestStatus)
-    ? (value as BeaconRequestStatus)
+function requestStatus(value: unknown): AkentrosRequestStatus {
+  return typeof value === "string" && REQUEST_STATUSES.has(value as AkentrosRequestStatus)
+    ? (value as AkentrosRequestStatus)
     : "rejected";
 }
 
-function normalizeUsageLog(value: unknown): BeaconUsageLog {
+function normalizeUsageLog(value: unknown): AkentrosUsageLog {
   const record = isRecord(value) ? value : {};
   const requestedModel = text(record.requested_model);
   return {
@@ -171,7 +171,7 @@ function normalizeUsageLog(value: unknown): BeaconUsageLog {
     key_name: nullableText(record.key_name),
     requested_model: requestedModel,
     actual_model: requestedModel,
-    provider: "beacon",
+    provider: "akentros",
     status: requestStatus(record.status),
     input_tokens: number(record.input_tokens),
     output_tokens: number(record.output_tokens),
@@ -180,11 +180,11 @@ function normalizeUsageLog(value: unknown): BeaconUsageLog {
     charged_usd: String(number(record.charged_usd)),
     refunded_usd: String(number(record.refunded_usd)),
     latency_ms: nullableNumber(record.latency_ms),
-    error_code: normalizeBeaconUsageErrorCode(record.error_code),
+    error_code: normalizeAkentrosUsageErrorCode(record.error_code),
   };
 }
 
-export function normalizeBeaconUsageSummary(value: unknown): BeaconUsageSummary {
+export function normalizeAkentrosUsageSummary(value: unknown): AkentrosUsageSummary {
   const record = isRecord(value) ? value : {};
   const freeModelQuotas = isRecord(record.free_model_quotas) ? record.free_model_quotas : {};
   const normalizedFreeModelQuotas = Object.fromEntries(
@@ -207,7 +207,7 @@ export function normalizeBeaconUsageSummary(value: unknown): BeaconUsageSummary 
   };
 }
 
-export function normalizeBeaconLogsPage(value: unknown): BeaconLogsPage {
+export function normalizeAkentrosLogsPage(value: unknown): AkentrosLogsPage {
   const record = isRecord(value) ? value : {};
   const pagination = isRecord(record.pagination) ? record.pagination : {};
   return {
@@ -219,7 +219,7 @@ export function normalizeBeaconLogsPage(value: unknown): BeaconLogsPage {
   };
 }
 
-export function normalizeBeaconRequestDetail(value: unknown): BeaconRequestDetail {
+export function normalizeAkentrosRequestDetail(value: unknown): AkentrosRequestDetail {
   const record = isRecord(value) ? value : {};
   return {
     ...normalizeUsageLog(record),
@@ -230,14 +230,14 @@ export function normalizeBeaconRequestDetail(value: unknown): BeaconRequestDetai
   };
 }
 
-function normalizeStreamChoice(value: unknown, fallbackIndex: number): BeaconStreamChoice | null {
+function normalizeStreamChoice(value: unknown, fallbackIndex: number): AkentrosStreamChoice | null {
   if (!isRecord(value)) return null;
   const delta = isRecord(value.delta) ? value.delta : {};
   const index = Number(value.index);
-  const finishReason: BeaconStreamChoice["finish_reason"] =
+  const finishReason: AkentrosStreamChoice["finish_reason"] =
     typeof value.finish_reason === "string"
       ? FINISH_REASONS.has(value.finish_reason)
-        ? (value.finish_reason as Exclude<BeaconStreamChoice["finish_reason"], null>)
+        ? (value.finish_reason as Exclude<AkentrosStreamChoice["finish_reason"], null>)
         : "stop"
       : null;
   return {
@@ -256,12 +256,12 @@ function normalizeStreamChoice(value: unknown, fallbackIndex: number): BeaconStr
   };
 }
 
-export function normalizeBeaconStreamChunk(value: unknown): BeaconStreamChunk {
+export function normalizeAkentrosStreamChunk(value: unknown): AkentrosStreamChunk {
   const record = isRecord(value) ? value : {};
   const choices = Array.isArray(record.choices)
     ? record.choices
         .map(normalizeStreamChoice)
-        .filter((choice): choice is BeaconStreamChoice => choice !== null)
+        .filter((choice): choice is AkentrosStreamChoice => choice !== null)
     : [];
   const usageRecord = isRecord(record.usage) ? record.usage : null;
   const promptTokens = nullableNumber(usageRecord?.prompt_tokens);

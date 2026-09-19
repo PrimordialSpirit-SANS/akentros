@@ -9,7 +9,7 @@ import { LogsPage } from "./pages/LogsPage";
 import { ModelsPage } from "./pages/ModelsPage";
 import { OverviewPage } from "./pages/OverviewPage";
 import { PlaygroundPage } from "./pages/PlaygroundPage";
-import { isBeaconDemoActive } from "./services/demoApi";
+import { isAkentrosDemoActive } from "./services/demoApi";
 
 function LoginRoute() {
   const { user, loading, setUser } = useSession();
@@ -42,7 +42,7 @@ function LegacyDeveloperRedirect() {
 }
 
 function DemoModeBadge() {
-  if (!isBeaconDemoActive()) return null;
+  if (!isAkentrosDemoActive()) return null;
   return (
     <div className="demo-badge" role="note">
       示範模式・未連接後端

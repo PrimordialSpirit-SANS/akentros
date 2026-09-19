@@ -1,6 +1,6 @@
-import { BeaconError, invalidRequest } from "./openaiErrors.ts";
-import type { BeaconQuery } from "./query.ts";
-import { beaconQueryRows as rows } from "./query.ts";
+import { AkentrosError, invalidRequest } from "./openaiErrors.ts";
+import type { AkentrosQuery } from "./query.ts";
+import { akentrosQueryRows as rows } from "./query.ts";
 
 // 計費對外的型別契約:reserve→settle→refund 狀態機的輸入/輸出與 store
 // 介面。inference runtime 與 gateway 的計費包裝都依賴這些型別,讓「錢」的
@@ -8,10 +8,10 @@ import { beaconQueryRows as rows } from "./query.ts";
 // (requiredString/integerString/…)。
 
 /** 微美元整數的接受形狀:內部一律經 integerString 轉成十進位字串。 */
-export type BeaconMicrosInput = string | number | bigint;
+export type AkentrosMicrosInput = string | number | bigint;
 
 /** normalizeBillingRow 的輸出:計費狀態的權威呈現(所有 store 方法回傳它)。 */
-export interface BeaconBillingRow {
+export interface AkentrosBillingRow {
   requestId: string;
   aiRequestId: string;
   requestFingerprint: string;
@@ -25,7 +25,7 @@ export interface BeaconBillingRow {
   idempotentReplay: boolean;
 }
 
-export interface BeaconBillingReserveInput {
+export interface AkentrosBillingReserveInput {
   requestId: string;
   userId: string | number | bigint;
   apiKeyId: string | number | bigint;
@@ -36,80 +36,80 @@ export interface BeaconBillingReserveInput {
   publicModel: string;
   pricingRevision: string;
   pricingSnapshot?: unknown;
-  reservedCostMicros: BeaconMicrosInput;
+  reservedCostMicros: AkentrosMicrosInput;
   expiresAt: string;
 }
 
-export interface BeaconBillingSettleInput {
+export interface AkentrosBillingSettleInput {
   requestId: string;
-  actualCostMicros: BeaconMicrosInput;
-  inputTokens: BeaconMicrosInput;
-  outputTokens: BeaconMicrosInput;
+  actualCostMicros: AkentrosMicrosInput;
+  inputTokens: AkentrosMicrosInput;
+  outputTokens: AkentrosMicrosInput;
   usageSource?: string;
   status?: "succeeded" | "partially_succeeded";
   totalLatencyMs?: number | null;
 }
 
-export interface BeaconBillingRefundInput {
+export interface AkentrosBillingRefundInput {
   requestId: string;
   reason?: string;
   errorCode?: string;
   httpStatus?: number;
 }
 
-export interface BeaconBillingRefundFromStateInput extends BeaconBillingRefundInput {
+export interface AkentrosBillingRefundFromStateInput extends AkentrosBillingRefundInput {
   fromState: string;
   description: string;
 }
 
-export interface BeaconBillingMarkNeedsReconciliationInput {
+export interface AkentrosBillingMarkNeedsReconciliationInput {
   requestId: string;
   errorCode?: string;
 }
 
-export interface BeaconBillingReconcileOptions {
+export interface AkentrosBillingReconcileOptions {
   limit?: number;
 }
 
-export interface BeaconBillingQuarantineOptions extends BeaconBillingReconcileOptions {
+export interface AkentrosBillingQuarantineOptions extends AkentrosBillingReconcileOptions {
   olderThanMs?: number;
 }
 
 /** 對帳批次中單列的結果:成功是 BillingRow;併發衝突是標記物件。 */
-export type BeaconReconciliationOutcome =
-  | BeaconBillingRow
+export type AkentrosReconciliationOutcome =
+  | AkentrosBillingRow
   | { requestId: string; reservationState: "conflict_resolved_concurrently" };
 
-/** reserve 結果中消費端(inference runtime、runBillableBeaconRequest)實際
- * 讀取的欄位;BeaconBillingRow 為其超集,測試替身可只回傳此最小形狀。 */
-export interface BeaconReservationResult {
+/** reserve 結果中消費端(inference runtime、runBillableAkentrosRequest)實際
+ * 讀取的欄位;AkentrosBillingRow 為其超集,測試替身可只回傳此最小形狀。 */
+export interface AkentrosReservationResult {
   requestId: string;
   idempotentReplay: boolean;
   status?: string;
 }
 
 /**
- * 推論 runtime 與 runBillableBeaconRequest 依賴的計費方法子集。完整的
- * BeaconBillingStore 滿足此介面;測試可注入僅實作被觸發路徑的替身。
+ * 推論 runtime 與 runBillableAkentrosRequest 依賴的計費方法子集。完整的
+ * AkentrosBillingStore 滿足此介面;測試可注入僅實作被觸發路徑的替身。
  */
-export interface BeaconBillableBilling {
-  reserve(input: BeaconBillingReserveInput): Promise<BeaconReservationResult>;
+export interface AkentrosBillableBilling {
+  reserve(input: AkentrosBillingReserveInput): Promise<AkentrosReservationResult>;
   markDispatched(requestId: string): Promise<unknown>;
-  settle(input: BeaconBillingSettleInput): Promise<unknown>;
-  refund(input: BeaconBillingRefundInput): Promise<unknown>;
-  markNeedsReconciliation(input: BeaconBillingMarkNeedsReconciliationInput): Promise<unknown>;
+  settle(input: AkentrosBillingSettleInput): Promise<unknown>;
+  refund(input: AkentrosBillingRefundInput): Promise<unknown>;
+  markNeedsReconciliation(input: AkentrosBillingMarkNeedsReconciliationInput): Promise<unknown>;
 }
 
-export interface BeaconBillingStore {
-  reserve(input: BeaconBillingReserveInput): Promise<BeaconBillingRow>;
-  read(requestId: string): Promise<BeaconBillingRow | null>;
-  markDispatched(requestId: string): Promise<BeaconBillingRow | null>;
-  settle(input: BeaconBillingSettleInput): Promise<BeaconBillingRow>;
-  refund(input: BeaconBillingRefundInput): Promise<BeaconBillingRow>;
-  refundFromState(input: BeaconBillingRefundFromStateInput): Promise<BeaconBillingRow>;
-  markNeedsReconciliation(input: BeaconBillingMarkNeedsReconciliationInput): Promise<BeaconBillingRow | null>;
-  reconcileStale(options?: BeaconBillingReconcileOptions): Promise<BeaconReconciliationOutcome[]>;
-  resolveQuarantined(options?: BeaconBillingQuarantineOptions): Promise<BeaconReconciliationOutcome[]>;
+export interface AkentrosBillingStore {
+  reserve(input: AkentrosBillingReserveInput): Promise<AkentrosBillingRow>;
+  read(requestId: string): Promise<AkentrosBillingRow | null>;
+  markDispatched(requestId: string): Promise<AkentrosBillingRow | null>;
+  settle(input: AkentrosBillingSettleInput): Promise<AkentrosBillingRow>;
+  refund(input: AkentrosBillingRefundInput): Promise<AkentrosBillingRow>;
+  refundFromState(input: AkentrosBillingRefundFromStateInput): Promise<AkentrosBillingRow>;
+  markNeedsReconciliation(input: AkentrosBillingMarkNeedsReconciliationInput): Promise<AkentrosBillingRow | null>;
+  reconcileStale(options?: AkentrosBillingReconcileOptions): Promise<AkentrosReconciliationOutcome[]>;
+  resolveQuarantined(options?: AkentrosBillingQuarantineOptions): Promise<AkentrosReconciliationOutcome[]>;
 }
 
 const DECIMAL_INTEGER = /^(0|[1-9][0-9]*)$/;
@@ -145,7 +145,7 @@ function safeNumber(value: unknown) {
 function normalizeBillingRow(
   row: any,
   idempotentReplay = Boolean(row?.idempotent_replay),
-): BeaconBillingRow | null {
+): AkentrosBillingRow | null {
   if (!row) return null;
   return {
     requestId: String(row.request_id),
@@ -177,7 +177,7 @@ function stableJson(value: any, depth = 0): string {
   return `{${keys.map((key) => `${JSON.stringify(key)}:${stableJson(value[key], depth + 1)}`).join(",")}}`;
 }
 
-export async function createBeaconRequestFingerprint(value: any) {
+export async function createAkentrosRequestFingerprint(value: any) {
   const bytes = new TextEncoder().encode(stableJson(value));
   const digest = await globalThis.crypto.subtle.digest("SHA-256", bytes);
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
@@ -186,7 +186,7 @@ export async function createBeaconRequestFingerprint(value: any) {
 // SQLite 方言:時間戳以 UTC ISO 字串(含毫秒)存 TEXT,由呼叫端綁定;
 // 原子性由 transaction(fn)(BEGIN IMMEDIATE … COMMIT)保證,取代
 // PostgreSQL 時代的單語句資料修改 CTE。
-export const BEACON_BILLING_SQL = Object.freeze({
+export const AKENTROS_BILLING_SQL = Object.freeze({
   read: `
     SELECT requests.id AS ai_request_id, requests.request_id,
            requests.request_fingerprint, requests.status,
@@ -243,7 +243,7 @@ function nowIso() {
 }
 
 function idempotencyConflict() {
-  return new BeaconError("The Idempotency-Key was already used with a different request.", {
+  return new AkentrosError("The Idempotency-Key was already used with a different request.", {
     status: 409,
     type: "invalid_request_error",
     code: "idempotency_conflict",
@@ -252,7 +252,7 @@ function idempotencyConflict() {
 }
 
 function insufficientPoints(requestId: string) {
-  const error = new BeaconError("The account does not have enough points for this request.", {
+  const error = new AkentrosError("The account does not have enough points for this request.", {
     status: 402,
     type: "insufficient_funds_error",
     code: "insufficient_balance",
@@ -262,7 +262,7 @@ function insufficientPoints(requestId: string) {
 }
 
 function pointLimitExceeded(requestId: string) {
-  const error = new BeaconError("This API key has reached its maximum point spend.", {
+  const error = new AkentrosError("This API key has reached its maximum point spend.", {
     status: 402,
     type: "insufficient_funds_error",
     code: "spend_limit_exceeded",
@@ -272,7 +272,7 @@ function pointLimitExceeded(requestId: string) {
 }
 
 function invalidBillingState(message: string) {
-  return new BeaconError(message, {
+  return new AkentrosError(message, {
     status: 409,
     type: "invalid_request_error",
     code: "invalid_billing_state",
@@ -281,20 +281,20 @@ function invalidBillingState(message: string) {
 
 // 執行交易:query 介面可選提供 transaction(fn)(SQLite adapter 有提供;
 // 測試的假 query 沒有時,退回逐語句執行)。
-async function withTransaction<T>(query: BeaconQuery, fn: () => Promise<T>): Promise<T> {
+async function withTransaction<T>(query: AkentrosQuery, fn: () => Promise<T>): Promise<T> {
   if (typeof query?.transaction === "function") {
     return (await query.transaction(fn)) as T;
   }
   return fn();
 }
 
-export function createBeaconBillingStore(query: BeaconQuery): BeaconBillingStore {
+export function createAkentrosBillingStore(query: AkentrosQuery): AkentrosBillingStore {
   if (typeof query !== "function") {
-    throw new TypeError("createBeaconBillingStore requires a database query function.");
+    throw new TypeError("createAkentrosBillingStore requires a database query function.");
   }
 
   async function read(requestId: string) {
-    const result = await query(BEACON_BILLING_SQL.read, [requiredString(requestId, "requestId", 80)]);
+    const result = await query(AKENTROS_BILLING_SQL.read, [requiredString(requestId, "requestId", 80)]);
     return normalizeBillingRow(rows(result)[0], true);
   }
 
@@ -320,7 +320,7 @@ export function createBeaconBillingStore(query: BeaconQuery): BeaconBillingStore
       // 冪等重放:同 (api_key_id, idempotency_key) 已存在時直接回讀,
       // 不建立新請求、不扣點。
       if (idempotencyKey) {
-        const replayed = await query(BEACON_BILLING_SQL.readIdempotency, [apiKeyId, idempotencyKey]);
+        const replayed = await query(AKENTROS_BILLING_SQL.readIdempotency, [apiKeyId, idempotencyKey]);
         const replayRow: any = rows(replayed)[0];
         if (replayRow) {
           if (String(replayRow.request_fingerprint) !== fingerprint) throw idempotencyConflict();
@@ -414,7 +414,7 @@ export function createBeaconBillingStore(query: BeaconQuery): BeaconBillingStore
         const insertedRow: any = rows(inserted)[0];
         if (!insertedRow && idempotencyKey) {
           // 併發下同一冪等鍵剛被別的請求建立:回讀。
-          const replayed = await query(BEACON_BILLING_SQL.readIdempotency, [apiKeyId, idempotencyKey]);
+          const replayed = await query(AKENTROS_BILLING_SQL.readIdempotency, [apiKeyId, idempotencyKey]);
           const replayRow: any = rows(replayed)[0];
           if (!replayRow) throw invalidBillingState("The reservation could not be created.");
           if (String(replayRow.request_fingerprint) !== fingerprint) throw idempotencyConflict();
@@ -462,7 +462,7 @@ export function createBeaconBillingStore(query: BeaconQuery): BeaconBillingStore
                 balance_before, balance_after, transaction_type,
                 source_type, source_id, idempotency_key, description, metadata
               )
-              VALUES (?, ?, ?, 'debit', ?, ?, ?, 'ai_usage_reservation', 'beacon_ai', ?, ?, 'Beacon usage reservation', ?)
+              VALUES (?, ?, ?, 'debit', ?, ?, ?, 'ai_usage_reservation', 'akentros_ai', ?, ?, 'Akentros usage reservation', ?)
             `,
               [
                 userId,
@@ -500,9 +500,9 @@ export function createBeaconBillingStore(query: BeaconQuery): BeaconBillingStore
           false,
         )!;
         if (normalized.errorCode === "invalid_api_key") {
-          // 金鑰在 authenticateBeaconApiKey 與 reserve 之間被撤銷/過期:
+          // 金鑰在 authenticateAkentrosApiKey 與 reserve 之間被撤銷/過期:
           // 應回 401 invalid_api_key,而不是誤標成 402 spend_limit_exceeded。
-          const error = new BeaconError("The Beacon API key is invalid, expired, or revoked.", {
+          const error = new AkentrosError("The Akentros API key is invalid, expired, or revoked.", {
             status: 401,
             type: "authentication_error",
             code: "invalid_api_key",
@@ -520,7 +520,7 @@ export function createBeaconBillingStore(query: BeaconQuery): BeaconBillingStore
 
     async markDispatched(requestId: string) {
       const normalizedId = requiredString(requestId, "requestId", 80);
-      const result = await query(BEACON_BILLING_SQL.dispatch, [nowIso(), nowIso(), normalizedId]);
+      const result = await query(AKENTROS_BILLING_SQL.dispatch, [nowIso(), nowIso(), normalizedId]);
       return normalizeBillingRow(rows(result)[0], false) || (await read(normalizedId));
     },
 
@@ -606,7 +606,7 @@ export function createBeaconBillingStore(query: BeaconQuery): BeaconBillingStore
               balance_before, balance_after, transaction_type,
               source_type, source_id, idempotency_key, description, metadata
             )
-            VALUES (?, ?, ?, 'credit', ?, ?, ?, 'ai_usage_refund', 'beacon_ai', ?, ?, 'Beacon unused reservation refund', ?)
+            VALUES (?, ?, ?, 'credit', ?, ?, ?, 'ai_usage_refund', 'akentros_ai', ?, ?, 'Akentros unused reservation refund', ?)
           `,
             [
               transition.user_id,
@@ -673,7 +673,7 @@ export function createBeaconBillingStore(query: BeaconQuery): BeaconBillingStore
         reason,
         errorCode,
         httpStatus,
-        description: "Beacon reservation refund",
+        description: "Akentros reservation refund",
       });
     },
 
@@ -735,7 +735,7 @@ export function createBeaconBillingStore(query: BeaconQuery): BeaconBillingStore
               balance_before, balance_after, transaction_type,
               source_type, source_id, idempotency_key, description, metadata
             )
-            VALUES (?, ?, ?, 'credit', ?, ?, ?, 'ai_usage_refund', 'beacon_ai', ?, ?, ?, ?)
+            VALUES (?, ?, ?, 'credit', ?, ?, ?, 'ai_usage_refund', 'akentros_ai', ?, ?, ?, ?)
           `,
             [
               transition.user_id,
@@ -811,7 +811,7 @@ export function createBeaconBillingStore(query: BeaconQuery): BeaconBillingStore
 
     async reconcileStale({ limit = 100 }: { limit?: number } = {}) {
       const safeLimit = Math.min(Math.max(Number(limit) || 100, 1), 500);
-      const result = await query(BEACON_BILLING_SQL.stale, [nowIso(), safeLimit]);
+      const result = await query(AKENTROS_BILLING_SQL.stale, [nowIso(), safeLimit]);
       const bounded = rows(result);
       const outcomes: any[] = [];
       for (const stale of bounded) {
@@ -862,7 +862,7 @@ export function createBeaconBillingStore(query: BeaconQuery): BeaconBillingStore
         reason: "quarantine_resolved",
         errorCode: "reservation_expired",
         httpStatus: 504,
-        description: "Beacon quarantined reservation refund",
+        description: "Akentros quarantined reservation refund",
       });
     },
 
@@ -876,7 +876,7 @@ export function createBeaconBillingStore(query: BeaconQuery): BeaconBillingStore
       const safeLimit = Math.min(Math.max(Number(limit) || 100, 1), 500);
       const safeAge = Math.min(Math.max(Number(olderThanMs) || 3_600_000, 60_000), 30 * 86_400_000);
       const cutoff = new Date(Date.now() - safeAge).toISOString();
-      const result = await query(BEACON_BILLING_SQL.quarantinedStale, [cutoff, safeLimit]);
+      const result = await query(AKENTROS_BILLING_SQL.quarantinedStale, [cutoff, safeLimit]);
       const outcomes: any[] = [];
       for (const quarantined of rows(result)) {
         // 同 reconcileStale:單列衝突不中斷整批隔離保留單的自動退款。
@@ -903,33 +903,33 @@ export function createBeaconBillingStore(query: BeaconQuery): BeaconBillingStore
 }
 
 /** providerCall 的預期回傳:usage 來源與實際成本由 provider 端決定。 */
-export interface BeaconBillableProviderResult {
-  actualCostMicros: BeaconMicrosInput;
-  inputTokens: BeaconMicrosInput;
-  outputTokens: BeaconMicrosInput;
+export interface AkentrosBillableProviderResult {
+  actualCostMicros: AkentrosMicrosInput;
+  inputTokens: AkentrosMicrosInput;
+  outputTokens: AkentrosMicrosInput;
   usageSource?: string;
   status?: "succeeded" | "partially_succeeded";
   totalLatencyMs?: number | null;
 }
 
-export async function runBillableBeaconRequest({
+export async function runBillableAkentrosRequest({
   billing,
   reservation,
   providerCall,
 }: {
-  billing: BeaconBillableBilling;
-  reservation: BeaconBillingReserveInput;
-  providerCall: (input: { requestId: string }) => Promise<BeaconBillableProviderResult>;
+  billing: AkentrosBillableBilling;
+  reservation: AkentrosBillingReserveInput;
+  providerCall: (input: { requestId: string }) => Promise<AkentrosBillableProviderResult>;
 }): Promise<
-  | { kind: "idempotent_replay"; billing: BeaconReservationResult }
+  | { kind: "idempotent_replay"; billing: AkentrosReservationResult }
   | {
       kind: "succeeded";
       billing: unknown;
-      provider: BeaconBillableProviderResult;
+      provider: AkentrosBillableProviderResult;
     }
 > {
   if (!billing || typeof billing.reserve !== "function") {
-    throw new TypeError("A Beacon billing store is required.");
+    throw new TypeError("A Akentros billing store is required.");
   }
   if (typeof providerCall !== "function") throw new TypeError("providerCall must be a function.");
 

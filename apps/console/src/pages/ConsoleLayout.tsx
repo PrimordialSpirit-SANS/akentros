@@ -1,10 +1,10 @@
 import React from "react";
 import { Navigate, NavLink, Outlet, useNavigate } from "react-router-dom";
-import { BeaconIcon } from "../components/BeaconIcon";
+import { AkentrosIcon } from "../components/AkentrosIcon";
 import { useSession } from "../components/session";
 import { StateBlock } from "../components/ui";
-import { logoutBeaconAccount } from "../lib/beacon/api/beaconAuthApi";
-import { formatUsd } from "../lib/beacon/utils/formatBeacon";
+import { logoutAkentrosAccount } from "../lib/akentros/api/akentrosAuthApi";
+import { formatUsd } from "../lib/akentros/utils/formatAkentros";
 
 // 控制台外框:側邊欄 + Outlet。未登入時導向 /login。
 
@@ -108,7 +108,7 @@ export function ConsoleLayout() {
 
   const logout = async () => {
     try {
-      await logoutBeaconAccount();
+      await logoutAkentrosAccount();
     } finally {
       // 先清空 context,否則 /login 會因為殘留的 session 被彈回控制台。
       setUser(null);
@@ -120,8 +120,8 @@ export function ConsoleLayout() {
     <div className="shell">
       <aside className="sidebar">
         <NavLink className="sidebar-brand" to="/">
-          <BeaconIcon size={24} />
-          <strong>Beacon</strong>
+          <AkentrosIcon size={24} />
+          <strong>Akentros</strong>
           <small>CONSOLE</small>
         </NavLink>
         <nav className="sidebar-nav" aria-label="控制台導覽">

@@ -1,9 +1,9 @@
-// 極簡 HS256 JWT(簽/驗)。只用於 beacon_token cookie 的會話憑證,
+// 極簡 HS256 JWT(簽/驗)。只用於 akentros_token cookie 的會話憑證,
 // payload 固定為 { sub: userId, exp };不開放任意 claims。
 
 const encoder = new TextEncoder();
 
-interface BeaconJwtPayload {
+interface AkentrosJwtPayload {
   sub: string;
   exp: number;
 }
@@ -27,7 +27,7 @@ async function hmacKey(secret: string) {
   ]);
 }
 
-export async function signBeaconJwt(
+export async function signAkentrosJwt(
   payload: { sub: string },
   secret: string,
   expiresInSeconds: number,
@@ -40,7 +40,7 @@ export async function signBeaconJwt(
   return `${signingInput}.${toBase64Url(new Uint8Array(signature))}`;
 }
 
-export async function verifyBeaconJwt(token: string, secret: string): Promise<BeaconJwtPayload | null> {
+export async function verifyAkentrosJwt(token: string, secret: string): Promise<AkentrosJwtPayload | null> {
   const parts = token.split(".");
   if (parts.length !== 3) return null;
   const [header, body, signature] = parts;
@@ -57,7 +57,7 @@ export async function verifyBeaconJwt(token: string, secret: string): Promise<Be
   }
   if (!valid) return null;
 
-  let payload: BeaconJwtPayload;
+  let payload: AkentrosJwtPayload;
   try {
     const parsed = JSON.parse(new TextDecoder().decode(fromBase64Url(body)));
     if (!parsed || typeof parsed.sub !== "string" || !/^[1-9][0-9]*$/.test(parsed.sub)) return null;

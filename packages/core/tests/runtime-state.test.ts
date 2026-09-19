@@ -1,21 +1,21 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { BEACON_API_LIMIT_SQL, createBeaconApiLimitStore } from "../src/apiLimits.ts";
-import { createBeaconInferenceRuntime, prepareBeaconChatRequest } from "../src/inference.ts";
-import { BEACON_PROVIDER_ATTEMPT_SQL, createBeaconProviderAttemptStore } from "../src/providerAttempts.ts";
+import { AKENTROS_API_LIMIT_SQL, createAkentrosApiLimitStore } from "../src/apiLimits.ts";
+import { createAkentrosInferenceRuntime, prepareAkentrosChatRequest } from "../src/inference.ts";
+import { AKENTROS_PROVIDER_ATTEMPT_SQL, createAkentrosProviderAttemptStore } from "../src/providerAttempts.ts";
 import {
-  BEACON_PROVIDER_POOL_SQL,
-  claimConfiguredBeaconProviderCredential,
-  createBeaconProviderPoolStore,
-  syncBeaconProviderCredentials,
+  AKENTROS_PROVIDER_POOL_SQL,
+  claimConfiguredAkentrosProviderCredential,
+  createAkentrosProviderPoolStore,
+  syncAkentrosProviderCredentials,
 } from "../src/providerPool.ts";
 import { requireProviderPool } from "../src/providers.ts";
-import { migrateBeaconSchema } from "../src/schemaMigration.ts";
+import { migrateAkentrosSchema } from "../src/schemaMigration.ts";
 import { createSqliteTestDb } from "./sqliteTestDb.ts";
 
 async function runtimeFixture() {
   const { query } = createSqliteTestDb();
-  await migrateBeaconSchema(query);
+  await migrateAkentrosSchema(query);
   await query(
     `INSERT INTO users (username, email, password_hash) VALUES ('pool-tester', 'pool@test.local', 'x')`,
   );
@@ -28,17 +28,17 @@ async function runtimeFixture() {
 }
 
 test("API admission contract: bucket upsert, lease insert, bound parameters", () => {
-  assert.match(BEACON_API_LIMIT_SQL.acquireKey, /FROM ai_api_keys/);
-  assert.match(BEACON_API_LIMIT_SQL.activeLeaseCount, /released_at IS NULL/);
-  assert.match(BEACON_API_LIMIT_SQL.incrementBucket, /request_count \+ 1/);
-  assert.match(BEACON_API_LIMIT_SQL.incrementBucket, /request_count < \?/);
-  assert.match(BEACON_API_LIMIT_SQL.lease, /INSERT INTO ai_api_inflight_leases/);
-  assert.match(BEACON_API_LIMIT_SQL.release, /released_at IS NULL/);
+  assert.match(AKENTROS_API_LIMIT_SQL.acquireKey, /FROM ai_api_keys/);
+  assert.match(AKENTROS_API_LIMIT_SQL.activeLeaseCount, /released_at IS NULL/);
+  assert.match(AKENTROS_API_LIMIT_SQL.incrementBucket, /request_count \+ 1/);
+  assert.match(AKENTROS_API_LIMIT_SQL.incrementBucket, /request_count < \?/);
+  assert.match(AKENTROS_API_LIMIT_SQL.lease, /INSERT INTO ai_api_inflight_leases/);
+  assert.match(AKENTROS_API_LIMIT_SQL.release, /released_at IS NULL/);
 });
 
 test("API admission serializes each key and atomically applies RPM and inflight limits", async () => {
   const { query, apiKeyId } = await runtimeFixture();
-  const store = createBeaconApiLimitStore(query);
+  const store = createAkentrosApiLimitStore(query);
 
   const lease = await store.acquire({
     apiKeyId,
@@ -71,7 +71,7 @@ test("API admission serializes each key and atomically applies RPM and inflight 
 test("API admission RPM limit blocks beyond the configured rate", async () => {
   const { query } = await runtimeFixture();
   await query(`UPDATE ai_api_keys SET rpm_limit = 2 WHERE id = 1`);
-  const store = createBeaconApiLimitStore(query);
+  const store = createAkentrosApiLimitStore(query);
   await store.acquire({ apiKeyId: "1", requestId: "req_r1", rpmLimit: 2, maxInFlight: 4 });
   await store.acquire({ apiKeyId: "1", requestId: "req_r2", rpmLimit: 2, maxInFlight: 4 });
   await assert.rejects(
@@ -81,17 +81,17 @@ test("API admission RPM limit blocks beyond the configured rate", async () => {
 });
 
 test("provider pool is lease-based, weighted, capacity bounded, and secret-free", async () => {
-  assert.match(BEACON_PROVIDER_POOL_SQL.candidateCredentials, /active_leases/);
-  assert.match(BEACON_PROVIDER_POOL_SQL.candidateCredentials, /< credentials\.max_in_flight/);
-  assert.match(BEACON_PROVIDER_POOL_SQL.candidateCredentials, /NOT IN \(SELECT value FROM json_each\(\?\)\)/);
+  assert.match(AKENTROS_PROVIDER_POOL_SQL.candidateCredentials, /active_leases/);
+  assert.match(AKENTROS_PROVIDER_POOL_SQL.candidateCredentials, /< credentials\.max_in_flight/);
+  assert.match(AKENTROS_PROVIDER_POOL_SQL.candidateCredentials, /NOT IN \(SELECT value FROM json_each\(\?\)\)/);
   assert.match(
-    BEACON_PROVIDER_POOL_SQL.candidateCredentials,
+    AKENTROS_PROVIDER_POOL_SQL.candidateCredentials,
     /selection_count \* 1\.0 \/ MAX\(credentials\.weight, 1\)/,
   );
-  assert.match(BEACON_PROVIDER_POOL_SQL.markReleased, /released_at IS NULL/);
+  assert.match(AKENTROS_PROVIDER_POOL_SQL.markReleased, /released_at IS NULL/);
 
   const calls: any[] = [];
-  await syncBeaconProviderCredentials(async (sql: any, params: any) => {
+  await syncAkentrosProviderCredentials(async (sql: any, params: any) => {
     calls.push({ sql, params });
     return { rows: [] };
   });
@@ -107,8 +107,8 @@ test("provider pool is lease-based, weighted, capacity bounded, and secret-free"
 
 test("provider pool claim respects in-flight capacity and excluded credentials", async () => {
   const { query } = createSqliteTestDb();
-  await migrateBeaconSchema(query);
-  const store = createBeaconProviderPoolStore(query);
+  await migrateAkentrosSchema(query);
+  const store = createAkentrosProviderPoolStore(query);
   await (store as any).sync();
 
   const claim: any = await store.claim({
@@ -133,8 +133,8 @@ test("provider pool claim respects in-flight capacity and excluded credentials",
 
 test("provider pool claim and circuit release use one shared database state", async () => {
   const { query } = createSqliteTestDb();
-  await migrateBeaconSchema(query);
-  const store = createBeaconProviderPoolStore(query);
+  await migrateAkentrosSchema(query);
+  const store = createAkentrosProviderPoolStore(query);
   await (store as any).sync();
 
   const claim: any = await store.claim({
@@ -202,7 +202,7 @@ test("provider pool releases unusable claims and advances to the next healthy cr
     },
   };
 
-  const claim = await claimConfiguredBeaconProviderCredential({
+  const claim = await claimConfiguredAkentrosProviderCredential({
     store,
     pool,
     poolId: "openrouter-production",
@@ -267,7 +267,7 @@ test("native provider binding claims capacity without requiring REST secrets", a
     },
   };
 
-  const claim = await claimConfiguredBeaconProviderCredential({
+  const claim = await claimConfiguredAkentrosProviderCredential({
     store,
     pool,
     poolId: "cloudflare-workers-ai-production",
@@ -284,18 +284,18 @@ test("native provider binding claims capacity without requiring REST secrets", a
 });
 
 test("provider attempt audit stores opaque routing metadata and attaches successes", async () => {
-  assert.match(BEACON_PROVIDER_ATTEMPT_SQL.start, /INSERT INTO ai_provider_attempts/);
-  assert.match(BEACON_PROVIDER_ATTEMPT_SQL.finishAttempt, /finished_at IS NULL/);
-  assert.doesNotMatch(BEACON_PROVIDER_ATTEMPT_SQL.start, /prompt|completion|api_key|api_token/);
+  assert.match(AKENTROS_PROVIDER_ATTEMPT_SQL.start, /INSERT INTO ai_provider_attempts/);
+  assert.match(AKENTROS_PROVIDER_ATTEMPT_SQL.finishAttempt, /finished_at IS NULL/);
+  assert.doesNotMatch(AKENTROS_PROVIDER_ATTEMPT_SQL.start, /prompt|completion|api_key|api_token/);
 
   const { query } = createSqliteTestDb();
-  await migrateBeaconSchema(query);
+  await migrateAkentrosSchema(query);
   await query(
     `INSERT INTO ai_requests (request_id, user_id, api_key_id, request_fingerprint, public_model, pricing_revision, pricing_snapshot)
-     VALUES ('req_attempt', 1, 1, ?, 'beacon-test-model', 'pricing-v1', '{}')`,
+     VALUES ('req_attempt', 1, 1, ?, 'akentros-test-model', 'pricing-v1', '{}')`,
     ["b".repeat(64)],
   );
-  const store = createBeaconProviderAttemptStore(query);
+  const store = createAkentrosProviderAttemptStore(query);
 
   const attempt: any = await store.start({
     requestId: "req_attempt",
@@ -318,7 +318,7 @@ test("provider attempt audit stores opaque routing metadata and attaches success
   });
   assert.equal(finished.status, "succeeded");
 
-  // 成功的 attempt 回寫請求列的供應商欄位(provider 仍是對外的 'beacon')。
+  // 成功的 attempt 回寫請求列的供應商欄位(provider 仍是對外的 'akentros')。
   const request = await query(
     `SELECT upstream_model, upstream_request_id FROM ai_requests WHERE request_id = 'req_attempt'`,
   );
@@ -327,9 +327,9 @@ test("provider attempt audit stores opaque routing metadata and attaches success
 });
 
 test("lease bookkeeping failure after provider success never repeats inference", async () => {
-  const prepared = await prepareBeaconChatRequest({
+  const prepared = await prepareAkentrosChatRequest({
     body: {
-      model: "beacon/qwen-3.8-27b",
+      model: "akentros/qwen-3.8-27b",
       messages: [{ role: "user", content: "hello" }],
     },
     aiKey: { id: "1", user: { id: "2" }, model_allowlist: [], spend_limit_usd_micros: null },
@@ -352,7 +352,7 @@ test("lease bookkeeping failure after provider success never repeats inference",
   ];
   let providerCalls = 0;
   const billingCalls: any[] = [];
-  const runtime = createBeaconInferenceRuntime({
+  const runtime = createAkentrosInferenceRuntime({
     billing: {
       reserve: async () => ({ requestId: prepared.requestId, idempotentReplay: false }),
       markDispatched: async () => {},

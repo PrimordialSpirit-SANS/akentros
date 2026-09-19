@@ -1,11 +1,11 @@
 // 開發者管理面共用的 JSON body 解析。刻意拋 TypeError:
 // aiDeveloper.ts 的 sendKeyError 會把 TypeError 映射成 400 + INVALID_* 代碼。
-import type { BeaconContext } from "../types.ts";
+import type { AkentrosContext } from "../types.ts";
 
 const DEFAULT_MAX_BYTES = 16 * 1024;
 
 export async function readJsonObject(
-  c: BeaconContext,
+  c: AkentrosContext,
   options: { maxBytes?: number } = {},
 ): Promise<Record<string, unknown>> {
   const raw = await c.req.text();

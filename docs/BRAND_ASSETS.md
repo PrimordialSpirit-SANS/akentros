@@ -1,8 +1,8 @@
 # 品牌資產政策(Brand Assets)
 
-本專案的 `apps/console/public/brand/beacon/` 包含:
+本專案的 `apps/console/public/brand/akentros/` 包含:
 
-1. **自有標誌** `models/beacon.svg`(Beacon 信號燈塔標誌,MIT 授權隨本專案散布)。
+1. **自有標誌** `models/akentros.svg`(Akentros 信號燈塔標誌,MIT 授權隨本專案散布)。
 2. **官方第三方圖示** `providers/*.svg`、`providers/*.png`——自 2026-09-14 起,
    模型目錄改用各家**官方品牌圖示**,已從官方網站或權威公開來源下載為本地檔案,
    供自架控制台離線顯示。`providers/manifest.v1.json` 的
@@ -33,7 +33,7 @@ Qwen、Cloudflare 等商標由各自權利人所有。於自架控制台以圖�
 
 ## 營運者如何替換或新增圖示
 
-1. 將取得的圖檔放到 `apps/console/public/brand/beacon/providers/<id>.svg`
+1. 將取得的圖檔放到 `apps/console/public/brand/akentros/providers/<id>.svg`
    (或 `.png`;`<img>` 支援 SVG 與點陣圖)。
 2. 編輯 `providers/manifest.v1.json`,把對應條目的 `display_asset_url`
    指向該本地路徑,並更新 `official_asset_url`、`source_page_url`、

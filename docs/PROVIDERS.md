@@ -1,6 +1,6 @@
-# Beacon upstream providers
+# Akentros upstream providers
 
-Beacon routes every public model through an upstream provider pool defined in
+Akentros routes every public model through an upstream provider pool defined in
 `packages/core/config/provider-pools.v1.json`. The provider registry lives in
 `packages/core/src/validation.ts` and the transport adapters in
 `packages/core/src/providers.ts`. This document mirrors the structure of
@@ -15,7 +15,7 @@ Beacon routes every public model through an upstream provider pool defined in
 | `cloudflare-rest` | Bearer auth, per-model REST URL template | `cloudflare-workers-ai` |
 
 All requests run server-side; browsers and API consumers only ever talk to the
-Beacon endpoint. Every pool credential resolves its secret from a Worker
+Akentros endpoint. Every pool credential resolves its secret from a Worker
 secret or `.dev.vars` binding listed below.
 
 ## Request parameter quirks
@@ -43,12 +43,12 @@ secret or `.dev.vars` binding listed below.
   normalized back into the OpenAI completion/chunk shapes, including
   `thinking` → `reasoning` text and `tool_use` → `tool_calls`.
 
-## Models and Beacon prices
+## Models and Akentros prices
 
 The published catalog covers 19 models from eight model families (OpenAI GPT,
 Anthropic Claude, Google Gemini, xAI Grok, DeepSeek, Moonshot AI Kimi, Z.ai
 GLM, and Alibaba Qwen). Rates use each provider's official public API prices
-checked on 2026-09-14. Beacon passes the upstream USD rate through with a small
+checked on 2026-09-14. Akentros passes the upstream USD rate through with a small
 settlement margin (`input_usd_per_million_tokens` / `output_usd_per_million_tokens`,
 USD decimals), with a $0.0001 per-request minimum. Cache discounts, batch
 discounts, tiered long-context pricing, and promotions are excluded from the
@@ -58,9 +58,9 @@ published rates.
 
 | Public model | Upstream model | USD in / out per 1M | Points in / out per 1M |
 | --- | --- | --- | --- |
-| `beacon/gpt-6-astra` | `gpt-6-astra` | 10 / 50.01 | 334 / 1667 |
-| `beacon/gpt-5.2` | `gpt-5.2` | 1.26 / 10.02 | 42 / 334 |
-| `beacon/gpt-5.2-codex` | `gpt-5.2-codex` | 1.26 / 10.02 | 42 / 334 |
+| `akentros/gpt-6-astra` | `gpt-6-astra` | 10 / 50.01 | 334 / 1667 |
+| `akentros/gpt-5.2` | `gpt-5.2` | 1.26 / 10.02 | 42 / 334 |
+| `akentros/gpt-5.2-codex` | `gpt-5.2-codex` | 1.26 / 10.02 | 42 / 334 |
 
 Contexts: GPT-6 Astra 1,000,000 tokens; GPT-5.2 and GPT-5.2 Codex 400,000.
 
@@ -68,9 +68,9 @@ Contexts: GPT-6 Astra 1,000,000 tokens; GPT-5.2 and GPT-5.2 Codex 400,000.
 
 | Public model | Upstream model | USD in / out per 1M | Points in / out per 1M |
 | --- | --- | --- | --- |
-| `beacon/claude-opus-4-8` | `claude-opus-4-8` | 5 / 25.01 | 167 / 834 |
-| `beacon/claude-sonnet-5` | `claude-sonnet-5` | 2 / 10.01 | 67 / 334 |
-| `beacon/claude-haiku-4-5` | `claude-haiku-4-5` | 1.02 / 5.01 | 34 / 167 |
+| `akentros/claude-opus-4-8` | `claude-opus-4-8` | 5 / 25.01 | 167 / 834 |
+| `akentros/claude-sonnet-5` | `claude-sonnet-5` | 2 / 10.01 | 67 / 334 |
+| `akentros/claude-haiku-4-5` | `claude-haiku-4-5` | 1.02 / 5.01 | 34 / 167 |
 
 Context 200,000 tokens. Prompt-cache write/read discounts are excluded.
 
@@ -78,11 +78,11 @@ Context 200,000 tokens. Prompt-cache write/read discounts are excluded.
 
 | Public model | Upstream model | USD in / out per 1M | Points in / out per 1M |
 | --- | --- | --- | --- |
-| `beacon/gemini-3.5-pro` | `gemini-3.5-pro` | 2.01 / 12.02 | 67 / 401 |
-| `beacon/gemini-3.8-flash` | `gemini-3.8-flash` | 0.30 / 2.52 | 10 / 84 |
-| `beacon/gemini-3.5-flash-lite` | `gemini-3.5-flash-lite` | 0.12 / 0.42 | 4 / 14 |
+| `akentros/gemini-3.5-pro` | `gemini-3.5-pro` | 2.01 / 12.02 | 67 / 401 |
+| `akentros/gemini-3.8-flash` | `gemini-3.8-flash` | 0.30 / 2.52 | 10 / 84 |
+| `akentros/gemini-3.5-flash-lite` | `gemini-3.5-flash-lite` | 0.12 / 0.42 | 4 / 14 |
 
-Context 1,048,576 tokens. Beacon bills the baseline tier; tiered long-context
+Context 1,048,576 tokens. Akentros bills the baseline tier; tiered long-context
 pricing above 200k inputs is not reflected in the published rates, so very
 large prompts can exceed the modeled upstream cost.
 
@@ -90,18 +90,18 @@ large prompts can exceed the modeled upstream cost.
 
 | Public model | Upstream model | USD in / out per 1M | Points in / out per 1M |
 | --- | --- | --- | --- |
-| `beacon/grok-4.6` | `grok-4.6` | 2 / 6.01 | 67 / 201 |
-| `beacon/grok-4.1-fast` | `grok-4.1-fast` | 0.21 / 0.51 | 7 / 17 |
+| `akentros/grok-4.6` | `grok-4.6` | 2 / 6.01 | 67 / 201 |
+| `akentros/grok-4.1-fast` | `grok-4.1-fast` | 0.21 / 0.51 | 7 / 17 |
 
 Context 2,000,000 tokens for both models. Grok 4.6 applies higher long-context
-rates above 200k inputs; Beacon bills the standard tier.
+rates above 200k inputs; Akentros bills the standard tier.
 
 ### DeepSeek (`https://api.deepseek.com/v1`)
 
 | Public model | Upstream model | USD in / out per 1M | Points in / out per 1M |
 | --- | --- | --- | --- |
-| `beacon/deepseek-v4-pro` | `deepseek-v4-pro` | 1.32 / 3.96 | 44 / 132 |
-| `beacon/deepseek-v4.1-flash` | `deepseek-v4.1-flash` | 0.15 / 0.6 | 5 / 20 |
+| `akentros/deepseek-v4-pro` | `deepseek-v4-pro` | 1.32 / 3.96 | 44 / 132 |
+| `akentros/deepseek-v4.1-flash` | `deepseek-v4.1-flash` | 0.15 / 0.6 | 5 / 20 |
 
 Context 1,000,000 tokens. The 2026-08-16 DeepSeek price increase, off-peak
 discounts and cache-hit pricing are excluded.
@@ -110,7 +110,7 @@ discounts and cache-hit pricing are excluded.
 
 | Public model | Upstream model | USD in / out per 1M | Points in / out per 1M |
 | --- | --- | --- | --- |
-| `beacon/kimi-k3` | `kimi-k3` | 3 / 15 | 100 / 500 |
+| `akentros/kimi-k3` | `kimi-k3` | 3 / 15 | 100 / 500 |
 
 Context 1,048,576 tokens. Kimi K3 is the July 2026 open-weight flagship
 (2.8T-parameter MoE with native vision input).
@@ -119,8 +119,8 @@ Context 1,048,576 tokens. Kimi K3 is the July 2026 open-weight flagship
 
 | Public model | Upstream model | USD in / out per 1M | Points in / out per 1M |
 | --- | --- | --- | --- |
-| `beacon/glm-5.3` | `glm-5.3` | 1.41 / 4.41 | 47 / 147 |
-| `beacon/glm-5.3-flash` | `glm-5.3-flash` | 0.15 / 0.6 | 5 / 20 |
+| `akentros/glm-5.3` | `glm-5.3` | 1.41 / 4.41 | 47 / 147 |
+| `akentros/glm-5.3-flash` | `glm-5.3-flash` | 0.15 / 0.6 | 5 / 20 |
 
 Context 1,000,000 tokens. GLM-5.3 (August 2026) is the open-weight coding
 flagship; GLM-5.3 Flash is the natively multimodal 320B/18B-active model.
@@ -129,8 +129,8 @@ flagship; GLM-5.3 Flash is the natively multimodal 320B/18B-active model.
 
 | Public model | Upstream model | USD in / out per 1M | Points in / out per 1M |
 | --- | --- | --- | --- |
-| `beacon/qwen-3.8-max` | `qwen3.8-max` | 2.01 / 6 | 67 / 200 |
-| `beacon/qwen-3.8-flash` | `qwen3.8-flash` | 0.15 / 0.48 | 5 / 16 |
+| `akentros/qwen-3.8-max` | `qwen3.8-max` | 2.01 / 6 | 67 / 200 |
+| `akentros/qwen-3.8-flash` | `qwen3.8-flash` | 0.15 / 0.48 | 5 / 16 |
 
 Context 1,000,000 tokens (input capped at 983,616). See
 [QWENCLOUD.md](QWENCLOUD.md) for the full QwenCloud integration notes,
@@ -140,7 +140,7 @@ including the GLM, Kimi and DeepSeek models it serves as a fallback route.
 
 | Public model | Upstream model | USD in / out per 1M | Points in / out per 1M |
 | --- | --- | --- | --- |
-| `beacon/qwen-3.8-27b` | `@cf/qwen/qwen3.8-27b` | 0.42 / 3 | 14 / 100 |
+| `akentros/qwen-3.8-27b` | `@cf/qwen/qwen3.8-27b` | 0.42 / 3 | 14 / 100 |
 
 Context 262,144 tokens. Served through the Worker's native AI binding (with a
 REST fallback transport); tool calling is not exposed for this route.
@@ -152,11 +152,11 @@ one public model, tried in ascending `priority` order:
 
 | Public model | Routes (priority order) |
 | --- | --- |
-| `beacon/deepseek-v4-pro` | DeepSeek API `deepseek-v4-pro` (10) → QwenCloud `deepseek-v4-pro-0813` (20) |
-| `beacon/deepseek-v4.1-flash` | DeepSeek API `deepseek-v4.1-flash` (10) → QwenCloud `deepseek-v4.1-flash` (20) |
-| `beacon/kimi-k3` | Moonshot AI `kimi-k3` (10) → QwenCloud `kimi-k3` (20) |
-| `beacon/glm-5.3` | Z.ai BigModel `glm-5.3` (10) → QwenCloud `glm-5.3` (20) |
-| `beacon/glm-5.3-flash` | Z.ai BigModel `glm-5.3-flash` (10) → QwenCloud `glm-5.3-flash` (20) |
+| `akentros/deepseek-v4-pro` | DeepSeek API `deepseek-v4-pro` (10) → QwenCloud `deepseek-v4-pro-0813` (20) |
+| `akentros/deepseek-v4.1-flash` | DeepSeek API `deepseek-v4.1-flash` (10) → QwenCloud `deepseek-v4.1-flash` (20) |
+| `akentros/kimi-k3` | Moonshot AI `kimi-k3` (10) → QwenCloud `kimi-k3` (20) |
+| `akentros/glm-5.3` | Z.ai BigModel `glm-5.3` (10) → QwenCloud `glm-5.3` (20) |
+| `akentros/glm-5.3-flash` | Z.ai BigModel `glm-5.3-flash` (10) → QwenCloud `glm-5.3-flash` (20) |
 
 Public billing stays model-level and is set by the most expensive enabled
 route, so a fallback never bills below platform cost.
@@ -206,7 +206,7 @@ key; the v1 surface accepts Bearer auth and OpenAI parameter names directly.
 
 ## Provider vocabulary versus openCode
 
-The Beacon provider layer intentionally mirrors the openCode (models.dev)
+The Akentros provider layer intentionally mirrors the openCode (models.dev)
 provider ecosystem. Currently wired upstreams: `openai`, `anthropic`,
 `google`, `xai`, `groq`, `mistral`, `deepseek`, `together`, `fireworks`,
 `cerebras`, `perplexity`, `cohere`, `moonshot`, `zhipu`, `minimax`, `nvidia`,
@@ -222,7 +222,7 @@ registered yet:
 - `google-vertex` — OAuth2 service-account signing.
 - `github-copilot` — OAuth device flow with token exchange.
 
-openCode list entries that cannot serve Beacon chat completions and are
+openCode list entries that cannot serve Akentros chat completions and are
 intentionally not registered:
 
 - **Image / video / media generators** — Adobe Firefly, Midjourney, Runway,
@@ -267,10 +267,10 @@ intentionally not registered:
 Secrets follow the `<PROVIDER>_API_KEY_1` naming in
 `apps/gateway/.dev.vars.example`. Never add their values to tracked
 configuration. The diagnostics are offline by default; live probes bypass
-Beacon billing and incur the provider's normal API charges.
+Akentros billing and incur the provider's normal API charges.
 
 ```text
-npm run probe:beacon-provider -- --provider=openai --all --live --stream
-npm run probe:beacon-provider -- --provider=anthropic --all --live --stream
-npm run probe:beacon-provider -- --provider=google --all --live
+npm run probe:akentros-provider -- --provider=openai --all --live --stream
+npm run probe:akentros-provider -- --provider=anthropic --all --live --stream
+npm run probe:akentros-provider -- --provider=google --all --live
 ```

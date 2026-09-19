@@ -1,30 +1,30 @@
 import { createApp } from "../app.ts";
-import type { BeaconRuntimeEnv } from "../types.ts";
-import { ensureBeaconSchemaReady, seedBeaconAdminFromEnv } from "../utils/bootstrap.ts";
-import { installBeaconDbAdapter } from "../utils/db.ts";
-import { runBeaconMaintenance } from "../utils/maintenance.ts";
-import type { BeaconDoState } from "./doDb.ts";
-import { createDoBeaconDbAdapter } from "./doDb.ts";
+import type { AkentrosRuntimeEnv } from "../types.ts";
+import { ensureAkentrosSchemaReady, seedAkentrosAdminFromEnv } from "../utils/bootstrap.ts";
+import { installAkentrosDbAdapter } from "../utils/db.ts";
+import { runAkentrosMaintenance } from "../utils/maintenance.ts";
+import type { AkentrosDoState } from "./doDb.ts";
+import { createDoAkentrosDbAdapter } from "./doDb.ts";
 
-// Beacon gateway 的 Durable Object:整個 Hono app + SQLite(ctx.storage.sql)
+// Akentros gateway 的 Durable Object:整個 Hono app + SQLite(ctx.storage.sql)
 // 都在這個單一 instance 內運行。單 instance 是計費與限流不變式的一部分
 // (金鑰 RPM/併發、IP 限流依賴單一資料庫 + 程序內序列化),因此 Worker 端
 // 固定以 idFromName 指向同一個 instance,不得水平分片。
 //
 // 首次請求前完成 schema 遷移與管理員種子(等價 Node 的 npm run migrate;
-// 遷移冪等,由 beacon_ai_schema_migrations 記錄版本)。
+// 遷移冪等,由 akentros_ai_schema_migrations 記錄版本)。
 
 const MAINTENANCE_PATH = "/internal/maintenance";
 
-export class BeaconGateway {
-  private readonly state: BeaconDoState;
-  private readonly env: BeaconRuntimeEnv;
+export class AkentrosGateway {
+  private readonly state: AkentrosDoState;
+  private readonly env: AkentrosRuntimeEnv;
   private readyPromise: Promise<void> | null = null;
 
-  constructor(state: any, env: BeaconRuntimeEnv) {
-    this.state = state as BeaconDoState;
+  constructor(state: any, env: AkentrosRuntimeEnv) {
+    this.state = state as AkentrosDoState;
     this.env = env;
-    installBeaconDbAdapter(createDoBeaconDbAdapter(this.state));
+    installAkentrosDbAdapter(createDoAkentrosDbAdapter(this.state));
   }
 
   async fetch(request: Request): Promise<Response> {
@@ -33,7 +33,7 @@ export class BeaconGateway {
     if (url.pathname === MAINTENANCE_PATH) {
       // 僅供 Worker 的 scheduled(cron)事件經 DO binding 直呼;
       // 公開流量由 Worker 進入點擋下,不會轉發此路徑。
-      const summary = await runBeaconMaintenance(this.env);
+      const summary = await runAkentrosMaintenance(this.env);
       return Response.json({ ok: true, maintenance: summary });
     }
     return createApp(this.env).fetch(request, this.env);
@@ -45,8 +45,8 @@ export class BeaconGateway {
       // PBKDF2(crypto.subtle)需要 runtime I/O 完成,包在裡面會死鎖。
       // DO 的事件序列化 + storage op 的 input gate 已保證遷移語句間不交錯。
       this.readyPromise = (async () => {
-        await ensureBeaconSchemaReady(this.env);
-        await seedBeaconAdminFromEnv(this.env);
+        await ensureAkentrosSchemaReady(this.env);
+        await seedAkentrosAdminFromEnv(this.env);
       })().catch((error) => {
         // 失敗不快取:下一個請求重試(與 readiness fail-closed 行為一致)。
         this.readyPromise = null;

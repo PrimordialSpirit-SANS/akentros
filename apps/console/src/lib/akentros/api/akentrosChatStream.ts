@@ -1,62 +1,62 @@
 import { apiFetch } from "../../../services/api";
-import type { BeaconChatMessage, BeaconChatUsage, BeaconPublicErrorCode, BeaconStreamChunk } from "../types";
-import { getBeaconAccountChatCompletionsPath, getBeaconChatCompletionsUrl } from "./beaconDeveloperApi";
+import type { AkentrosChatMessage, AkentrosChatUsage, AkentrosPublicErrorCode, AkentrosStreamChunk } from "../types";
+import { getAkentrosAccountChatCompletionsPath, getAkentrosChatCompletionsUrl } from "./akentrosDeveloperApi";
 import {
-  hasBeaconErrorEnvelope,
-  normalizeBeaconError,
-  normalizeBeaconStreamChunk,
-} from "./beaconPublicContract";
+  hasAkentrosErrorEnvelope,
+  normalizeAkentrosError,
+  normalizeAkentrosStreamChunk,
+} from "./akentrosPublicContract";
 import { consumeSseEventsToDone, type ParsedSseEvent, readSseEvents } from "./sseEventParser";
 
-export interface BeaconStreamDeltaEvent {
+export interface AkentrosStreamDeltaEvent {
   content: string;
   reasoning: string;
   elapsedMs: number;
 }
 
-export interface BeaconStreamMetrics {
+export interface AkentrosStreamMetrics {
   headersLatencyMs: number;
   firstDeltaLatencyMs: number | null;
   firstContentLatencyMs: number | null;
   totalLatencyMs: number;
 }
 
-export interface BeaconStreamResult {
+export interface AkentrosStreamResult {
   content: string;
   reasoning: string;
-  usage: BeaconChatUsage | null;
+  usage: AkentrosChatUsage | null;
   finishReason: string | null;
   requestId: string | null;
-  metrics: BeaconStreamMetrics;
+  metrics: AkentrosStreamMetrics;
 }
 
-export interface StreamBeaconChatOptions {
+export interface StreamAkentrosChatOptions {
   authMode?: "api-key" | "account";
   apiKey?: string;
   model: string;
-  messages: BeaconChatMessage[];
+  messages: AkentrosChatMessage[];
   maxCompletionTokens: number;
   thinking?: boolean;
   signal?: AbortSignal;
-  onDelta?: (event: BeaconStreamDeltaEvent) => void;
-  onUsage?: (usage: BeaconChatUsage) => void;
+  onDelta?: (event: AkentrosStreamDeltaEvent) => void;
+  onUsage?: (usage: AkentrosChatUsage) => void;
 }
 
-export class BeaconStreamError extends Error {
+export class AkentrosStreamError extends Error {
   readonly status: number;
-  readonly code: BeaconPublicErrorCode | null;
+  readonly code: AkentrosPublicErrorCode | null;
   readonly requestId: string | null;
 
   constructor(
     message: string,
     options: {
       status?: number;
-      code?: BeaconPublicErrorCode | null;
+      code?: AkentrosPublicErrorCode | null;
       requestId?: string | null;
     } = {},
   ) {
     super(message);
-    this.name = "BeaconStreamError";
+    this.name = "AkentrosStreamError";
     this.status = options.status ?? 0;
     this.code = options.code ?? null;
     this.requestId = options.requestId ?? null;
@@ -73,7 +73,7 @@ async function httpError(
   response: Response,
   signal?: AbortSignal,
   context: "developer" | "inference" = "inference",
-): Promise<BeaconStreamError> {
+): Promise<AkentrosStreamError> {
   const requestId = response.headers.get("x-request-id");
   let text = "";
   try {
@@ -93,56 +93,56 @@ async function httpError(
     }
   }
 
-  const error = normalizeBeaconError(payload, {
+  const error = normalizeAkentrosError(payload, {
     status: response.status,
     context,
   });
-  return new BeaconStreamError(error.message, {
+  return new AkentrosStreamError(error.message, {
     status: response.status,
     code: error.code,
     requestId,
   });
 }
 
-function parseEventPayload(event: ParsedSseEvent, requestId: string | null): BeaconStreamChunk {
+function parseEventPayload(event: ParsedSseEvent, requestId: string | null): AkentrosStreamChunk {
   let payload: unknown;
   try {
     payload = JSON.parse(event.data);
   } catch {
-    throw new BeaconStreamError("Beacon 傳回了無法解析的串流資料。", {
+    throw new AkentrosStreamError("Akentros 傳回了無法解析的串流資料。", {
       code: "invalid_stream_payload",
       requestId,
     });
   }
 
-  if (event.type === "error" || hasBeaconErrorEnvelope(payload)) {
-    const error = normalizeBeaconError(payload, {
+  if (event.type === "error" || hasAkentrosErrorEnvelope(payload)) {
+    const error = normalizeAkentrosError(payload, {
       context: "stream",
       fallbackCode: "stream_interrupted",
     });
-    throw new BeaconStreamError(error.message, {
+    throw new AkentrosStreamError(error.message, {
       code: error.code,
       requestId,
     });
   }
   if (typeof payload !== "object" || payload === null || Array.isArray(payload)) {
-    throw new BeaconStreamError("Beacon 傳回了不支援的串流資料。", {
+    throw new AkentrosStreamError("Akentros 傳回了不支援的串流資料。", {
       code: "invalid_stream_payload",
       requestId,
     });
   }
-  return normalizeBeaconStreamChunk(payload);
+  return normalizeAkentrosStreamChunk(payload);
 }
 
-export async function streamBeaconChat(options: StreamBeaconChatOptions): Promise<BeaconStreamResult> {
+export async function streamAkentrosChat(options: StreamAkentrosChatOptions): Promise<AkentrosStreamResult> {
   const authMode = options.authMode || "api-key";
   const apiKey = options.apiKey?.trim() || "";
   if (authMode === "api-key" && !apiKey) {
-    throw new BeaconStreamError("請輸入 API 金鑰。", { code: "invalid_request" });
+    throw new AkentrosStreamError("請輸入 API 金鑰。", { code: "invalid_request" });
   }
-  if (!options.model) throw new BeaconStreamError("請選擇模型。", { code: "invalid_request" });
+  if (!options.model) throw new AkentrosStreamError("請選擇模型。", { code: "invalid_request" });
   if (!options.messages.some((message) => message.content.trim())) {
-    throw new BeaconStreamError("請輸入訊息。", { code: "invalid_request" });
+    throw new AkentrosStreamError("請輸入訊息。", { code: "invalid_request" });
   }
 
   throwIfAborted(options.signal);
@@ -165,7 +165,7 @@ export async function streamBeaconChat(options: StreamBeaconChatOptions): Promis
 
     const request = authMode === "account" ? apiFetch : fetch;
     const endpoint =
-      authMode === "account" ? getBeaconAccountChatCompletionsPath() : getBeaconChatCompletionsUrl();
+      authMode === "account" ? getAkentrosAccountChatCompletionsPath() : getAkentrosChatCompletionsUrl();
     response = await request(endpoint, {
       method: "POST",
       headers,
@@ -175,8 +175,8 @@ export async function streamBeaconChat(options: StreamBeaconChatOptions): Promis
     });
   } catch {
     throwIfAborted(options.signal);
-    const error = normalizeBeaconError(null, { fallbackCode: "connection_error" });
-    throw new BeaconStreamError(error.message, { code: error.code });
+    const error = normalizeAkentrosError(null, { fallbackCode: "connection_error" });
+    throw new AkentrosStreamError(error.message, { code: error.code });
   }
 
   const headersLatencyMs = performance.now() - startedAt;
@@ -188,7 +188,7 @@ export async function streamBeaconChat(options: StreamBeaconChatOptions): Promis
   const contentType = response.headers.get("content-type")?.toLowerCase() || "";
   if (!response.body || !contentType.includes("text/event-stream")) {
     await response.body?.cancel().catch(() => {});
-    throw new BeaconStreamError("Beacon 未傳回 SSE 串流。", {
+    throw new AkentrosStreamError("Akentros 未傳回 SSE 串流。", {
       status: response.status,
       code: "invalid_stream_response",
       requestId,
@@ -197,7 +197,7 @@ export async function streamBeaconChat(options: StreamBeaconChatOptions): Promis
 
   let content = "";
   let reasoning = "";
-  let usage: BeaconChatUsage | null = null;
+  let usage: AkentrosChatUsage | null = null;
   let finishReason: string | null = null;
   let firstDeltaLatencyMs: number | null = null;
   let firstContentLatencyMs: number | null = null;
@@ -239,9 +239,9 @@ export async function streamBeaconChat(options: StreamBeaconChatOptions): Promis
     });
   } catch (cause) {
     throwIfAborted(options.signal);
-    if (cause instanceof BeaconStreamError) throw cause;
-    const error = normalizeBeaconError(null, { fallbackCode: "stream_interrupted" });
-    throw new BeaconStreamError(error.message, {
+    if (cause instanceof AkentrosStreamError) throw cause;
+    const error = normalizeAkentrosError(null, { fallbackCode: "stream_interrupted" });
+    throw new AkentrosStreamError(error.message, {
       code: error.code,
       requestId,
     });
@@ -249,7 +249,7 @@ export async function streamBeaconChat(options: StreamBeaconChatOptions): Promis
 
   throwIfAborted(options.signal);
   if (!sawDone) {
-    throw new BeaconStreamError("Beacon 串流在完成前中斷。", {
+    throw new AkentrosStreamError("Akentros 串流在完成前中斷。", {
       code: "stream_truncated",
       requestId,
     });

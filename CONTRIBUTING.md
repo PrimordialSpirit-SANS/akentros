@@ -14,7 +14,7 @@ npm run build       # console 生產建置
 ## 規則
 
 1. **契約先行**:改變公開 API 行為前,先更新 `docs/openapi.yaml` 與相關契約測試(`packages/core/tests/openapi-contract.test.ts`、`developer-route-contract.test.ts`),實作差異不得先於契約。
-2. **定價與 catalog 權威分離**:`packages/core/config/backend-pricing.v1.json` 是唯一 runtime 權威;`apps/console/public/data/beacon/*` 只供展示。兩邊漂移會被 `config-validation.test.ts` 擋下。
+2. **定價與 catalog 權威分離**:`packages/core/config/backend-pricing.v1.json` 是唯一 runtime 權威;`apps/console/public/data/akentros/*` 只供展示。兩邊漂移會被 `config-validation.test.ts` 擋下。
 3. **秘密與內容不落地**:prompt、completion、完整金鑰、provider token 不得寫入 DB/log/error response;新程式碼請維持此不變式。
 4. **schema 只進不退**:資料表結構一律透過 `packages/core/src/schemaMigration.ts` 的版本化遷移,不寫 ad-hoc DDL。
 5. **樣式**:既有程式以繁中註解標注「為什麼」,英文用於對外訊息與錯誤碼;新代碼請遵循同風格。

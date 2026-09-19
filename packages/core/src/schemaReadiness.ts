@@ -1,4 +1,4 @@
-export const BEACON_SCHEMA_VERSION = 2;
+export const AKENTROS_SCHEMA_VERSION = 2;
 
 function freezeRecord(record: Record<string, string[]>) {
   return Object.freeze(
@@ -6,7 +6,7 @@ function freezeRecord(record: Record<string, string[]>) {
   );
 }
 
-export const REQUIRED_BEACON_COLUMNS = freezeRecord({
+export const REQUIRED_AKENTROS_COLUMNS = freezeRecord({
   ai_api_keys: [
     "id",
     "user_id",
@@ -130,7 +130,7 @@ export const REQUIRED_BEACON_COLUMNS = freezeRecord({
   ai_api_inflight_leases: ["request_id", "api_key_id", "expires_at", "released_at", "created_at"],
 });
 
-export const REQUIRED_BEACON_INDEXES = Object.freeze([
+export const REQUIRED_AKENTROS_INDEXES = Object.freeze([
   "idx_ai_api_keys_user_created",
   "idx_ai_api_keys_digest_active",
   "idx_ai_requests_key_idempotency",
@@ -142,8 +142,8 @@ export const REQUIRED_BEACON_INDEXES = Object.freeze([
   "idx_ai_billing_request_id",
   "idx_ai_billing_state_expiry",
   "idx_ai_api_inflight_active",
-  "idx_ledger_entries_beacon_ai_reservation",
-  "idx_ledger_entries_beacon_ai_refund",
+  "idx_ledger_entries_akentros_ai_reservation",
+  "idx_ledger_entries_akentros_ai_refund",
 ]);
 
 function rows(result: any): any[] {
@@ -152,20 +152,20 @@ function rows(result: any): any[] {
 
 // SQLite 版就緒檢查:sqlite_master / pragma_table_info 取代 PG 的
 // to_regclass / information_schema / pg_indexes。
-export async function isBeaconSchemaReady(query: any) {
+export async function isAkentrosSchemaReady(query: any) {
   const migrationTable = await query(`
     SELECT name FROM sqlite_master
-    WHERE type = 'table' AND name = 'beacon_ai_schema_migrations'
+    WHERE type = 'table' AND name = 'akentros_ai_schema_migrations'
   `);
   if (!rows(migrationTable).length) return false;
 
   const versionResult = await query(`
     SELECT COALESCE(MAX(version), 0) AS version
-    FROM beacon_ai_schema_migrations
+    FROM akentros_ai_schema_migrations
   `);
-  if (Number(rows(versionResult)[0]?.version || 0) < BEACON_SCHEMA_VERSION) return false;
+  if (Number(rows(versionResult)[0]?.version || 0) < AKENTROS_SCHEMA_VERSION) return false;
 
-  for (const [table, columns] of Object.entries(REQUIRED_BEACON_COLUMNS)) {
+  for (const [table, columns] of Object.entries(REQUIRED_AKENTROS_COLUMNS)) {
     const columnsResult = await query(`SELECT name FROM pragma_table_info(?)`, [table]);
     const existing = new Set(rows(columnsResult).map((row: any) => String(row.name)));
     for (const column of columns) {
@@ -173,20 +173,20 @@ export async function isBeaconSchemaReady(query: any) {
     }
   }
 
-  const indexPlaceholders = REQUIRED_BEACON_INDEXES.map(() => "?").join(", ");
+  const indexPlaceholders = REQUIRED_AKENTROS_INDEXES.map(() => "?").join(", ");
   const indexesResult = await query(
     `SELECT name FROM sqlite_master WHERE type = 'index' AND name IN (${indexPlaceholders})`,
-    [...REQUIRED_BEACON_INDEXES],
+    [...REQUIRED_AKENTROS_INDEXES],
   );
   const existingIndexes = new Set(rows(indexesResult).map((row: any) => String(row.name)));
-  return REQUIRED_BEACON_INDEXES.every((index) => existingIndexes.has(index));
+  return REQUIRED_AKENTROS_INDEXES.every((index) => existingIndexes.has(index));
 }
 
-export async function assertBeaconSchemaReady(query: any) {
-  if (await isBeaconSchemaReady(query)) return;
+export async function assertAkentrosSchemaReady(query: any) {
+  if (await isAkentrosSchemaReady(query)) return;
   const error = new Error(
-    "Beacon database schema is not ready. Run the versioned Beacon migration before serving requests.",
+    "Akentros database schema is not ready. Run the versioned Akentros migration before serving requests.",
   ) as Error & { code?: string };
-  error.code = "BEACON_SCHEMA_NOT_READY";
+  error.code = "AKENTROS_SCHEMA_NOT_READY";
   throw error;
 }

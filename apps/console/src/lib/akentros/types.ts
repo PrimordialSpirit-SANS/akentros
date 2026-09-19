@@ -1,4 +1,4 @@
-export type BeaconProviderId =
+export type AkentrosProviderId =
   | "cloudflare"
   | "openrouter"
   | "huggingface"
@@ -35,7 +35,7 @@ export type BeaconProviderId =
   | "ovhcloud"
   | "custom";
 
-export type BeaconRequestStatus =
+export type AkentrosRequestStatus =
   | "pending_reservation"
   | "reserved"
   | "dispatched"
@@ -45,7 +45,7 @@ export type BeaconRequestStatus =
   | "refunded"
   | "needs_reconciliation";
 
-export type BeaconPublicErrorCode =
+export type AkentrosPublicErrorCode =
   | "invalid_request"
   | "unsupported_parameter"
   | "unsupported_feature"
@@ -81,14 +81,14 @@ export type BeaconPublicErrorCode =
   | "USER_NOT_FOUND"
   | "AI_REQUEST_NOT_FOUND";
 
-export type BeaconChatRole = "system" | "user" | "assistant";
+export type AkentrosChatRole = "system" | "user" | "assistant";
 
-export interface BeaconChatMessage {
-  role: BeaconChatRole;
+export interface AkentrosChatMessage {
+  role: AkentrosChatRole;
   content: string;
 }
 
-export interface BeaconChatUsage {
+export interface AkentrosChatUsage {
   prompt_tokens: number;
   completion_tokens: number;
   total_tokens: number;
@@ -97,25 +97,25 @@ export interface BeaconChatUsage {
   };
 }
 
-export interface BeaconStreamDelta {
+export interface AkentrosStreamDelta {
   role?: "assistant";
   content?: string | null;
   reasoning?: string | null;
   reasoning_content?: string | null;
 }
 
-export interface BeaconStreamChoice {
+export interface AkentrosStreamChoice {
   index: number;
-  delta: BeaconStreamDelta;
+  delta: AkentrosStreamDelta;
   finish_reason: "stop" | "length" | "content_filter" | null;
 }
 
-export interface BeaconStreamChunk {
-  choices: BeaconStreamChoice[];
-  usage: BeaconChatUsage | null;
+export interface AkentrosStreamChunk {
+  choices: AkentrosStreamChoice[];
+  usage: AkentrosChatUsage | null;
 }
 
-export interface BeaconApiKey {
+export interface AkentrosApiKey {
   id: string;
   name: string;
   environment?: "live" | "test";
@@ -134,23 +134,23 @@ export interface BeaconApiKey {
   spend_used_usd: string;
 }
 
-export interface BeaconKeyCreateOptions {
+export interface AkentrosKeyCreateOptions {
   name: string;
   expires_at?: string | null;
   spend_limit_usd?: string | null;
 }
 
-export interface BeaconKeyMutationResult {
-  key: BeaconApiKey;
+export interface AkentrosKeyMutationResult {
+  key: AkentrosApiKey;
   api_key: string;
 }
 
-export interface BeaconFreeModelQuota {
+export interface AkentrosFreeModelQuota {
   used: number;
   limit: number;
 }
 
-export interface BeaconUsageSummary {
+export interface AkentrosUsageSummary {
   balance_usd: string;
   requests: number;
   succeeded: number;
@@ -160,18 +160,18 @@ export interface BeaconUsageSummary {
   total_tokens: number;
   charged_usd: string;
   period_days: number;
-  free_model_quotas: Record<string, BeaconFreeModelQuota>;
+  free_model_quotas: Record<string, AkentrosFreeModelQuota>;
 }
 
-export interface BeaconUsageLog {
+export interface AkentrosUsageLog {
   request_id: string;
   created_at: string;
   api_key_id: string | null;
   key_name: string | null;
   requested_model: string;
   actual_model: string;
-  provider: "beacon";
-  status: BeaconRequestStatus;
+  provider: "akentros";
+  status: AkentrosRequestStatus;
   input_tokens: number;
   output_tokens: number;
   total_tokens: number;
@@ -179,25 +179,25 @@ export interface BeaconUsageLog {
   charged_usd: string;
   refunded_usd: string;
   latency_ms: number | null;
-  error_code: BeaconPublicErrorCode | null;
+  error_code: AkentrosPublicErrorCode | null;
 }
 
-export interface BeaconRequestDetail extends BeaconUsageLog {
+export interface AkentrosRequestDetail extends AkentrosUsageLog {
   completed_at: string | null;
   pricing_revision: string | null;
   fallback_count: 0;
   first_token_latency_ms: number | null;
 }
 
-export interface BeaconLogsPage {
-  logs: BeaconUsageLog[];
+export interface AkentrosLogsPage {
+  logs: AkentrosUsageLog[];
   pagination: {
     next_cursor: string | null;
     has_more: boolean;
   };
 }
 
-export interface BeaconLogsQuery {
+export interface AkentrosLogsQuery {
   cursor?: string | null;
   limit?: number;
   model?: string;
@@ -208,7 +208,7 @@ export interface BeaconLogsQuery {
 
 export type BrandAssetStatus = "official-remote-reference" | "official-download" | "permission-required";
 
-export interface BeaconBrandAsset {
+export interface AkentrosBrandAsset {
   id: string;
   kind: "provider" | "model-owner";
   name: string;
@@ -220,13 +220,13 @@ export interface BeaconBrandAsset {
   attribution: string;
 }
 
-export interface BeaconBrandManifest {
+export interface AkentrosBrandManifest {
   schema_version: 1;
   updated_at: string;
-  assets: BeaconBrandAsset[];
+  assets: AkentrosBrandAsset[];
 }
 
-export interface BeaconModel {
+export interface AkentrosModel {
   id: string;
   display_name: string;
   owner: string;
@@ -238,7 +238,7 @@ export interface BeaconModel {
   output_modalities: string[];
   context_window_tokens: number;
   max_output_tokens: number;
-  provider_ids: BeaconProviderId[];
+  provider_ids: AkentrosProviderId[];
   tags: string[];
   official_docs_url: string;
   billing: {
@@ -249,18 +249,18 @@ export interface BeaconModel {
   };
 }
 
-export interface BeaconModelsCatalog {
+export interface AkentrosModelsCatalog {
   schema_version: 1;
   pricing_revision: string;
   updated_at: string;
   billing_disclaimer: string;
-  models: BeaconModel[];
+  models: AkentrosModel[];
 }
 
-export interface BeaconProviderOffering {
+export interface AkentrosProviderOffering {
   id: string;
   model_id: string;
-  provider_id: BeaconProviderId;
+  provider_id: AkentrosProviderId;
   provider_name: string;
   brand_asset_id: string;
   status: "available" | "degraded" | "maintenance";
@@ -272,17 +272,17 @@ export interface BeaconProviderOffering {
   note: string;
 }
 
-export interface BeaconProviderOfferingsCatalog {
+export interface AkentrosProviderOfferingsCatalog {
   schema_version: 1;
   pricing_revision: string;
   effective_at: string;
   updated_at: string;
-  currency: "beacon_point";
+  currency: "akentros_point";
   billing_unit: "per_million_tokens";
-  offerings: BeaconProviderOffering[];
+  offerings: AkentrosProviderOffering[];
 }
 
-export interface BeaconConsoleUser {
+export interface AkentrosConsoleUser {
   id: string;
   username: string;
   email: string;

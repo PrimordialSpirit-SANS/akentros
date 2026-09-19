@@ -1,6 +1,6 @@
-# @beacon/console — Beacon 開發者控制台
+# @akentros/console — Akentros 開發者控制台
 
-Beacon Gateway 的前端(React + Vite + TypeScript)。`src/pages/` 與 `src/components/` 是全新撰寫的控制台 UI(側邊欄式佈局、登入/註冊、Playground);`src/lib/beacon/` 是有測試覆蓋的邏輯層(SSE parser、錯誤正規化、catalog 載入、格式化);`src/services/` 是與 gateway 之間的整合接縫。
+Akentros Gateway 的前端(React + Vite + TypeScript)。`src/pages/` 與 `src/components/` 是全新撰寫的控制台 UI(側邊欄式佈局、登入/註冊、Playground);`src/lib/akentros/` 是有測試覆蓋的邏輯層(SSE parser、錯誤正規化、catalog 載入、格式化);`src/services/` 是與 gateway 之間的整合接縫。
 
 ## 快速開始
 
@@ -20,23 +20,23 @@ npm run preview    # 預覽生產建置
 http://localhost:5173/?demo=1
 ```
 
-或在 `.env` 設 `VITE_BEACON_DEMO=1`。示範模式會以 fetch 攔截器(`src/services/demoApi.ts`)提供記憶體內的假資料與模擬 SSE 串流:金鑰建立/輪替/撤銷、用量摘要、請求紀錄、串流測試(帳戶與 API Key 兩種認證)都可以完整操作,資料在重新整理後重置,畫面右下角會顯示「示範模式」標籤。
+或在 `.env` 設 `VITE_AKENTROS_DEMO=1`。示範模式會以 fetch 攔截器(`src/services/demoApi.ts`)提供記憶體內的假資料與模擬 SSE 串流:金鑰建立/輪替/撤銷、用量摘要、請求紀錄、串流測試(帳戶與 API Key 兩種認證)都可以完整操作,資料在重新整理後重置,畫面右下角會顯示「示範模式」標籤。
 
 ## 環境變數(見 `.env.example`)
 
 | 變數 | 說明 |
 | --- | --- |
-| `VITE_BEACON_API_BASE` | `apiFetch` 的目標前綴,預設 `/api`。後端 Worker 跑在本機時設 `http://127.0.0.1:8787/api` |
-| `VITE_BEACON_PUBLIC_API_BASE` | 對外展示的公開 API 根位址(總覽/快速開始頁顯示、API Key 模式串流的端點),預設 `window.location.origin` |
-| `VITE_BEACON_DEMO` | `1` 時啟用離線示範模式 |
+| `VITE_AKENTROS_API_BASE` | `apiFetch` 的目標前綴,預設 `/api`。後端 Worker 跑在本機時設 `http://127.0.0.1:8787/api` |
+| `VITE_AKENTROS_PUBLIC_API_BASE` | 對外展示的公開 API 根位址(總覽/快速開始頁顯示、API Key 模式串流的端點),預設 `window.location.origin` |
+| `VITE_AKENTROS_DEMO` | `1` 時啟用離線示範模式 |
 
 ## 接上真實後端
 
 1. gateway(`apps/gateway`)掛載 `/api/auth/*`(註冊/登入)、`/api/ai/developer/*`(管理面,登入 cookie + CSRF)與 `/api/ai/v1/*`(OpenAI 相容公開端點)。
 2. `src/services/api.ts` 是邏輯層呼叫後端的**唯一**接縫,契約:
-   - `apiFetch(path, init)`:把請求送到 `${VITE_BEACON_API_BASE}${path}`,附帶 cookie session(`credentials: 'include'`)與 `X-CSRF-Token`(讀自 `csrf_token` cookie;登入後由 gateway 發下)。401 時控制台會顯示「請先登入」。
+   - `apiFetch(path, init)`:把請求送到 `${VITE_AKENTROS_API_BASE}${path}`,附帶 cookie session(`credentials: 'include'`)與 `X-CSRF-Token`(讀自 `csrf_token` cookie;登入後由 gateway 發下)。401 時控制台會顯示「請先登入」。
    - `getExternalDeveloperApiBase()`:回傳公開 API 根位址。
-3. 模型目錄與品牌圖示來自 `public/data/beacon/` 與 `public/brand/beacon/`(靜態檔案,僅介面展示;品牌政策見 `docs/BRAND_ASSETS.md`)。
+3. 模型目錄與品牌圖示來自 `public/data/akentros/` 與 `public/brand/akentros/`(靜態檔案,僅介面展示;品牌政策見 `docs/BRAND_ASSETS.md`)。
 
 ## 路由
 

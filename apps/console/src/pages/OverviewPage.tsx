@@ -1,17 +1,17 @@
 import React from "react";
 import { Link } from "react-router-dom";
 import { Alert, PageHeader, StateBlock } from "../components/ui";
-import { getBeaconPublicApiRoot, getBeaconUsageSummary } from "../lib/beacon/api/beaconDeveloperApi";
-import type { BeaconUsageSummary } from "../lib/beacon/types";
-import { formatTokens, formatUsd } from "../lib/beacon/utils/formatBeacon";
+import { getAkentrosPublicApiRoot, getAkentrosUsageSummary } from "../lib/akentros/api/akentrosDeveloperApi";
+import type { AkentrosUsageSummary } from "../lib/akentros/types";
+import { formatTokens, formatUsd } from "../lib/akentros/utils/formatAkentros";
 
 export function OverviewPage() {
-  const [usage, setUsage] = React.useState<BeaconUsageSummary | null>(null);
+  const [usage, setUsage] = React.useState<AkentrosUsageSummary | null>(null);
   const [error, setError] = React.useState("");
 
   React.useEffect(() => {
     const controller = new AbortController();
-    getBeaconUsageSummary(controller.signal)
+    getAkentrosUsageSummary(controller.signal)
       .then(setUsage)
       .catch((cause) => {
         if (cause.name !== "AbortError") setError(cause.message);
@@ -65,7 +65,7 @@ export function OverviewPage() {
             <input
               className="input input-mono"
               readOnly
-              value={getBeaconPublicApiRoot()}
+              value={getAkentrosPublicApiRoot()}
               onFocus={(event) => event.currentTarget.select()}
             />
           </label>
@@ -80,7 +80,7 @@ export function OverviewPage() {
             </div>
           </div>
           <small style={{ color: "var(--text-faint)", fontSize: "0.72rem" }}>
-            Authorization: Bearer sk-beacon-live_…
+            Authorization: Bearer sk-akentros-live_…
           </small>
         </article>
         <article className="card card-pad">

@@ -1,5 +1,5 @@
 /* ============================================================
-   Beacon Console — 設計系統
+   Akentros Console — 設計系統
    深色、側邊欄式開發者控制台。金色為品牌輔助色,
    全部樣式由本檔的 CSS 變數驅動,元件層不寫死顏色。
    ============================================================ */
@@ -35,7 +35,7 @@
   --sidebar-w: 236px;
 
   --font:
-    "Noto Beacon TC", "PingFang TC", "Microsoft JhengHei", "Segoe UI", system-ui, -apple-system, beacon-serif;
+    "Noto Akentros TC", "PingFang TC", "Microsoft JhengHei", "Segoe UI", system-ui, -apple-system, akentros-serif;
   --mono: ui-monospace, "Cascadia Code", "JetBrains Mono", Consolas, monospace;
 }
 

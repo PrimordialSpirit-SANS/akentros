@@ -1,12 +1,12 @@
-# Beacon deployment runbook
+# Akentros deployment runbook
 
 This runbook intentionally contains no credential values. Run every mutation
 against an explicitly selected environment; never rely on an implicit shell
-default when migrating or deploying Beacon.
+default when migrating or deploying Akentros.
 
 ## 0. Supported deployment topologies (read first)
 
-Beacon supports two gateway topologies. Both run the same Hono app and the
+Akentros supports two gateway topologies. Both run the same Hono app and the
 same versioned SQLite schema; they differ only in the database adapter and
 the maintenance scheduler.
 
@@ -15,7 +15,7 @@ the maintenance scheduler.
 **`npm run start:gateway` in `apps/gateway` is the reference deployment.**
 The server runs on SQLite (`node:sqlite`, Node >= 22.18) and executes the
 maintenance loop on an in-process timer (default every 30 minutes,
-`BEACON_MAINTENANCE_INTERVAL_MS`):
+`AKENTROS_MAINTENANCE_INTERVAL_MS`):
 
 - expired-reservation refunds and quarantined-reservation refunds,
 - `ai_rate_limit_buckets` and expired in-flight lease cleanup.
@@ -28,14 +28,14 @@ Constraints that apply to every deployment of this topology:
 - **Single instance only.** Key-level RPM/concurrency counters, IP rate
   limiting and the billing state machine rely on one SQLite file plus
   in-process serialization (`BEGIN IMMEDIATE` + queued queries). Never run
-  two server processes against the same `BEACON_DB_PATH`, and never shard
+  two server processes against the same `AKENTROS_DB_PATH`, and never shard
   reads/writes across instances.
 - **Persistent local disk** for the database file; backup per section 5.
 
 ### Topology B: Cloudflare Workers (Durable Object)
 
 The same gateway runs on Cloudflare Workers with the entire Hono app + SQLite
-inside a **single SQLite-backed Durable Object** (`BeaconGateway`, see
+inside a **single SQLite-backed Durable Object** (`AkentrosGateway`, see
 `apps/gateway/src/worker/`); the Worker entry (`src/worker.ts`) only forwards
 requests and cron triggers:
 
@@ -47,7 +47,7 @@ requests and cron triggers:
   invariant; do not shard or add DO class instances.
 - The in-process maintenance timer is replaced by a cron trigger
   (`*/30 * * * *` in `wrangler.jsonc`) → `scheduled()` → DO maintenance
-  endpoint. `BEACON_MAINTENANCE_INTERVAL_MS` does not apply on Workers.
+  endpoint. `AKENTROS_MAINTENANCE_INTERVAL_MS` does not apply on Workers.
 - Schema migrations + admin seed run automatically inside the DO before the
   first request (same code path as `npm run migrate`,
   `src/utils/bootstrap.ts`); `npm run migrate` is Node-only and not needed.
@@ -58,7 +58,7 @@ Deploy:
 cd apps/gateway
 npx wrangler login
 npx wrangler secret put JWT_SECRET            # openssl rand -hex 32
-npx wrangler secret put BEACON_API_KEY_PEPPER # openssl rand -hex 32
+npx wrangler secret put AKENTROS_API_KEY_PEPPER # openssl rand -hex 32
 npx wrangler secret put ADMIN_EMAIL           # optional admin seed
 npx wrangler secret put ADMIN_PASSWORD
 npx wrangler secret put OPENROUTER_API_KEY_1  # only providers actually enabled
@@ -78,8 +78,8 @@ Workers-specific caveats:
 - SQL parameter bindings accept only `number | string | ArrayBuffer | null`
   (no BigInt) and row values surface as `number` for integer columns.
 - The `console` (React + Vite static build) deploys to Cloudflare Pages:
-  build command `npm run build --workspace @beacon/console`, output
-  directory `apps/console/dist`, `VITE_BEACON_API_BASE` pointing at the
+  build command `npm run build --workspace @akentros/console`, output
+  directory `apps/console/dist`, `VITE_AKENTROS_API_BASE` pointing at the
   Worker URL; set `FRONTEND_ORIGINS` on the Worker to the Pages origin.
   SPA fallback (`apps/console/public/_redirects`) is included in the build.
 
@@ -90,11 +90,11 @@ SQLite storage (Topology B), one session secret and one API-key pepper.
 Configure these in the environment (`.dev.vars` for local, real env vars for
 production, `wrangler secret put` on Workers):
 
-- `BEACON_DB_PATH` - SQLite file path (default `./beacon.db`, relative to
+- `AKENTROS_DB_PATH` - SQLite file path (default `./akentros.db`, relative to
   `apps/gateway/`)
 - `JWT_SECRET` (at least 32 random bytes; signs the console session cookie)
-- `BEACON_API_KEY_PEPPER` (at least 32 random bytes)
-- `BEACON_ENABLED=true` - fail-closed gate for `/api/ai/*`
+- `AKENTROS_API_KEY_PEPPER` (at least 32 random bytes)
+- `AKENTROS_ENABLED=true` - fail-closed gate for `/api/ai/*`
 - `FRONTEND_ORIGINS` - cookie-enabled console origins (CSV)
 - Provider upstream keys - set only the providers actually enabled (see
   [PROVIDERS.md](PROVIDERS.md)); secrets live only in the runtime environment,
@@ -110,14 +110,14 @@ npm run migrate    # applies pending migrations, seeds the admin account
 ```
 
 The migration runner is idempotent; it records each applied version in
-`beacon_ai_schema_migrations` and refuses to serve (fail-closed readiness
+`akentros_ai_schema_migrations` and refuses to serve (fail-closed readiness
 check in `aiSchema.ts`) until the recorded version matches
-`BEACON_SCHEMA_VERSION`.
+`AKENTROS_SCHEMA_VERSION`.
 
 ## 3. Smoke test after deploy
 
 ```bash
-curl -s http://127.0.0.1:8787/api/ai/v1/models -H "Authorization: Bearer sk-beacon-live_invalid"
+curl -s http://127.0.0.1:8787/api/ai/v1/models -H "Authorization: Bearer sk-akentros-live_invalid"
 # expect: 401 authentication_error (proves the inference face + auth + DB read)
 ```
 
@@ -132,7 +132,7 @@ provider dispatch and resolves quarantined reservations after their window.
 To run it manually (for example from cron on an external scheduler):
 
 ```bash
-node apps/gateway/scripts/reconcileBeacon.ts
+node apps/gateway/scripts/reconcileAkentros.ts
 ```
 
 ## 5. Backup and restore
@@ -141,7 +141,7 @@ The database is a single SQLite file. Use the online backup API so you never
 copy a mid-write file:
 
 ```bash
-sqlite3 "$BEACON_DB_PATH" ".backup '/backups/beacon-$(date +%F).db'"
+sqlite3 "$AKENTROS_DB_PATH" ".backup '/backups/akentros-$(date +%F).db'"
 ```
 
 Restore = stop the gateway, replace the file, start the gateway. Do not copy
@@ -158,12 +158,12 @@ from section 5 together with the code.
 
 If a gate fails:
 
-1. Set `BEACON_ENABLED` away from `true` (fail-closed) or block the route at
+1. Set `AKENTROS_ENABLED` away from `true` (fail-closed) or block the route at
    the traffic layer.
 2. Stop new provider dispatches; keep read-only logs available to operators.
 3. Do not reverse schema migrations while AI request or ledger rows exist.
 4. Let active requests finish or expire, then run reconciliation.
-5. Rotate any provider or Beacon credential that may have been exposed.
+5. Rotate any provider or Akentros credential that may have been exposed.
 6. Restore application code only after confirming ledger invariants.
 
 Database rollback is restore-forward: repair with a new versioned migration or a

@@ -4,7 +4,7 @@ import test from "node:test";
 import ts from "typescript";
 
 const source = await readFile(
-  new URL("../../../apps/console/src/lib/beacon/api/sseEventParser.ts", import.meta.url),
+  new URL("../../../apps/console/src/lib/akentros/api/sseEventParser.ts", import.meta.url),
   "utf8",
 );
 const { outputText } = ts.transpileModule(source, {

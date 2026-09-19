@@ -99,7 +99,7 @@ export function getModelPricing(modelId: any, config: any = BACKEND_PRICING) {
 
 export function requireModelPricing(modelId: any, config: any = BACKEND_PRICING) {
   const model = getModelPricing(modelId, config);
-  if (!model) throw new RangeError(`Unknown or disabled Beacon model: ${String(modelId)}`);
+  if (!model) throw new RangeError(`Unknown or disabled Akentros model: ${String(modelId)}`);
   return model;
 }
 

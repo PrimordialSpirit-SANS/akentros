@@ -1,5 +1,5 @@
 import { apiFetch } from "../../../services/api";
-import type { BeaconConsoleUser } from "../types";
+import type { AkentrosConsoleUser } from "../types";
 
 // 內建帳號系統的會話客戶端。gateway 的 /api/auth/* 回應是第一方訊息,
 // 錯誤文字可直接顯示(與公開推理面的「不信任上游訊息」原則不同)。
@@ -22,57 +22,57 @@ async function readAuthError(response: Response): Promise<AuthError> {
   };
 }
 
-export class BeaconAuthError extends Error {
+export class AkentrosAuthError extends Error {
   readonly code: string;
 
   constructor(error: AuthError) {
     super(error.message);
-    this.name = "BeaconAuthError";
+    this.name = "AkentrosAuthError";
     this.code = error.code;
   }
 }
 
-export async function fetchBeaconSession(signal?: AbortSignal): Promise<BeaconConsoleUser | null> {
+export async function fetchAkentrosSession(signal?: AbortSignal): Promise<AkentrosConsoleUser | null> {
   let response: Response;
   try {
     response = await apiFetch("/auth/me", { signal });
   } catch (cause) {
     if (cause instanceof Error && cause.name === "AbortError") throw cause;
-    throw new BeaconAuthError({
+    throw new AkentrosAuthError({
       code: "connection_error",
       message: "無法連線至伺服器,請確認 gateway 狀態。",
     });
   }
   if (response.status === 401) return null;
-  if (!response.ok) throw new BeaconAuthError(await readAuthError(response));
+  if (!response.ok) throw new AkentrosAuthError(await readAuthError(response));
   const payload = await response.json();
-  return (payload?.user as BeaconConsoleUser) ?? null;
+  return (payload?.user as AkentrosConsoleUser) ?? null;
 }
 
-export async function loginBeaconAccount(email: string, password: string): Promise<BeaconConsoleUser> {
+export async function loginAkentrosAccount(email: string, password: string): Promise<AkentrosConsoleUser> {
   const response = await apiFetch("/auth/login", {
     method: "POST",
     body: JSON.stringify({ email, password }),
   });
-  if (!response.ok) throw new BeaconAuthError(await readAuthError(response));
+  if (!response.ok) throw new AkentrosAuthError(await readAuthError(response));
   const payload = await response.json();
-  return payload.user as BeaconConsoleUser;
+  return payload.user as AkentrosConsoleUser;
 }
 
-export async function registerBeaconAccount(
+export async function registerAkentrosAccount(
   email: string,
   username: string,
   password: string,
-): Promise<BeaconConsoleUser> {
+): Promise<AkentrosConsoleUser> {
   const response = await apiFetch("/auth/register", {
     method: "POST",
     body: JSON.stringify({ email, username, password }),
   });
-  if (!response.ok) throw new BeaconAuthError(await readAuthError(response));
+  if (!response.ok) throw new AkentrosAuthError(await readAuthError(response));
   const payload = await response.json();
-  return payload.user as BeaconConsoleUser;
+  return payload.user as AkentrosConsoleUser;
 }
 
-export async function logoutBeaconAccount(): Promise<void> {
+export async function logoutAkentrosAccount(): Promise<void> {
   await apiFetch("/auth/logout", { method: "POST" });
 }

@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
-  formatBeaconTimestamp,
+  formatAkentrosTimestamp,
   formatLatency,
   formatModelLimit,
   formatPoints,
   formatTokens,
-} from "./formatBeacon";
+} from "./formatAkentros";
 
 describe("formatPoints", () => {
   it("formats integers with thousand separators", () => {
@@ -31,20 +31,20 @@ describe("formatTokens", () => {
   });
 });
 
-describe("formatBeaconTimestamp", () => {
+describe("formatAkentrosTimestamp", () => {
   it("returns placeholder for missing values", () => {
-    expect(formatBeaconTimestamp(null)).toBe("尚未使用");
-    expect(formatBeaconTimestamp(undefined)).toBe("尚未使用");
-    expect(formatBeaconTimestamp("")).toBe("尚未使用");
+    expect(formatAkentrosTimestamp(null)).toBe("尚未使用");
+    expect(formatAkentrosTimestamp(undefined)).toBe("尚未使用");
+    expect(formatAkentrosTimestamp("")).toBe("尚未使用");
   });
 
   it("returns dash for invalid dates", () => {
-    expect(formatBeaconTimestamp("not-a-date")).toBe("—");
+    expect(formatAkentrosTimestamp("not-a-date")).toBe("—");
   });
 
   it("formats valid ISO timestamps in Taipei time", () => {
     // ICU 可能以細空格（U+2009）或窄不換行空格（U+202F）分隔日期與時間，斷言前統一正規化。
-    const formatted = formatBeaconTimestamp("2026-01-02T03:04:00Z").replace(/[\u2009\u202F\u00A0]/g, " ");
+    const formatted = formatAkentrosTimestamp("2026-01-02T03:04:00Z").replace(/[\u2009\u202F\u00A0]/g, " ");
     expect(formatted).toBe("2026/01/02 11:04");
   });
 });

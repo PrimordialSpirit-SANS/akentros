@@ -8,7 +8,7 @@
   "offerings": [
     {
       "id": "gpt-6-astra-openai",
-      "model_id": "beacon/gpt-6-astra",
+      "model_id": "akentros/gpt-6-astra",
       "provider_id": "openai",
       "provider_name": "OpenAI",
       "brand_asset_id": "openai-provider",
@@ -22,7 +22,7 @@
     },
     {
       "id": "gpt-5.2-openai",
-      "model_id": "beacon/gpt-5.2",
+      "model_id": "akentros/gpt-5.2",
       "provider_id": "openai",
       "provider_name": "OpenAI",
       "brand_asset_id": "openai-provider",
@@ -36,7 +36,7 @@
     },
     {
       "id": "gpt-5.2-codex-openai",
-      "model_id": "beacon/gpt-5.2-codex",
+      "model_id": "akentros/gpt-5.2-codex",
       "provider_id": "openai",
       "provider_name": "OpenAI",
       "brand_asset_id": "openai-provider",
@@ -50,7 +50,7 @@
     },
     {
       "id": "claude-opus-4-8-anthropic",
-      "model_id": "beacon/claude-opus-4-8",
+      "model_id": "akentros/claude-opus-4-8",
       "provider_id": "anthropic",
       "provider_name": "Anthropic",
       "brand_asset_id": "anthropic-provider",
@@ -64,7 +64,7 @@
     },
     {
       "id": "claude-sonnet-5-anthropic",
-      "model_id": "beacon/claude-sonnet-5",
+      "model_id": "akentros/claude-sonnet-5",
       "provider_id": "anthropic",
       "provider_name": "Anthropic",
       "brand_asset_id": "anthropic-provider",
@@ -78,7 +78,7 @@
     },
     {
       "id": "claude-haiku-4-5-anthropic",
-      "model_id": "beacon/claude-haiku-4-5",
+      "model_id": "akentros/claude-haiku-4-5",
       "provider_id": "anthropic",
       "provider_name": "Anthropic",
       "brand_asset_id": "anthropic-provider",
@@ -92,7 +92,7 @@
     },
     {
       "id": "gemini-3.5-pro-google",
-      "model_id": "beacon/gemini-3.5-pro",
+      "model_id": "akentros/gemini-3.5-pro",
       "provider_id": "google",
       "provider_name": "Google Gemini API",
       "brand_asset_id": "google-provider",
@@ -106,7 +106,7 @@
     },
     {
       "id": "gemini-3.8-flash-google",
-      "model_id": "beacon/gemini-3.8-flash",
+      "model_id": "akentros/gemini-3.8-flash",
       "provider_id": "google",
       "provider_name": "Google Gemini API",
       "brand_asset_id": "google-provider",
@@ -120,7 +120,7 @@
     },
     {
       "id": "gemini-3.5-flash-lite-google",
-      "model_id": "beacon/gemini-3.5-flash-lite",
+      "model_id": "akentros/gemini-3.5-flash-lite",
       "provider_id": "google",
       "provider_name": "Google Gemini API",
       "brand_asset_id": "google-provider",
@@ -134,7 +134,7 @@
     },
     {
       "id": "grok-4.6-xai",
-      "model_id": "beacon/grok-4.6",
+      "model_id": "akentros/grok-4.6",
       "provider_id": "xai",
       "provider_name": "xAI API",
       "brand_asset_id": "xai-provider",
@@ -148,7 +148,7 @@
     },
     {
       "id": "grok-4.1-fast-xai",
-      "model_id": "beacon/grok-4.1-fast",
+      "model_id": "akentros/grok-4.1-fast",
       "provider_id": "xai",
       "provider_name": "xAI API",
       "brand_asset_id": "xai-provider",
@@ -162,7 +162,7 @@
     },
     {
       "id": "deepseek-v4-pro-deepseek",
-      "model_id": "beacon/deepseek-v4-pro",
+      "model_id": "akentros/deepseek-v4-pro",
       "provider_id": "deepseek",
       "provider_name": "DeepSeek API",
       "brand_asset_id": "deepseek-provider",
@@ -176,7 +176,7 @@
     },
     {
       "id": "deepseek-v4-pro-qwencloud",
-      "model_id": "beacon/deepseek-v4-pro",
+      "model_id": "akentros/deepseek-v4-pro",
       "provider_id": "qwencloud",
       "provider_name": "QwenCloud",
       "brand_asset_id": "qwencloud",
@@ -190,7 +190,7 @@
     },
     {
       "id": "deepseek-v4.1-flash-deepseek",
-      "model_id": "beacon/deepseek-v4.1-flash",
+      "model_id": "akentros/deepseek-v4.1-flash",
       "provider_id": "deepseek",
       "provider_name": "DeepSeek API",
       "brand_asset_id": "deepseek-provider",
@@ -204,7 +204,7 @@
     },
     {
       "id": "deepseek-v4.1-flash-qwencloud",
-      "model_id": "beacon/deepseek-v4.1-flash",
+      "model_id": "akentros/deepseek-v4.1-flash",
       "provider_id": "qwencloud",
       "provider_name": "QwenCloud",
       "brand_asset_id": "qwencloud",
@@ -218,7 +218,7 @@
     },
     {
       "id": "kimi-k3-moonshot",
-      "model_id": "beacon/kimi-k3",
+      "model_id": "akentros/kimi-k3",
       "provider_id": "moonshot",
       "provider_name": "Moonshot AI",
       "brand_asset_id": "moonshot-provider",
@@ -232,7 +232,7 @@
     },
     {
       "id": "kimi-k3-qwencloud",
-      "model_id": "beacon/kimi-k3",
+      "model_id": "akentros/kimi-k3",
       "provider_id": "qwencloud",
       "provider_name": "QwenCloud",
       "brand_asset_id": "qwencloud",
@@ -246,7 +246,7 @@
     },
     {
       "id": "glm-5.3-zhipu",
-      "model_id": "beacon/glm-5.3",
+      "model_id": "akentros/glm-5.3",
       "provider_id": "zhipu",
       "provider_name": "Z.ai (Zhipu BigModel)",
       "brand_asset_id": "zhipu",
@@ -260,7 +260,7 @@
     },
     {
       "id": "glm-5.3-qwencloud",
-      "model_id": "beacon/glm-5.3",
+      "model_id": "akentros/glm-5.3",
       "provider_id": "qwencloud",
       "provider_name": "QwenCloud",
       "brand_asset_id": "qwencloud",
@@ -274,7 +274,7 @@
     },
     {
       "id": "glm-5.3-flash-zhipu",
-      "model_id": "beacon/glm-5.3-flash",
+      "model_id": "akentros/glm-5.3-flash",
       "provider_id": "zhipu",
       "provider_name": "Z.ai (Zhipu BigModel)",
       "brand_asset_id": "zhipu",
@@ -288,7 +288,7 @@
     },
     {
       "id": "glm-5.3-flash-qwencloud",
-      "model_id": "beacon/glm-5.3-flash",
+      "model_id": "akentros/glm-5.3-flash",
       "provider_id": "qwencloud",
       "provider_name": "QwenCloud",
       "brand_asset_id": "qwencloud",
@@ -302,7 +302,7 @@
     },
     {
       "id": "qwen-3.8-max-qwencloud",
-      "model_id": "beacon/qwen-3.8-max",
+      "model_id": "akentros/qwen-3.8-max",
       "provider_id": "qwencloud",
       "provider_name": "QwenCloud",
       "brand_asset_id": "qwencloud",
@@ -316,7 +316,7 @@
     },
     {
       "id": "qwen-3.8-flash-qwencloud",
-      "model_id": "beacon/qwen-3.8-flash",
+      "model_id": "akentros/qwen-3.8-flash",
       "provider_id": "qwencloud",
       "provider_name": "QwenCloud",
       "brand_asset_id": "qwencloud",
@@ -330,7 +330,7 @@
     },
     {
       "id": "qwen-3.8-27b-cloudflare",
-      "model_id": "beacon/qwen-3.8-27b",
+      "model_id": "akentros/qwen-3.8-27b",
       "provider_id": "cloudflare",
       "provider_name": "Cloudflare Workers AI",
       "brand_asset_id": "cloudflare",

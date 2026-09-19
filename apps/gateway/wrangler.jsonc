@@ -1,9 +1,9 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  // Beacon gateway 的 Cloudflare Workers 部署設定:整個 Hono app 跑在
-  // 單一 Durable Object(BeaconGateway,SQLite-backed)內,Worker 本體只做
+  // Akentros gateway 的 Cloudflare Workers 部署設定:整個 Hono app 跑在
+  // 單一 Durable Object(AkentrosGateway,SQLite-backed)內,Worker 本體只做
   // 轉發與 cron。Node 自架部署(nodeServer.ts)不使用本檔。
-  "name": "beacon-gateway",
+  "name": "akentros-gateway",
   "main": "src/worker.ts",
   "compatibility_date": "2025-09-01",
   "compatibility_flags": ["nodejs_compat"],
@@ -13,34 +13,34 @@
   "durable_objects": {
     "bindings": [
       {
-        "name": "BEACON_DO",
-        "class_name": "BeaconGateway"
+        "name": "AKENTROS_DO",
+        "class_name": "AkentrosGateway"
       }
     ]
   },
   "migrations": [
     {
       "tag": "v1",
-      "new_sqlite_classes": ["BeaconGateway"]
+      "new_sqlite_classes": ["AkentrosGateway"]
     }
   ],
   // 對帳/清理:等價 Node 進入點的 in-process 維護迴圈(預設每 30 分鐘)。
-  // Workers 上為固定 cron,BEACON_MAINTENANCE_INTERVAL_MS 不適用。
+  // Workers 上為固定 cron,AKENTROS_MAINTENANCE_INTERVAL_MS 不適用。
   "triggers": {
     "crons": ["*/30 * * * *"]
   },
   "vars": {
     // fail-closed 開關:僅 true 時啟用 /api/ai/*(建議部署後先用 404 驗證路由
     // 存在性,再打開)。
-    "BEACON_ENABLED": "true",
-    "RATE_LIMIT_NAMESPACE": "beacon",
+    "AKENTROS_ENABLED": "true",
+    "RATE_LIMIT_NAMESPACE": "akentros",
     // 依實際 Pages 網域填:允許帶 cookie 的 console 來源(CSV)。
     "FRONTEND_ORIGINS": "http://localhost:5173",
     "FRONTEND_BASE_URL": "http://localhost:5173"
   }
   // Secrets 一律以 `wrangler secret put` 設定,不得寫進本檔:
-  //   JWT_SECRET、BEACON_API_KEY_PEPPER(各 ≥32 bytes)
+  //   JWT_SECRET、AKENTROS_API_KEY_PEPPER(各 ≥32 bytes)
   //   ADMIN_EMAIL、ADMIN_PASSWORD(管理員種子;DO 首次啟動時套用)
   //   OPENROUTER_API_KEY_1 …(僅啟用的供應商,見 docs/PROVIDERS.md)
-  // 資料庫為 DO 內建 SQLite,不需要 BEACON_DB_PATH。
+  // 資料庫為 DO 內建 SQLite,不需要 AKENTROS_DB_PATH。
 }

@@ -18,7 +18,7 @@ What you expected to happen.
 
 **Environment**
 
-- Beacon version / commit:
+- Akentros version / commit:
 - Node version:
 - Deployment (Workers / wrangler dev / other):
 

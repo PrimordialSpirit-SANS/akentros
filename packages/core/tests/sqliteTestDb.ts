@@ -4,7 +4,7 @@ import { DatabaseSync } from "node:sqlite";
 // 相同的 (sql, params) => { rows } 介面與 transaction(fn) 語義,
 // 讓 core 的行為測試直接驗證 SQL 正確性,而不是假 query。
 // 先在此建立 ledger_entries 與 users(與 gateway 層 DDL 一致),
-// 其餘 ai_* 資料表由 migrateBeaconSchema 建。
+// 其餘 ai_* 資料表由 migrateAkentrosSchema 建。
 
 export function createSqliteTestDb() {
   const database = new DatabaseSync(":memory:");

@@ -1,34 +1,34 @@
 openapi: 3.1.0
 info:
-  title: Beacon API
+  title: Akentros API
   version: 0.4.0
   description: |
-    Beacon text-only OpenAI-compatible inference surface and signed-in developer
-    management surface. Public inference routes use Beacon API keys; developer
-    routes use the existing Beacon session and CSRF policy.
+    Akentros text-only OpenAI-compatible inference surface and signed-in developer
+    management surface. Public inference routes use Akentros API keys; developer
+    routes use the existing Akentros session and CSRF policy.
 servers:
   - url: /
-    description: Current Beacon API origin
+    description: Current Akentros API origin
 tags:
   - name: Inference
-    description: OpenAI-compatible endpoints authenticated with a Beacon API key.
+    description: OpenAI-compatible endpoints authenticated with a Akentros API key.
   - name: Developer
-    description: Management endpoints authenticated with the existing Beacon session.
+    description: Management endpoints authenticated with the existing Akentros session.
 paths:
   /api/ai/v1/models:
     get:
       tags: [Inference]
-      operationId: listBeaconModels
+      operationId: listAkentrosModels
       summary: List enabled public models
       security:
-        - BeaconKey: []
+        - AkentrosKey: []
       responses:
         '200':
           description: Models enabled by the authoritative backend pricing revision.
           headers:
             X-Request-Id:
               $ref: '#/components/headers/XRequestId'
-            X-Beacon-Pricing-Revision:
+            X-Akentros-Pricing-Revision:
               $ref: '#/components/headers/XPricingRevision'
           content:
             application/json:
@@ -46,7 +46,7 @@ paths:
   /api/ai/v1/chat/completions:
     post:
       tags: [Inference]
-      operationId: createBeaconChatCompletion
+      operationId: createAkentrosChatCompletion
       summary: Create a text chat completion
       description: |
         Returns JSON when `stream` is false and SSE when `stream` is true. A normal
@@ -54,7 +54,7 @@ paths:
         Once the first data frame is sent, an execution failure is reported in-band
         and the request is not executed again.
       security:
-        - BeaconKey: []
+        - AkentrosKey: []
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
@@ -69,7 +69,7 @@ paths:
           headers:
             X-Request-Id:
               $ref: '#/components/headers/XRequestId'
-            X-Beacon-Pricing-Revision:
+            X-Akentros-Pricing-Revision:
               $ref: '#/components/headers/XPricingRevision'
           content:
             application/json:
@@ -106,7 +106,7 @@ paths:
   /api/ai/developer/keys:
     get:
       tags: [Developer]
-      operationId: listBeaconKeys
+      operationId: listAkentrosKeys
       summary: List API key metadata
       security:
         - SessionBearer: []
@@ -124,7 +124,7 @@ paths:
           $ref: '#/components/responses/ManagementError'
     post:
       tags: [Developer]
-      operationId: createBeaconKey
+      operationId: createAkentrosKey
       summary: Create an API key
       description: The `api_key` secret appears in this response exactly once.
       security:
@@ -157,7 +157,7 @@ paths:
   /api/ai/developer/keys/{id}/rotate:
     post:
       tags: [Developer]
-      operationId: rotateBeaconKey
+      operationId: rotateAkentrosKey
       summary: Atomically rotate an API key
       description: The old secret is revoked immediately; the new secret appears once.
       security:
@@ -183,7 +183,7 @@ paths:
   /api/ai/developer/keys/{id}:
     delete:
       tags: [Developer]
-      operationId: revokeBeaconKey
+      operationId: revokeAkentrosKey
       summary: Revoke an API key
       security:
         - SessionBearer: []
@@ -202,7 +202,7 @@ paths:
   /api/ai/developer/usage/summary:
     get:
       tags: [Developer]
-      operationId: getBeaconUsageSummary
+      operationId: getAkentrosUsageSummary
       summary: Get balance, 30-day usage, and monthly free-model quotas
       security:
         - SessionBearer: []
@@ -222,13 +222,13 @@ paths:
   /api/ai/developer/logs:
     get:
       tags: [Developer]
-      operationId: listBeaconRequestLogs
+      operationId: listAkentrosRequestLogs
       summary: List sanitized request logs
       description: |
         Prompt and completion content, full keys, credential material, internal
         execution identities, internal model identifiers, attempt counts and
         internal request identifiers are never returned. Compatibility fields use
-        the Beacon service identity and requested public model only.
+        the Akentros service identity and requested public model only.
       security:
         - SessionBearer: []
         - SessionCookie: []
@@ -274,7 +274,7 @@ paths:
   /api/ai/developer/requests/{requestId}:
     get:
       tags: [Developer]
-      operationId: getBeaconRequest
+      operationId: getAkentrosRequest
       summary: Get sanitized request details
       security:
         - SessionBearer: []
@@ -290,7 +290,7 @@ paths:
         '200':
           description: |
             A request owned by the signed-in user. Content and internal execution
-            metadata are not exposed; compatibility fields contain neutral Beacon
+            metadata are not exposed; compatibility fields contain neutral Akentros
             values only.
           content:
             application/json:
@@ -305,10 +305,10 @@ paths:
 
 components:
   securitySchemes:
-    BeaconKey:
+    AkentrosKey:
       type: http
       scheme: bearer
-      bearerFormat: sk-beacon-live_...
+      bearerFormat: sk-akentros-live_...
     SessionBearer:
       type: http
       scheme: bearer
@@ -316,11 +316,11 @@ components:
     SessionCookie:
       type: apiKey
       in: cookie
-      name: beacon_token
+      name: akentros_token
 
   headers:
     XRequestId:
-      description: Stable Beacon request identifier.
+      description: Stable Akentros request identifier.
       schema:
         type: string
     XPricingRevision:
@@ -336,7 +336,7 @@ components:
       description: |
         Prevents a second model execution and double charge for the same API key and
         payload. Semantics differ from OpenAI, which replays the stored original
-        response for a completed key: Beacon never persists prompts or completions,
+        response for a completed key: Akentros never persists prompts or completions,
         so it cannot replay content. Sending a key that is currently in progress
         returns 409 with code `idempotent_request_in_progress`; resending a key
         whose request already completed returns 409 with code
@@ -378,8 +378,8 @@ components:
   responses:
     PublicError:
       description: |
-        Beacon-owned OpenAI-shaped inference error. Internal execution failures and
-        infrastructure details are normalized to stable public Beacon error codes.
+        Akentros-owned OpenAI-shaped inference error. Internal execution failures and
+        infrastructure details are normalized to stable public Akentros error codes.
       content:
         application/json:
           schema:
@@ -410,7 +410,7 @@ components:
               type: [string, 'null']
             code:
               type: string
-              description: Stable public Beacon error code; internal execution codes are never returned.
+              description: Stable public Akentros error code; internal execution codes are never returned.
 
     ManagementErrorEnvelope:
       type: object
@@ -433,7 +433,7 @@ components:
         created:
           type: integer
         owned_by:
-          const: beacon
+          const: akentros
 
     ModelList:
       type: object
@@ -583,10 +583,10 @@ components:
               type: boolean
               const: true
               default: true
-              description: Beacon always includes final usage for streaming requests.
+              description: Akentros always includes final usage for streaming requests.
         chat_template_kwargs:
           type: object
-          description: Optional public reasoning control for compatible Beacon models.
+          description: Optional public reasoning control for compatible Akentros models.
           required: [thinking]
           additionalProperties: false
           properties:
@@ -910,14 +910,14 @@ components:
           type: [string, 'null']
         requested_model:
           type: string
-          description: Public Beacon model requested by the client.
+          description: Public Akentros model requested by the client.
         actual_model:
           type: string
           description: Compatibility field that always mirrors requested_model.
         provider:
           type: string
-          const: beacon
-          description: Beacon service identity; internal execution identities are never returned.
+          const: akentros
+          description: Akentros service identity; internal execution identities are never returned.
         status:
           type: string
         input_tokens:
@@ -941,7 +941,7 @@ components:
           type: [integer, 'null']
         error_code:
           type: [string, 'null']
-          description: Stable public Beacon error code; internal execution codes are never returned.
+          description: Stable public Akentros error code; internal execution codes are never returned.
         pricing_revision:
           type: [string, 'null']
           description: Present only on request-detail responses.

@@ -4,7 +4,7 @@ import test from "node:test";
 import ts from "typescript";
 
 const source = await readFile(
-  new URL("../../../apps/console/src/lib/beacon/api/beaconPublicContract.ts", import.meta.url),
+  new URL("../../../apps/console/src/lib/akentros/api/akentrosPublicContract.ts", import.meta.url),
   "utf8",
 );
 const { outputText } = ts.transpileModule(source, {
@@ -12,16 +12,16 @@ const { outputText } = ts.transpileModule(source, {
 });
 const contractModuleUrl = `data:text/javascript;base64,${Buffer.from(outputText).toString("base64")}`;
 const {
-  hasBeaconErrorEnvelope,
-  normalizeBeaconError,
-  normalizeBeaconLogsPage,
-  normalizeBeaconRequestDetail,
-  normalizeBeaconStreamChunk,
-  normalizeBeaconUsageSummary,
+  hasAkentrosErrorEnvelope,
+  normalizeAkentrosError,
+  normalizeAkentrosLogsPage,
+  normalizeAkentrosRequestDetail,
+  normalizeAkentrosStreamChunk,
+  normalizeAkentrosUsageSummary,
 } = await import(contractModuleUrl);
 
-test("frontend replaces vendor HTTP errors with stable Beacon errors", () => {
-  const error = normalizeBeaconError(
+test("frontend replaces vendor HTTP errors with stable Akentros errors", () => {
+  const error = normalizeAkentrosError(
     {
       error: {
         message: "OpenRouter rejected the upstream request with 403",
@@ -34,11 +34,11 @@ test("frontend replaces vendor HTTP errors with stable Beacon errors", () => {
 
   assert.deepEqual(error, {
     code: "service_unavailable",
-    message: "Beacon 暫時無法完成此請求，請稍後再試。",
+    message: "Akentros 暫時無法完成此請求，請稍後再試。",
   });
   assert.doesNotMatch(JSON.stringify(error), /openrouter|upstream|provider|403/i);
 
-  const forbidden = normalizeBeaconError(
+  const forbidden = normalizeAkentrosError(
     { message: "Forbidden" },
     {
       status: 403,
@@ -49,8 +49,8 @@ test("frontend replaces vendor HTTP errors with stable Beacon errors", () => {
   assert.doesNotMatch(forbidden.message, /forbidden|403/i);
 });
 
-test("frontend preserves native Beacon error codes without trusting response messages", () => {
-  const error = normalizeBeaconError(
+test("frontend preserves native Akentros error codes without trusting response messages", () => {
+  const error = normalizeAkentrosError(
     {
       error: {
         message: "untrusted response text",
@@ -61,8 +61,8 @@ test("frontend preserves native Beacon error codes without trusting response mes
   );
 
   assert.equal(error.code, "model_not_allowed");
-  assert.equal(error.message, "此 API 金鑰未開放指定的 Beacon 模型。");
-  assert.equal(hasBeaconErrorEnvelope({ error: { code: "model_not_allowed" } }), true);
+  assert.equal(error.message, "此 API 金鑰未開放指定的 Akentros 模型。");
+  assert.equal(hasAkentrosErrorEnvelope({ error: { code: "model_not_allowed" } }), true);
 });
 
 test("frontend usage normalization discards stale routing metadata", () => {
@@ -71,7 +71,7 @@ test("frontend usage normalization discards stale routing metadata", () => {
     created_at: "2026-07-15T00:00:00.000Z",
     api_key_id: "9",
     key_name: "Production",
-    requested_model: "beacon/qwen-3.8-27b",
+    requested_model: "akentros/qwen-3.8-27b",
     actual_model: "owner/vendor-model",
     provider: "openrouter",
     status: "succeeded",
@@ -86,18 +86,18 @@ test("frontend usage normalization discards stale routing metadata", () => {
     route_id: "vendor-route",
     upstream_request_id: "opaque-upstream-id",
   };
-  const page = normalizeBeaconLogsPage({
+  const page = normalizeAkentrosLogsPage({
     logs: [staleLog],
     pagination: { next_cursor: null, has_more: false },
   });
   const log = page.logs[0];
 
   assert.equal(log.actual_model, log.requested_model);
-  assert.equal(log.provider, "beacon");
+  assert.equal(log.provider, "akentros");
   assert.equal(log.error_code, "request_failed");
   assert.doesNotMatch(JSON.stringify(log), /openrouter|owner\/vendor-model|vendor-route|opaque-upstream-id/i);
 
-  const detail = normalizeBeaconRequestDetail({
+  const detail = normalizeAkentrosRequestDetail({
     ...staleLog,
     fallback_count: 4,
     upstream_request_id: "opaque-upstream-id",
@@ -108,22 +108,22 @@ test("frontend usage normalization discards stale routing metadata", () => {
 });
 
 test("frontend usage summary normalizes monthly free-model quotas", () => {
-  const summary = normalizeBeaconUsageSummary({
+  const summary = normalizeAkentrosUsageSummary({
     free_model_quotas: {
-      "beacon/beacon-flash": { used: "16", limit: "5000" },
-      "beacon/beacon-lite": { used: 2, limit: 500 },
+      "akentros/akentros-flash": { used: "16", limit: "5000" },
+      "akentros/akentros-lite": { used: 2, limit: 500 },
       invalid: "discard me",
     },
   });
 
   assert.deepEqual(summary.free_model_quotas, {
-    "beacon/beacon-flash": { used: 16, limit: 5000 },
-    "beacon/beacon-lite": { used: 2, limit: 500 },
+    "akentros/akentros-flash": { used: 16, limit: 5000 },
+    "akentros/akentros-lite": { used: 2, limit: 500 },
   });
 });
 
 test("frontend stream normalization keeps reasoning but drops vendor fields", () => {
-  const chunk = normalizeBeaconStreamChunk({
+  const chunk = normalizeAkentrosStreamChunk({
     id: "upstream-id",
     model: "owner/vendor-model",
     provider: "vendor-name",
