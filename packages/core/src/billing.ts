@@ -590,7 +590,11 @@ export function createAkentrosBillingStore(query: AkentrosQuery): AkentrosBillin
         const user: any = rows(userRows)[0];
 
         if (Number(transition.refunded_usd_micros) > 0) {
-          const balanceBefore = Number(user.balance_usd_micros) - Number(transition.refunded_usd_micros);
+          // user.balance_usd_micros 是事務內退款前讀得的餘額 B，credit 分錄
+          // 應記錄 (B, B+X)。舊實作把退款前餘額誤當退款後快照，寫成
+          // (B−X, B)，使 audit-replay 的滾動餘額與實際餘額不一致。
+          const balanceBefore = user.balance_usd_micros;
+          const balanceAfter = Number(user.balance_usd_micros) + Number(transition.refunded_usd_micros);
           await query(
             `
             UPDATE users
@@ -614,7 +618,7 @@ export function createAkentrosBillingStore(query: AkentrosQuery): AkentrosBillin
               user.email || "",
               transition.refunded_usd_micros,
               balanceBefore,
-              user.balance_usd_micros,
+              balanceAfter,
               transition.ai_request_id,
               requestId,
               JSON.stringify({ request_id: requestId, charged_usd_micros: transition.charged_usd_micros }),
@@ -719,7 +723,11 @@ export function createAkentrosBillingStore(query: AkentrosQuery): AkentrosBillin
         const user: any = rows(userRows)[0];
 
         if (Number(transition.refunded_usd_micros) > 0) {
-          const balanceBefore = Number(user.balance_usd_micros) - Number(transition.refunded_usd_micros);
+          // user.balance_usd_micros 是事務內退款前讀得的餘額 B，credit 分錄
+          // 應記錄 (B, B+X)。舊實作把退款前餘額誤當退款後快照，寫成
+          // (B−X, B)，使 audit-replay 的滾動餘額與實際餘額不一致。
+          const balanceBefore = user.balance_usd_micros;
+          const balanceAfter = Number(user.balance_usd_micros) + Number(transition.refunded_usd_micros);
           await query(
             `
             UPDATE users
@@ -743,7 +751,7 @@ export function createAkentrosBillingStore(query: AkentrosQuery): AkentrosBillin
               user.email || "",
               transition.refunded_usd_micros,
               balanceBefore,
-              user.balance_usd_micros,
+              balanceAfter,
               transition.ai_request_id,
               requestId,
               description,
