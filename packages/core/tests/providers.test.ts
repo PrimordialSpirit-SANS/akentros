@@ -230,6 +230,38 @@ test("Anthropic requests use the Messages API with translated system, tools, and
   assert.doesNotMatch(request.init.body, /anthropic-test-secret|beacon\/claude-test/);
 });
 
+test("Anthropic maps every OpenAI tool_choice mode to its Messages API equivalent", () => {
+  const pool = requireProviderPool("anthropic-production");
+  const credential = resolveProviderCredential(pool, pool.credentials[0], {
+    ANTHROPIC_API_KEY_1: "anthropic-test-secret",
+  });
+  const tools = [
+    {
+      type: "function",
+      function: { name: "lookup", parameters: { type: "object", properties: {} } },
+    },
+  ];
+  const build = (tool_choice: unknown) =>
+    JSON.parse(
+      buildProviderRequest({
+        route: { provider: "anthropic", upstream_model: "claude-test-model" },
+        pool,
+        credential,
+        body: { messages: [{ role: "user", content: "hi" }], tools, tool_choice },
+      }).init.body as string,
+    );
+
+  // "none" 必須阻止工具呼叫:舊版折成 undefined(= auto)會讓上游照樣
+  // 呼叫工具。tools 參數仍須存在(歷史含 tool_use/tool_result 區塊時必備)。
+  const none = build("none");
+  assert.deepEqual(none.tool_choice, { type: "none" });
+  assert.ok(Array.isArray(none.tools) && none.tools.length === 1);
+  const required = build("required");
+  assert.deepEqual(required.tool_choice, { type: "any" });
+  const named = build({ type: "function", function: { name: "lookup" } });
+  assert.deepEqual(named.tool_choice, { type: "tool", name: "lookup" });
+});
+
 test("Anthropic JSON responses are normalized into the OpenAI completion shape", async () => {
   const result = await invokeProviderRoute({
     route: { provider: "anthropic", upstream_model: "claude-test-model", timeout_ms: 1000 },

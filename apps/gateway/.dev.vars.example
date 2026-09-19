@@ -22,6 +22,12 @@ ADMIN_USERNAME=admin
 BEACON_SIGNUP_BONUS_USD=1000
 # 設為 true 時關閉公開註冊(僅管理員能開帳號)
 BEACON_DISABLE_REGISTRATION=
+# 登入/註冊限流的用戶端 IP 判定。Node 自架預設以「socket 來源位址」為身份
+# (不可偽造);僅當 gateway 前方有會「覆寫」cf-connecting-ip 標頭的受信賴
+# 反向代理(如 Cloudflare)時才設 true 改用標頭,否則保持留空——攻擊者可
+# 自帶假標頭逐請求換 IP 繞過限流。Cloudflare Workers 部署不適用此變數
+# (流量一律經 CF 代理,標頭由其附加,本來就可信)。
+BEACON_TRUST_PROXY=
 # PBKDF2 迭代次數。預設 600,000(OWASP Password Storage Cheat Sheet 對
 # PBKDF2-HMAC-SHA256 的建議值);已存在的舊格式雜湊(迭代數記錄在雜湊字串
 # 內)不受影響,仍可驗證。Cloudflare Workers 免費方案的 CPU 上限可能跑不完

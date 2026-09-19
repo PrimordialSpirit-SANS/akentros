@@ -97,6 +97,14 @@ function executeQuery(database: DatabaseSync, sql: string, params: any[]): Query
 
 const pendingByDatabase = new Map<string, Array<() => void>>();
 const txOpenByDatabase = new Set<string>();
+// 每個資料庫檔案一條交易序列化 chain(比照 worker/doDb.ts 的 txChain):
+// 交易起點不得並行,否則第二筆 BEGIN IMMEDIATE 會撞「cannot start a
+// transaction within a transaction」並以 503 對外爆炸。目前沒炸只是因為
+// 交易體內恰好只有同步 DB 呼叫(純 microtask 鏈不與其他請求交錯)——這是
+// 未被文件化也不被程式碼強制的脆弱不變量;任何人在任一交易 fn 內加一個
+// 真 I/O await(外部服務呼叫、WebCrypto threadpool)就會在併發負載下以
+// 隨機 503 的形式浮現。以 promise chain 明確序列化,不依賴該僥倖。
+const txChainByDatabase = new Map<string, Promise<unknown>>();
 
 function flushPending(file: string) {
   const queue = pendingByDatabase.get(file) || [];
@@ -134,7 +142,8 @@ export async function dbQuery(env: BeaconRuntimeEnv, sql: string, params: any[] 
 }
 
 // 交易封裝:BEGIN IMMEDIATE → fn 內的 query 直連 → COMMIT / ROLLBACK。
-// 交易進行中,同資料庫的其他查詢會被擋到交易結束,避免語句混入。
+// 交易進行中,同資料庫的其他查詢會被擋到交易結束,避免語句混入;
+// 交易起點以 per-database chain 序列化(見 txChainByDatabase 說明)。
 export async function withBeaconTransaction<T>(env: BeaconRuntimeEnv, fn: () => Promise<T>): Promise<T> {
   const outer = txStorage.getStore();
   if (outer) {
@@ -143,23 +152,34 @@ export async function withBeaconTransaction<T>(env: BeaconRuntimeEnv, fn: () => 
   }
   const database = databaseFor(env);
   const file = resolveDatabasePath(env);
-  txOpenByDatabase.add(file);
-  database.exec("BEGIN IMMEDIATE");
-  try {
-    const result = await txStorage.run({ depth: 1 }, fn);
-    database.exec("COMMIT");
-    return result;
-  } catch (error) {
+  const run = (txChainByDatabase.get(file) ?? Promise.resolve()).then(async () => {
+    txOpenByDatabase.add(file);
+    database.exec("BEGIN IMMEDIATE");
     try {
-      database.exec("ROLLBACK");
-    } catch {
-      // 交易已被中斷(如語句失敗自動 rollback)。
+      const result = await txStorage.run({ depth: 1 }, fn);
+      database.exec("COMMIT");
+      return result;
+    } catch (error) {
+      try {
+        database.exec("ROLLBACK");
+      } catch {
+        // 交易已被中斷(如語句失敗自動 rollback)。
+      }
+      throw error;
+    } finally {
+      txOpenByDatabase.delete(file);
+      flushPending(file);
     }
-    throw error;
-  } finally {
-    txOpenByDatabase.delete(file);
-    flushPending(file);
-  }
+  });
+  // chain 尾端吞掉 rejection,讓下一筆交易仍能開始;錯誤由 run 原樣傳遞。
+  txChainByDatabase.set(
+    file,
+    run.then(
+      () => undefined,
+      () => undefined,
+    ),
+  );
+  return run as Promise<T>;
 }
 
 export async function dbGet(env: BeaconRuntimeEnv, sql: string, params: any[] = []): Promise<any | null> {

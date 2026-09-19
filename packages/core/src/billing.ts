@@ -543,12 +543,19 @@ export function createBeaconBillingStore(query: BeaconQuery): BeaconBillingStore
 
       const settled = await withTransaction(query, async () => {
         const now = nowIso();
+        // 絕不多收:實際成本以保留額為上限夾制。上游供應商回報的 usage
+        // 不可盡信(惡意 aggregator 或有 bug 的計量都可能浮報),保留單的
+        // 意義就是「事先授權的消費上限」,SQL 層強制 charged ≤ reserved,
+        // 退款也因而不可能為負。actualCostMicros 由 integerString 產出十進位
+        // 字串,綁定為 TEXT;SQLite 純量函式參數不做欄位親和性轉換,故必須
+        // 顯式 CAST 為 INTEGER,否則 TEXT 恆大於 INTEGER 會夾到錯的一邊。
+        // (node:sqlite 未編入 LEAST();MIN() 是全平台可用的核心等價函式。)
         const transitioned = await query(
           `
           UPDATE ai_billing_reservations
           SET state = 'settled',
-              charged_usd_micros = ?,
-              refunded_usd_micros = CAST(reserved_usd_micros - ? AS INTEGER),
+              charged_usd_micros = MIN(CAST(? AS INTEGER), reserved_usd_micros),
+              refunded_usd_micros = CAST(reserved_usd_micros - MIN(CAST(? AS INTEGER), reserved_usd_micros) AS INTEGER),
               settled_at = ?, updated_at = ?
           WHERE request_id = ? AND state = 'reserved'
             AND (? > 0 OR reserved_usd_micros = 0)

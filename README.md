@@ -24,7 +24,7 @@ See [Quick start](#快速開始) below, [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)
 
 ## 功能特性
 
-- **OpenAI 相容 API**:`GET /api/ai/v1/models`、`POST /api/ai/v1/chat/completions`(支援 SSE 串流、`Idempotency-Key` 冪等),任何 OpenAI SDK 指向 `baseURL` 即可使用。
+- **OpenAI 相容 API**:`GET /api/ai/v1/models`、`POST /api/ai/v1/chat/completions`(支援 SSE 串流、`Idempotency-Key` 冪等),任何 OpenAI SDK 指向 `baseURL` 即可使用。**冪等語意差異**:OpenAI 對已完成的冪等鍵會「重放原始回應」,Beacon 因不落地 prompt/completion 而無法重放——已完成的鍵重送回 `409 idempotent_request_replayed`(附原始 `X-Request-Id`)、進行中的鍵回 `409 idempotent_request_in_progress`;重度依賴冪等重放的客戶端需留意此差異(見 `docs/openapi.yaml` 的 `Idempotency-Key` 參數說明)。
 - **美元計費**:內部以微美元整數結算(無浮點誤差),請求前「預留」消費上限、完成後依實際 usage 結算、差額自動退回;全流程冪等、可重跑、可對帳。
 - **多供應商池**:37 條 credential 設定(openrouter、cloudflare-workers-ai、qwencloud、openai、anthropic、groq…),加權輪詢、健康冷卻、in-flight lease、自動 fallback;secret 只存環境變數名稱,資料庫僅存 opaque credential ID。
 - **API 金鑰管理**:`sk-beacon-live_/sk-beacon-test_` 金鑰、只顯示一次、pepper-HMAC digest 落庫;可設定過期時間、模型白名單、RPM、最大併發與美元消費上限。金鑰級 RPM/併發由資料庫交易內原子計數強制;登入與金鑰管理的 IP 限流同樣以 SQLite 固定窗口計數(單程序全域生效),資料庫不可用時降級為 in-process 記憶體視窗。
@@ -150,6 +150,7 @@ npx wrangler deploy          # secrets 以 wrangler secret put 設定
 | `BEACON_SIGNUP_BONUS_USD` | 選配 | 註冊初始餘額(預設 $5.00) |
 | `BEACON_ADMIN_STARTING_CREDITS_USD` | 選配 | 管理員初始餘額(預設 $500.00) |
 | `BEACON_DISABLE_REGISTRATION` | 選配 | 設 `true` 關閉公開註冊 |
+| `BEACON_TRUST_PROXY` | 選配 | 登入/註冊限流的用戶端 IP 判定:Node 自架預設用「socket 來源位址」(不可偽造);僅當 gateway 前方有會覆寫 `cf-connecting-ip` 的受信賴反向代理(如 Cloudflare)時設 `true` 改用標頭。Cloudflare Workers 部署一律以標頭為準 |
 | `FRONTEND_ORIGINS` | 建議 | 允許帶 cookie 的 console 來源(CSV) |
 | `OPENROUTER_API_KEY_1` … | 選配 | 供應商上游金鑰,見 `docs/PROVIDERS.md` |
 

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { Hono } from "hono";
 import { createApp } from "../src/app.ts";
-import { BEACON_CSRF_COOKIE, requireCsrfToken } from "../src/routes/auth.ts";
+import { BEACON_CSRF_COOKIE, beaconAuthRateLimitIdentity, requireCsrfToken } from "../src/routes/auth.ts";
 import { installBeaconDbAdapter } from "../src/utils/db.ts";
 
 // 只覆蓋不需要資料庫的行為:fail-closed 開關、CSRF 雙提交、輸入驗證,
@@ -162,6 +162,30 @@ test("session token verification fails closed on weak configuration", async () =
 
   const anonymous = await aiRequest("/api/auth/me", { JWT_SECRET: SECRET });
   assert.equal(anonymous.status, 401);
+});
+
+test("auth rate limit identity uses the socket address unless a proxy is explicitly trusted", async () => {
+  const app = new Hono();
+  app.get("/identity", (c: any) => c.json({ identity: beaconAuthRateLimitIdentity(c) }));
+  const identity = async (env: any, headers: Record<string, string> = {}) => {
+    const response = await app.request("/identity", { headers }, env);
+    return ((await response.json()) as any).identity as string;
+  };
+  const forged = { "cf-connecting-ip": "6.6.6.6" };
+
+  // Node 自架(未宣告信任代理):偽造 cf-connecting-ip 無效,以不可偽造的
+  // socket 來源位址為限流身份 —— 攻擊者無法逐請求換 IP 繞過限流。
+  assert.equal(await identity({ BEACON_REMOTE_ADDR: "10.0.0.1" }, forged), "10.0.0.1");
+  // Workers/DO 部署(runtime 內無 socket 位址):標頭由 Cloudflare 覆寫附加。
+  assert.equal(await identity({}, forged), "6.6.6.6");
+  // 明確信任反向代理時:以標頭為準;沒有標頭的信任部署併入 local。
+  assert.equal(
+    await identity({ BEACON_TRUST_PROXY: "true", BEACON_REMOTE_ADDR: "10.0.0.1" }, forged),
+    "6.6.6.6",
+  );
+  assert.equal(await identity({ BEACON_TRUST_PROXY: "true" }, {}), "local");
+  // 都拿不到:local 共享桶。
+  assert.equal(await identity({}, {}), "local");
 });
 
 test("/healthz is available without the fail-closed gate and reports database state", async () => {
