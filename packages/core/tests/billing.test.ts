@@ -187,6 +187,58 @@ test("settle charges the key and refunds the unused reservation", async () => {
   assert.equal(String(refunds.rows[0].amount), "5");
 });
 
+test("settle caps the charge at the reserved amount when reported usage exceeds it", async () => {
+  // 上游浮報 usage(惡意 aggregator / 有 bug 的計量)時,結算不得超過
+  // 預留單授權的上限:charged 夾到 reserved、退款不得為負、餘額不得被
+  // 扣破。此測試釘死「絕不多收」的 SQL 不變量。
+  const { query, user, apiKeyId } = await billingFixture();
+  const store = createBeaconBillingStore(query);
+  const reserved = await store.reserve(reservation({ userId: user.id, apiKeyId }));
+  await store.markDispatched(reserved.requestId);
+
+  const settled = await store.settle({
+    requestId: reserved.requestId,
+    actualCostMicros: 9_000, // reserved 是 8
+    inputTokens: 4,
+    outputTokens: 2,
+    usageSource: "provider",
+    totalLatencyMs: 25,
+  });
+  assert.equal(settled.status, "succeeded");
+  assert.equal(settled.chargedCostMicros, 8);
+  assert.equal(settled.refundedCostMicros, 0);
+  assert.equal(settled.reservationState, "settled");
+
+  const reservationRow = await query(
+    `SELECT charged_usd_micros, refunded_usd_micros FROM ai_billing_reservations WHERE request_id = ?`,
+    [reserved.requestId],
+  );
+  assert.equal(Number(reservationRow.rows[0].charged_usd_micros), 8);
+  assert.equal(Number(reservationRow.rows[0].refunded_usd_micros), 0);
+
+  const keyRow = await query(
+    `SELECT spend_reserved_usd_micros, spend_used_usd_micros FROM ai_api_keys WHERE id = ?`,
+    [apiKeyId],
+  );
+  assert.equal(Number(keyRow.rows[0].spend_reserved_usd_micros), 0);
+  assert.equal(Number(keyRow.rows[0].spend_used_usd_micros), 8);
+
+  // 餘額只被扣到保留上限:預留時 -8,結算時退款 0。
+  const userRow = await query(`SELECT balance_usd_micros FROM users WHERE id = ?`, [user.id]);
+  assert.equal(Number(userRow.rows[0].balance_usd_micros), user.balance_usd_micros - 8);
+
+  // 無退款即無 ledger 紀錄;負數退款永遠不該出現。
+  const refunds = await query(`SELECT amount FROM ledger_entries WHERE transaction_type = 'ai_usage_refund'`);
+  assert.equal(refunds.rows.length, 0);
+
+  const requestRow = await query(
+    `SELECT charged_usd_micros, refunded_usd_micros FROM ai_requests WHERE request_id = ?`,
+    [reserved.requestId],
+  );
+  assert.equal(Number(requestRow.rows[0].charged_usd_micros), 8);
+  assert.equal(Number(requestRow.rows[0].refunded_usd_micros), 0);
+});
+
 test("zero-point settle requests keep their reserved-zero path", async () => {
   const { query, user, apiKeyId } = await billingFixture();
   const store = createBeaconBillingStore(query);

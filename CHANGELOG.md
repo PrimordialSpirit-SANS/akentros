@@ -8,6 +8,58 @@ versioning follows [SemVer](https://semver.org/).
 
 ### Fixed
 
+- **Settlement did not cap the charge at the reserved amount.** The `settle`
+  SQL wrote `charged_usd_micros = ?` and `refunded_usd_micros = reserved - ?`
+  directly from the provider-reported actual cost, so a malicious or buggy
+  upstream that inflated usage could charge past the pre-authorized reservation,
+  producing negative refunds and pushing user balances below what the
+  reservation authorized (a reserve of 1,000 µUSD settled with an actual cost
+  of 9,000 µUSD charged 9,000 and recorded a refund of −8,000). The SQL now
+  clamps with `MIN(CAST(? AS INTEGER), reserved_usd_micros)` — the parameter
+  must be CAST because micro-USD values bind as decimal strings (TEXT) and
+  SQLite scalar functions do not apply column affinity, so an un-cast
+  comparison would clamp to the wrong side; `LEAST()` is unavailable in the
+  `node:sqlite` build (no `SQLITE_ENABLE_MATH_FUNCTIONS`). A regression test
+  pins `actual > reserved` ⇒ `charged == reserved`, no negative refund, no
+  refund ledger entry, and the balance debited exactly the reservation.
+- **Node self-hosted auth rate limiting could be bypassed with a forged
+  `cf-connecting-ip` header.** The login/register limiter keyed on the
+  request header, which is only trustworthy behind Cloudflare; on a Node
+  deployment an attacker could send a different fake IP per request to defeat
+  the 60/15 min limit entirely (unlimited password brute force and signup
+  farming). The Node entry point now injects the socket remote address into
+  each request env (`BEACON_REMOTE_ADDR`) and the limiter uses it as the
+  identity; the header is only honored when `BEACON_TRUST_PROXY=true`
+  explicitly opts into a trusted reverse proxy. Cloudflare Workers/Durable
+  Object deployments (where every request transits Cloudflare and the runtime
+  cannot expose the socket address) keep using the header. Unit tests pin the
+  full decision table.
+- **Node SQLite adapter did not serialize transactions.**
+  `withBeaconTransaction` executed `BEGIN IMMEDIATE` immediately; two
+  overlapping transactions would make the second throw `cannot start a
+  transaction within a transaction` (surfacing as a 503). It worked only by
+  the accident that every transaction body so far contains only synchronous
+  DB calls. The adapter now chains transaction starts on a per-database
+  promise chain, mirroring `worker/doDb.ts`'s `txChain`, so a future real-I/O
+  `await` inside a transaction can no longer surface as random 503s under
+  concurrency. Tests pin serialization and rollback-releases-chain.
+- **Registration race returned 500 instead of 409.** Two concurrent signups
+  with the same email both passed the `findUserByEmail` check; the second
+  INSERT then hit `UNIQUE(users.email)` and fell through `onError` as a 500.
+  The constraint violation is now caught and mapped to `409 email_taken`.
+- **`tool_choice: "none"` was ignored for Anthropic.** It was mapped to
+  `undefined` (Anthropic's default `auto`), so a caller explicitly requesting
+  "no tool calls this turn" could still get tool calls. OpenAI's `"none"` now
+  maps to `{"type": "none"}` (supported by the Anthropic Messages API); `tools`
+  stay in the request because histories containing `tool_use`/`tool_result`
+  blocks require them. Tests pin all four `tool_choice` mappings.
+- **Every request rebuilt the entire Hono app.** The Node server constructed
+  `createApp(env)` per request; the app is now created once outside `serve()`.
+- **Shutdown could hang on open SSE streams.** `server.close()` only fires its
+  callback after all connections end, so live inference streams blocked the
+  shutdown flow indefinitely. Connections are now tracked; after a 3s grace
+  they are destroyed, and a 10s hard timeout forces exit regardless.
+
 - **`BEACON_DB_PATH` was resolved against `process.cwd()`, so `npm run
   migrate` and `npm run dev:gateway` opened different databases.** `migrate`
   is a workspace script (cwd `apps/gateway/`) while `dev:gateway` /
@@ -40,6 +92,12 @@ versioning follows [SemVer](https://semver.org/).
 
 ### Added
 
+- **`BEACON_TRUST_PROXY` configuration.** Opt-in flag (see Fixed above and
+  `apps/gateway/.dev.vars.example`) controlling whether the auth rate limiter
+  trusts the `cf-connecting-ip` header on Node self-hosted deployments behind
+  a reverse proxy that overwrites it. Default (unset) uses the socket remote
+  address; the Cloudflare Workers deployment is unaffected and always uses
+  the header.
 - **`GET /healthz` liveness/readiness probe.** Reports `200 ok` or
   `503 degraded` (with `database: ok|unavailable`) based on a `SELECT 1`
   probe through the installed DB adapter. The endpoint sits outside the
@@ -69,6 +127,14 @@ versioning follows [SemVer](https://semver.org/).
 
 ### Changed
 
+- **Idempotency replay semantics are now documented explicitly.** OpenAI
+  replays the original response for a completed idempotency key; Beacon
+  (which never persists prompts/completions) returns
+  `409 idempotent_request_replayed` with the original `X-Request-Id`, and
+  `409 idempotent_request_in_progress` for keys still in flight. The README
+  compatibility note, `docs/openapi.yaml` `Idempotency-Key` parameter, and the
+  console docs page now call out the difference so replay-dependent clients
+  are not surprised.
 - **PBKDF2 password-hashing default raised from 25,000 to 600,000
   iterations** (OWASP Password Storage Cheat Sheet recommendation for
   PBKDF2-HMAC-SHA256). Old-format hashes still verify: the iteration count

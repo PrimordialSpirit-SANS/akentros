@@ -335,8 +335,14 @@ components:
       required: false
       description: |
         Prevents a second model execution and double charge for the same API key and
-        payload. Because prompts and completions are not stored, a completed replay
-        returns 409 with the original X-Request-Id instead of replaying response content.
+        payload. Semantics differ from OpenAI, which replays the stored original
+        response for a completed key: Beacon never persists prompts or completions,
+        so it cannot replay content. Sending a key that is currently in progress
+        returns 409 with code `idempotent_request_in_progress`; resending a key
+        whose request already completed returns 409 with code
+        `idempotent_request_replayed` plus the original X-Request-Id. Clients that
+        rely on OpenAI-style idempotent replay should treat these 409 responses
+        as terminal outcomes rather than retriable errors.
       schema:
         type: string
         minLength: 1

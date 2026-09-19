@@ -3,13 +3,17 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import {
+  dbQuery as nodeDbQuery,
+  withBeaconTransaction as nodeWithBeaconTransaction,
+  resolveDatabasePath,
+} from "../src/utils/db.node.ts";
+import {
   createBeaconQuery,
   dbGet,
   dbQuery,
   installBeaconDbAdapter,
   withBeaconTransaction,
 } from "../src/utils/db.ts";
-import { resolveDatabasePath } from "../src/utils/db.node.ts";
 
 // adapter 註冊點契約:進入點安裝後,查詢介面導向該實作;
 // createBeaconQuery 必須保持同步(既有呼叫端直接 const query = createBeaconQuery(env))。
@@ -43,10 +47,72 @@ test("absolute, :memory: and file: database paths keep their literal meaning", (
   assert.equal(resolveDatabasePath({ BEACON_DB_PATH: absolute }), absolute);
   assert.equal(resolveDatabasePath({ BEACON_DB_PATH: ":memory:" }), ":memory:");
   // 前綴剝離後為絕對路徑者,原樣保留(POSIX 與 Windows 皆然)。
-  assert.equal(resolveDatabasePath({ BEACON_DB_PATH: "file:/var/lib/beacon/db.sqlite" }), "/var/lib/beacon/db.sqlite");
+  assert.equal(
+    resolveDatabasePath({ BEACON_DB_PATH: "file:/var/lib/beacon/db.sqlite" }),
+    "/var/lib/beacon/db.sqlite",
+  );
   assert.equal(
     resolveDatabasePath({ DATABASE_URL: "sqlite:///var/lib/beacon/db.sqlite" }),
     "/var/lib/beacon/db.sqlite",
+  );
+});
+
+// 以下兩測試直接驅動 db.node.ts 實作(不經註冊表):交易必須以
+// per-database chain 序列化。未序列化時,交易 fn 內含真 I/O 類的 macrotask
+// 空檔(setTimeout / WebCrypto threadpool)就會讓第二筆 BEGIN IMMEDIATE
+// 撙「cannot start a transaction within a transaction」對外變 503。
+test("node adapter serializes overlapping transactions on one database", async () => {
+  const env = { BEACON_DB_PATH: ":memory:" };
+  await nodeDbQuery(
+    env as any,
+    "CREATE TABLE IF NOT EXISTS tx_serialization_probe (id INTEGER PRIMARY KEY, value INTEGER NOT NULL)",
+  );
+
+  const events: string[] = [];
+  const first = nodeWithBeaconTransaction(env as any, async () => {
+    await nodeDbQuery(env as any, "INSERT INTO tx_serialization_probe (value) VALUES (1)");
+    // macrotask 空檔:若未序列化,第二筆交易會在此期間 BEGIN 而爆炸。
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    await nodeDbQuery(env as any, "INSERT INTO tx_serialization_probe (value) VALUES (2)");
+    events.push("first-committed");
+  });
+  const second = nodeWithBeaconTransaction(env as any, async () => {
+    await nodeDbQuery(env as any, "INSERT INTO tx_serialization_probe (value) VALUES (3)");
+    events.push("second-started");
+  });
+  await Promise.all([first, second]);
+
+  // 交易依序執行:第一筆完整提交後第二筆才開始(而非並行)。
+  assert.deepEqual(events, ["first-committed", "second-started"]);
+  const rows = await nodeDbQuery(env as any, "SELECT value FROM tx_serialization_probe ORDER BY id");
+  assert.deepEqual(
+    rows.rows.map((row: any) => Number(row.value)),
+    [1, 2, 3],
+  );
+});
+
+test("node adapter transaction failure rolls back and releases the chain", async () => {
+  const env = { BEACON_DB_PATH: ":memory:" };
+  await nodeDbQuery(
+    env as any,
+    "CREATE TABLE IF NOT EXISTS tx_rollback_probe (id INTEGER PRIMARY KEY, value INTEGER NOT NULL)",
+  );
+  await assert.rejects(
+    nodeWithBeaconTransaction(env as any, async () => {
+      await nodeDbQuery(env as any, "INSERT INTO tx_rollback_probe (value) VALUES (1)");
+      throw new Error("boom");
+    }),
+    /boom/,
+  );
+
+  // chain 未被 rejection 卡死:下一筆交易照常執行,且 rollback 後資料不在。
+  await nodeWithBeaconTransaction(env as any, async () => {
+    await nodeDbQuery(env as any, "INSERT INTO tx_rollback_probe (value) VALUES (2)");
+  });
+  const rows = await nodeDbQuery(env as any, "SELECT value FROM tx_rollback_probe ORDER BY id");
+  assert.deepEqual(
+    rows.rows.map((row: any) => Number(row.value)),
+    [2],
   );
 });
 
