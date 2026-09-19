@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  BeaconProviderError,
+  AkentrosProviderError,
   buildProviderRequest,
   invokeProviderRoute,
   invokeWithProviderFallback,
@@ -80,7 +80,7 @@ test("OpenAI-compatible providers use bearer auth and preserve tool definitions"
       pool,
       credential,
       body: {
-        model: "beacon/public",
+        model: "akentros/public",
         messages: [{ role: "user", content: "hello" }],
         tools: [
           {
@@ -97,7 +97,7 @@ test("OpenAI-compatible providers use bearer auth and preserve tool definitions"
     assert.equal(requestBody.model, "owner/model");
     assert.equal(requestBody.tools[0].function.name, "lookup");
     assert.equal(requestBody.tools[0].function.parameters.type, "object");
-    assert.doesNotMatch(request.init.body, /beacon\/public/);
+    assert.doesNotMatch(request.init.body, /akentros\/public/);
   }
 });
 
@@ -121,7 +121,7 @@ test("OpenAI-compatible providers translate output limits and stream_options per
         pool,
         credential,
         body: {
-          model: "beacon/public",
+          model: "akentros/public",
           messages: [{ role: "user", content: "hello" }],
           max_completion_tokens: 64,
           stream,
@@ -155,7 +155,7 @@ test("Anthropic requests use the Messages API with translated system, tools, and
     pool,
     credential,
     body: {
-      model: "beacon/claude-test",
+      model: "akentros/claude-test",
       messages: [
         { role: "system", content: "Be concise." },
         { role: "user", content: "hello" },
@@ -166,7 +166,7 @@ test("Anthropic requests use the Messages API with translated system, tools, and
             {
               id: "call_1",
               type: "function",
-              function: { name: "lookup", arguments: '{"q":"beacon"}' },
+              function: { name: "lookup", arguments: '{"q":"akentros"}' },
             },
           ],
         },
@@ -219,7 +219,7 @@ test("Anthropic requests use the Messages API with translated system, tools, and
       type: "tool_use",
       id: "call_1",
       name: "lookup",
-      input: { q: "beacon" },
+      input: { q: "akentros" },
     },
   ]);
   assert.deepEqual(payload.messages[2].role, "user");
@@ -227,7 +227,7 @@ test("Anthropic requests use the Messages API with translated system, tools, and
     { type: "tool_result", tool_use_id: "call_1", content: '{"answer":"ok"}' },
     { type: "text", text: "thanks" },
   ]);
-  assert.doesNotMatch(request.init.body, /anthropic-test-secret|beacon\/claude-test/);
+  assert.doesNotMatch(request.init.body, /anthropic-test-secret|akentros\/claude-test/);
 });
 
 test("Anthropic maps every OpenAI tool_choice mode to its Messages API equivalent", () => {
@@ -310,7 +310,7 @@ test("Anthropic JSON responses are normalized into the OpenAI completion shape",
         id: "msg_tools",
         type: "message",
         role: "assistant",
-        content: [{ type: "tool_use", id: "toolu_1", name: "lookup", input: { q: "beacon" } }],
+        content: [{ type: "tool_use", id: "toolu_1", name: "lookup", input: { q: "akentros" } }],
         stop_reason: "tool_use",
         usage: { input_tokens: 10, output_tokens: 5 },
       }),
@@ -320,7 +320,7 @@ test("Anthropic JSON responses are normalized into the OpenAI completion shape",
     {
       id: "toolu_1",
       type: "function",
-      function: { name: "lookup", arguments: '{"q":"beacon"}' },
+      function: { name: "lookup", arguments: '{"q":"akentros"}' },
     },
   ]);
 });
@@ -335,7 +335,7 @@ test("Anthropic invalid JSON responses are normalized without leaking a TypeErro
       fetchImpl: async () => jsonResponse({ type: "unexpected" }),
     }),
     (error: any) =>
-      error instanceof BeaconProviderError &&
+      error instanceof AkentrosProviderError &&
       error.category === "invalid_provider_response" &&
       error.responseStarted === true &&
       error.usageUnknown === true,
@@ -409,7 +409,7 @@ test("Anthropic tool-use streams surface tool call deltas and a tool_calls finis
         'event: message_start\ndata: {"type":"message_start","message":{"id":"msg_2","usage":{"input_tokens":9}}}',
         'event: content_block_start\ndata: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_1","name":"lookup"}}',
         'event: content_block_delta\ndata: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\\"q\\":"}}',
-        'event: content_block_delta\ndata: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"\\"beacon\\"}"}}',
+        'event: content_block_delta\ndata: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"\\"akentros\\"}"}}',
         'event: content_block_stop\ndata: {"type":"content_block_stop","index":0}',
         'event: message_delta\ndata: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":5}}',
         'event: message_stop\ndata: {"type":"message_stop"}',
@@ -443,7 +443,7 @@ test("Anthropic tool-use streams surface tool call deltas and a tool_calls finis
     function: { name: "lookup", arguments: "" },
   });
   assert.deepEqual(toolDeltas[1], { index: 0, function: { arguments: '{"q":' } });
-  assert.deepEqual(toolDeltas[2], { index: 0, function: { arguments: '"beacon"}' } });
+  assert.deepEqual(toolDeltas[2], { index: 0, function: { arguments: '"akentros"}' } });
   const finishChunk = chunks.find(
     (chunk) => chunk.choices?.length > 0 && chunk.choices[0].finish_reason !== null,
   );
@@ -480,7 +480,7 @@ test("Anthropic midstream errors surface as usage-unknown provider failures", as
       }
     },
     (error: any) =>
-      error instanceof BeaconProviderError &&
+      error instanceof AkentrosProviderError &&
       error.category === "midstream_provider_error" &&
       error.responseStarted === true &&
       error.usageUnknown === true,
@@ -502,7 +502,7 @@ test("QwenCloud uses the configured endpoint, translates output limits and reque
       credential,
       route: { provider: "qwencloud", upstream_model: "qwen3.8-max" },
       body: {
-        model: "beacon/qwen-3.8-max",
+        model: "akentros/qwen-3.8-max",
         messages: [{ role: "user", content: "hello" }],
         max_completion_tokens: 64,
         stream,
@@ -517,7 +517,7 @@ test("QwenCloud uses the configured endpoint, translates output limits and reque
     assert.equal("max_completion_tokens" in payload, false);
     assert.equal(payload.stream, stream);
     assert.deepEqual(payload.stream_options, stream ? { include_usage: true } : undefined);
-    assert.doesNotMatch(request.init.body, /qwen-test-secret|beacon\/qwen/);
+    assert.doesNotMatch(request.init.body, /qwen-test-secret|akentros\/qwen/);
   }
 });
 
@@ -648,7 +648,7 @@ test("Cloudflare native binding bypasses REST credentials and normalizes JSON ou
     pool: requireProviderPool(route.credential_pool),
     credential: { credentialId: "native", provider: route.provider, secrets: {} },
     body: {
-      model: "beacon/public",
+      model: "akentros/public",
       messages: [{ role: "user", content: "hello" }],
       max_completion_tokens: 12,
     },
@@ -695,7 +695,7 @@ test("Cloudflare native binding normalizes OpenAI-compatible JSON output without
     pool: requireProviderPool(route.credential_pool),
     credential: { credentialId: "native", provider: route.provider, secrets: {} },
     body: {
-      model: "beacon/qwen-3.8-27b",
+      model: "akentros/qwen-3.8-27b",
       messages: [{ role: "user", content: "hello" }],
       max_completion_tokens: 12,
     },
@@ -895,7 +895,7 @@ test("HTTP 200 embedded provider errors are usage-unknown and never fallback-saf
         }),
     }),
     (error: any) =>
-      error instanceof BeaconProviderError &&
+      error instanceof AkentrosProviderError &&
       error.responseStarted === true &&
       error.usageUnknown === true &&
       error.fallbackAllowed === false &&
@@ -913,7 +913,7 @@ test("HTTP 2xx responses with non-array choices are normalized without leaking a
       fetchImpl: async () => jsonResponse({ choices: { invalid: true } }),
     }),
     (error: any) => {
-      assert.equal(error instanceof BeaconProviderError, true);
+      assert.equal(error instanceof AkentrosProviderError, true);
       assert.notEqual(error.name, "TypeError");
       assert.equal(error.category, "invalid_provider_response");
       assert.equal(error.responseStarted, true);
@@ -941,7 +941,7 @@ test("provider HTTP failures are normalized without copying the upstream body", 
         ),
     }),
     (error: any) => {
-      assert.equal(error instanceof BeaconProviderError, true);
+      assert.equal(error instanceof AkentrosProviderError, true);
       assert.equal(error.category, "rate_limited");
       assert.equal(error.retryAfter, 2);
       assert.equal(error.fallbackAllowed, true);
@@ -967,7 +967,7 @@ test("oversized provider JSON is cancelled and normalized as an invalid response
         ),
     }),
     (error: any) =>
-      error instanceof BeaconProviderError &&
+      error instanceof AkentrosProviderError &&
       error.category === "invalid_provider_response" &&
       !/xxxx/.test(error.message),
   );

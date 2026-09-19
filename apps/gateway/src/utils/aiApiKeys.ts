@@ -1,23 +1,23 @@
 import {
-  BEACON_DEFAULT_SCOPES,
-  BEACON_MAX_ACTIVE_KEYS,
-  isBeaconApiKey,
-  maskBeaconApiKey,
-  normalizeBeaconKeyOptions,
-  parseBeaconJsonArray,
-  parseBeaconModelAllowlistStrict,
-  requireBeaconApiKeyPepper,
-  serializeBeaconApiKey,
-} from "@beacon/core/apiKeys";
-import { listEnabledModels } from "@beacon/core/pricing";
-import type { BeaconAuthenticatedKey, BeaconRuntimeEnv } from "../types.ts";
+  AKENTROS_DEFAULT_SCOPES,
+  AKENTROS_MAX_ACTIVE_KEYS,
+  isAkentrosApiKey,
+  maskAkentrosApiKey,
+  normalizeAkentrosKeyOptions,
+  parseAkentrosJsonArray,
+  parseAkentrosModelAllowlistStrict,
+  requireAkentrosApiKeyPepper,
+  serializeAkentrosApiKey,
+} from "@akentros/core/apiKeys";
+import { listEnabledModels } from "@akentros/core/pricing";
+import type { AkentrosAuthenticatedKey, AkentrosRuntimeEnv } from "../types.ts";
 import { ensureAiSchema } from "./aiSchema.ts";
 import { hmacSha256Hex, randomToken, sha256Hex } from "./crypto.ts";
-import { createBeaconQuery, dbGet, dbQuery, withBeaconTransaction } from "./db.ts";
+import { createAkentrosQuery, dbGet, dbQuery, withAkentrosTransaction } from "./db.ts";
 
-// authenticateBeaconApiKey 的 SELECT 欄位契約:資料列欄位以此為準,
+// authenticateAkentrosApiKey 的 SELECT 欄位契約:資料列欄位以此為準,
 // 讀取 SELECT 以外的欄位會在編譯期報錯(防 row.points 這類幽靈欄位)。
-interface BeaconApiKeyAuthRow {
+interface AkentrosApiKeyAuthRow {
   id: number | string;
   user_id: number | string;
   name: string;
@@ -38,20 +38,20 @@ interface BeaconApiKeyAuthRow {
   balance_usd_micros: number | string;
 }
 
-function getPepper(env: BeaconRuntimeEnv, explicitPepper: unknown) {
-  return requireBeaconApiKeyPepper(explicitPepper || env?.BEACON_API_KEY_PEPPER);
+function getPepper(env: AkentrosRuntimeEnv, explicitPepper: unknown) {
+  return requireAkentrosApiKeyPepper(explicitPepper || env?.AKENTROS_API_KEY_PEPPER);
 }
 
-export function generateBeaconApiKey(environment = "live") {
+export function generateAkentrosApiKey(environment = "live") {
   const safeEnvironment = environment === "test" ? "test" : "live";
-  return randomToken(`sk-beacon-${safeEnvironment}`, 32);
+  return randomToken(`sk-akentros-${safeEnvironment}`, 32);
 }
 
-export function digestBeaconApiKey(env: BeaconRuntimeEnv, secret: unknown, explicitPepper?: unknown) {
+export function digestAkentrosApiKey(env: AkentrosRuntimeEnv, secret: unknown, explicitPepper?: unknown) {
   return hmacSha256Hex(getPepper(env, explicitPepper), String(secret));
 }
 
-export async function listBeaconApiKeys(env: BeaconRuntimeEnv, userId: string | number) {
+export async function listAkentrosApiKeys(env: AkentrosRuntimeEnv, userId: string | number) {
   await ensureAiSchema(env);
   const result = await dbQuery(
     env,
@@ -69,7 +69,7 @@ export async function listBeaconApiKeys(env: BeaconRuntimeEnv, userId: string | 
   `,
     [userId],
   );
-  return (result.rows || []).map(serializeBeaconApiKey);
+  return (result.rows || []).map(serializeAkentrosApiKey);
 }
 
 function rows(result: any): any[] {
@@ -84,8 +84,8 @@ function fiveMinutesAgoIso() {
   return new Date(Date.now() - 5 * 60_000).toISOString();
 }
 
-export async function ensureBeaconSessionCredential(
-  env: BeaconRuntimeEnv,
+export async function ensureAkentrosSessionCredential(
+  env: AkentrosRuntimeEnv,
   user: {
     id: string | number;
     username: string;
@@ -93,17 +93,17 @@ export async function ensureBeaconSessionCredential(
     is_flagged: boolean;
     restricted_services: unknown;
   },
-): Promise<BeaconAuthenticatedKey> {
+): Promise<AkentrosAuthenticatedKey> {
   await ensureAiSchema(env);
   const userId = String(user?.id || "");
   if (!/^[1-9][0-9]*$/.test(userId)) {
-    throw new TypeError("A valid user is required for Beacon account inference.");
+    throw new TypeError("A valid user is required for Akentros account inference.");
   }
 
   // This deterministic digest is only a private row identity. It is never
   // returned as a bearer secret, and public-key authentication excludes
   // session credentials explicitly.
-  const digest = await sha256Hex(`beacon-account-session:${userId}`);
+  const digest = await sha256Hex(`akentros-account-session:${userId}`);
   const row = await dbGet(
     env,
     `
@@ -112,7 +112,7 @@ export async function ensureBeaconSessionCredential(
       scopes, model_allowlist, rpm_limit, max_in_flight, spend_limit_usd_micros,
       is_active, expires_at, last_used_at
     )
-    VALUES (?, 'Beacon account session', 'session', 'beacon-account', 'session', ?,
+    VALUES (?, 'Akentros account session', 'session', 'akentros-account', 'session', ?,
             ?, '[]', 60, 4, NULL, TRUE, NULL, ?)
     ON CONFLICT (key_digest) DO UPDATE
     SET is_active = TRUE,
@@ -132,7 +132,7 @@ export async function ensureBeaconSessionCredential(
     [
       userId,
       digest,
-      JSON.stringify(BEACON_DEFAULT_SCOPES),
+      JSON.stringify(AKENTROS_DEFAULT_SCOPES),
       nowIso(),
       fiveMinutesAgoIso(),
       nowIso(),
@@ -141,15 +141,15 @@ export async function ensureBeaconSessionCredential(
   );
 
   if (!row) {
-    throw new Error("Beacon account session credential is unavailable.");
+    throw new Error("Akentros account session credential is unavailable.");
   }
 
   return {
     id: String(row.id),
     user_id: row.user_id,
     name: row.name,
-    scopes: parseBeaconJsonArray(row.scopes),
-    model_allowlist: parseBeaconJsonArray(row.model_allowlist),
+    scopes: parseAkentrosJsonArray(row.scopes),
+    model_allowlist: parseAkentrosJsonArray(row.model_allowlist),
     rpm_limit: Number(row.rpm_limit),
     max_in_flight: Number(row.max_in_flight),
     spend_limit_usd_micros: row.spend_limit_usd_micros == null ? null : Number(row.spend_limit_usd_micros),
@@ -165,21 +165,21 @@ export async function ensureBeaconSessionCredential(
   };
 }
 
-export async function createBeaconApiKey(
-  env: BeaconRuntimeEnv,
+export async function createAkentrosApiKey(
+  env: AkentrosRuntimeEnv,
   userId: string | number,
   options: Record<string, unknown>,
 ) {
   await ensureAiSchema(env);
-  const clean = normalizeBeaconKeyOptions(
+  const clean = normalizeAkentrosKeyOptions(
     options,
     listEnabledModels().map((model) => model.id),
   );
-  const secret = generateBeaconApiKey(clean.environment);
-  const digest = await digestBeaconApiKey(env, secret);
-  const mask = maskBeaconApiKey(secret);
-  const query = createBeaconQuery(env);
-  const result = await withBeaconTransaction(env, async () => {
+  const secret = generateAkentrosApiKey(clean.environment);
+  const digest = await digestAkentrosApiKey(env, secret);
+  const mask = maskAkentrosApiKey(secret);
+  const query = createAkentrosQuery(env);
+  const result = await withAkentrosTransaction(env, async () => {
     const now = nowIso();
     const activeCountRows = await query(
       `
@@ -194,7 +194,7 @@ export async function createBeaconApiKey(
       [userId, now],
     );
     const activeCount = Number(rows(activeCountRows)[0]?.active_count || 0);
-    if (activeCount >= BEACON_MAX_ACTIVE_KEYS) return { rows: [] };
+    if (activeCount >= AKENTROS_MAX_ACTIVE_KEYS) return { rows: [] };
 
     return query(
       `
@@ -215,7 +215,7 @@ export async function createBeaconApiKey(
         mask.key_prefix,
         mask.key_suffix,
         digest,
-        JSON.stringify(BEACON_DEFAULT_SCOPES),
+        JSON.stringify(AKENTROS_DEFAULT_SCOPES),
         JSON.stringify(clean.modelAllowlist),
         clean.rpmLimit,
         clean.maxInFlight,
@@ -226,16 +226,16 @@ export async function createBeaconApiKey(
   });
   if (!result.rows?.[0]) {
     const error: Error & { code?: string } = new Error(
-      `A maximum of ${BEACON_MAX_ACTIVE_KEYS} active Beacon keys is allowed.`,
+      `A maximum of ${AKENTROS_MAX_ACTIVE_KEYS} active Akentros keys is allowed.`,
     );
     error.code = "AI_KEY_LIMIT";
     throw error;
   }
-  return { ...serializeBeaconApiKey(result.rows[0]), secret };
+  return { ...serializeAkentrosApiKey(result.rows[0]), secret };
 }
 
-export async function rotateBeaconApiKey(
-  env: BeaconRuntimeEnv,
+export async function rotateAkentrosApiKey(
+  env: AkentrosRuntimeEnv,
   userId: string | number,
   keyId: string | number,
 ) {
@@ -249,9 +249,9 @@ export async function rotateBeaconApiKey(
   );
   if (!existing) return null;
 
-  const secret = generateBeaconApiKey(existing.environment);
-  const digest = await digestBeaconApiKey(env, secret);
-  const mask = maskBeaconApiKey(secret);
+  const secret = generateAkentrosApiKey(existing.environment);
+  const digest = await digestAkentrosApiKey(env, secret);
+  const mask = maskAkentrosApiKey(secret);
   const result = await dbQuery(
     env,
     `
@@ -266,11 +266,11 @@ export async function rotateBeaconApiKey(
   `,
     [mask.key_prefix, mask.key_suffix, digest, nowIso(), nowIso(), keyId, userId],
   );
-  return result.rows?.[0] ? { ...serializeBeaconApiKey(result.rows[0]), secret } : null;
+  return result.rows?.[0] ? { ...serializeAkentrosApiKey(result.rows[0]), secret } : null;
 }
 
-export async function revokeBeaconApiKey(
-  env: BeaconRuntimeEnv,
+export async function revokeAkentrosApiKey(
+  env: AkentrosRuntimeEnv,
   userId: string | number,
   keyId: string | number,
 ) {
@@ -288,13 +288,13 @@ export async function revokeBeaconApiKey(
   return Boolean(result.rows?.length);
 }
 
-export async function authenticateBeaconApiKey(
-  env: BeaconRuntimeEnv,
+export async function authenticateAkentrosApiKey(
+  env: AkentrosRuntimeEnv,
   secret: unknown,
-): Promise<BeaconAuthenticatedKey | null> {
-  if (!isBeaconApiKey(secret)) return null;
+): Promise<AkentrosAuthenticatedKey | null> {
+  if (!isAkentrosApiKey(secret)) return null;
   await ensureAiSchema(env);
-  const digest = await digestBeaconApiKey(env, secret);
+  const digest = await digestAkentrosApiKey(env, secret);
   const row = (await dbGet(
     env,
     `
@@ -315,11 +315,11 @@ export async function authenticateBeaconApiKey(
     // expires_at 存的是 ISO-8601 字串;CURRENT_TIMESTAMP 是空格分隔格式,
     // 字典序比較會讓「當天到期」整日視為未過期,必須用同格式的 now 綁定比較。
     [digest, nowIso()],
-  )) as BeaconApiKeyAuthRow | null;
+  )) as AkentrosApiKeyAuthRow | null;
   if (!row) return null;
   // model_allowlist 損毀時 fail-closed:回 null(視同無效金鑰),而不是把
   // 損毀值當成空陣列 = 解除所有模型限制。
-  const modelAllowlist = parseBeaconModelAllowlistStrict(row.model_allowlist);
+  const modelAllowlist = parseAkentrosModelAllowlistStrict(row.model_allowlist);
   if (!modelAllowlist) return null;
   await dbQuery(
     env,
@@ -337,7 +337,7 @@ export async function authenticateBeaconApiKey(
     name: row.name,
     prefix: row.key_prefix,
     suffix: row.key_suffix,
-    scopes: parseBeaconJsonArray(row.scopes),
+    scopes: parseAkentrosJsonArray(row.scopes),
     model_allowlist: modelAllowlist,
     rpm_limit: Number(row.rpm_limit),
     max_in_flight: Number(row.max_in_flight),

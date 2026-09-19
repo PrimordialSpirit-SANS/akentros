@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { Hono } from "hono";
 import {
-  BEACON_IP_RATE_LIMIT_SQL,
+  AKENTROS_IP_RATE_LIMIT_SQL,
   createDbWindowStore,
   createRateLimit,
   resetRateLimitsForTests,
@@ -83,8 +83,8 @@ test("db window store counts within a window and resets when the window rolls", 
   const queries: string[] = [];
   const store = createDbWindowStore(async (sql: string, params: any[]) => {
     queries.push(sql);
-    if (sql === BEACON_IP_RATE_LIMIT_SQL.increment) {
-      assert.equal(params[0], "beacon-auth:1.2.3.4");
+    if (sql === AKENTROS_IP_RATE_LIMIT_SQL.increment) {
+      assert.equal(params[0], "akentros-auth:1.2.3.4");
       if (params[1] !== windowStart) {
         windowStart = params[1];
         count = 0;
@@ -96,20 +96,20 @@ test("db window store counts within a window and resets when the window rolls", 
   });
 
   const start = windowStart;
-  assert.equal(await store.increment("beacon-auth:1.2.3.4", start, start), 1);
-  assert.equal(await store.increment("beacon-auth:1.2.3.4", start, start), 2);
-  assert.equal(await store.increment("beacon-auth:1.2.3.4", start, start), 3);
+  assert.equal(await store.increment("akentros-auth:1.2.3.4", start, start), 1);
+  assert.equal(await store.increment("akentros-auth:1.2.3.4", start, start), 2);
+  assert.equal(await store.increment("akentros-auth:1.2.3.4", start, start), 3);
 
   // 窗口滾動:同一 identity 歸零重計,並觸發 sweep。
   const rolled = "2026-01-01T00:15:00.000Z";
-  assert.equal(await store.increment("beacon-auth:1.2.3.4", rolled, start), 1);
-  assert.ok(queries.includes(BEACON_IP_RATE_LIMIT_SQL.sweep));
+  assert.equal(await store.increment("akentros-auth:1.2.3.4", rolled, start), 1);
+  assert.ok(queries.includes(AKENTROS_IP_RATE_LIMIT_SQL.sweep));
 });
 
 test("sweep failure does not break counting", async () => {
   let count = 0;
   const store = createDbWindowStore(async (sql: string) => {
-    if (sql === BEACON_IP_RATE_LIMIT_SQL.sweep) throw new Error("sweep unavailable");
+    if (sql === AKENTROS_IP_RATE_LIMIT_SQL.sweep) throw new Error("sweep unavailable");
     count += 1;
     return { rows: [{ hit_count: count }] };
   });

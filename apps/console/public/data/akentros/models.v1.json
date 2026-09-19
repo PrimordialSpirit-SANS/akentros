@@ -5,11 +5,11 @@
   "billing_disclaimer": "點數依實際輸入與輸出 Token 計算，每次請求至少扣 1 點。",
   "models": [
     {
-      "id": "beacon/gpt-6-astra",
+      "id": "akentros/gpt-6-astra",
       "display_name": "GPT-6 Astra",
       "owner": "OpenAI",
       "owner_brand_asset_id": "openai",
-      "description": "OpenAI 新世代旗艦「Astra」，2026 年 9 月公開發布，在長程代理任務與複雜推理上大幅超越前代；Beacon 目前提供文字對話、串流與工具呼叫介面。",
+      "description": "OpenAI 新世代旗艦「Astra」，2026 年 9 月公開發布，在長程代理任務與複雜推理上大幅超越前代；Akentros 目前提供文字對話、串流與工具呼叫介面。",
       "status": "available",
       "capabilities": ["chat", "streaming", "reasoning", "tools"],
       "input_modalities": ["text", "image"],
@@ -26,11 +26,11 @@
       }
     },
     {
-      "id": "beacon/gpt-5.2",
+      "id": "akentros/gpt-5.2",
       "display_name": "GPT-5.2",
       "owner": "OpenAI",
       "owner_brand_asset_id": "openai",
-      "description": "OpenAI GPT-5 系列的最新通用旗艦，主打專業工作場景的頂級推理與長上下文理解；Beacon 目前提供文字對話、串流與工具呼叫介面。",
+      "description": "OpenAI GPT-5 系列的最新通用旗艦，主打專業工作場景的頂級推理與長上下文理解；Akentros 目前提供文字對話、串流與工具呼叫介面。",
       "status": "available",
       "capabilities": ["chat", "streaming", "reasoning", "tools"],
       "input_modalities": ["text", "image"],
@@ -47,11 +47,11 @@
       }
     },
     {
-      "id": "beacon/gpt-5.2-codex",
+      "id": "akentros/gpt-5.2-codex",
       "display_name": "GPT-5.2 Codex",
       "owner": "OpenAI",
       "owner_brand_asset_id": "openai",
-      "description": "OpenAI 最強的程式開發模型，以長程推理處理大型重構與代理式編碼任務；Beacon 目前提供文字對話、串流與工具呼叫介面。",
+      "description": "OpenAI 最強的程式開發模型，以長程推理處理大型重構與代理式編碼任務；Akentros 目前提供文字對話、串流與工具呼叫介面。",
       "status": "available",
       "capabilities": ["chat", "streaming", "reasoning", "tools"],
       "input_modalities": ["text"],
@@ -68,11 +68,11 @@
       }
     },
     {
-      "id": "beacon/claude-opus-4-8",
+      "id": "akentros/claude-opus-4-8",
       "display_name": "Claude Opus 4.8",
       "owner": "Anthropic",
       "owner_brand_asset_id": "anthropic",
-      "description": "Anthropic Claude Opus 系列現行旗艦，適合需要深度推理與長時間代理任務的情境；Beacon 目前提供文字對話、串流與工具呼叫介面。",
+      "description": "Anthropic Claude Opus 系列現行旗艦，適合需要深度推理與長時間代理任務的情境；Akentros 目前提供文字對話、串流與工具呼叫介面。",
       "status": "available",
       "capabilities": ["chat", "streaming", "reasoning", "tools"],
       "input_modalities": ["text", "image"],
@@ -89,11 +89,11 @@
       }
     },
     {
-      "id": "beacon/claude-sonnet-5",
+      "id": "akentros/claude-sonnet-5",
       "display_name": "Claude Sonnet 5",
       "owner": "Anthropic",
       "owner_brand_asset_id": "anthropic",
-      "description": "Anthropic 最新一代 Sonnet，在代理編碼與日常專業任務上以更低價格提供接近旗艦的表現；Beacon 目前提供文字對話、串流與工具呼叫介面。",
+      "description": "Anthropic 最新一代 Sonnet，在代理編碼與日常專業任務上以更低價格提供接近旗艦的表現；Akentros 目前提供文字對話、串流與工具呼叫介面。",
       "status": "available",
       "capabilities": ["chat", "streaming", "reasoning", "tools"],
       "input_modalities": ["text", "image"],
@@ -110,11 +110,11 @@
       }
     },
     {
-      "id": "beacon/claude-haiku-4-5",
+      "id": "akentros/claude-haiku-4-5",
       "display_name": "Claude Haiku 4.5",
       "owner": "Anthropic",
       "owner_brand_asset_id": "anthropic",
-      "description": "Anthropic Claude 家族中最快的模型，以極低延遲提供接近 Sonnet 的代理與編碼表現；Beacon 目前提供文字對話、串流與工具呼叫介面。",
+      "description": "Anthropic Claude 家族中最快的模型，以極低延遲提供接近 Sonnet 的代理與編碼表現；Akentros 目前提供文字對話、串流與工具呼叫介面。",
       "status": "available",
       "capabilities": ["chat", "streaming", "reasoning", "tools"],
       "input_modalities": ["text", "image"],
@@ -131,11 +131,11 @@
       }
     },
     {
-      "id": "beacon/gemini-3.5-pro",
+      "id": "akentros/gemini-3.5-pro",
       "display_name": "Gemini 3.5 Pro",
       "owner": "Google",
       "owner_brand_asset_id": "google",
-      "description": "Google DeepMind Gemini 3 系列旗艦，原生多模態思考模型，擅長複雜任務與創意發想；Beacon 目前提供文字對話、串流與工具呼叫介面。",
+      "description": "Google DeepMind Gemini 3 系列旗艦，原生多模態思考模型，擅長複雜任務與創意發想；Akentros 目前提供文字對話、串流與工具呼叫介面。",
       "status": "available",
       "capabilities": ["chat", "streaming", "reasoning", "tools"],
       "input_modalities": ["text", "image"],
@@ -152,11 +152,11 @@
       }
     },
     {
-      "id": "beacon/gemini-3.8-flash",
+      "id": "akentros/gemini-3.8-flash",
       "display_name": "Gemini 3.8 Flash",
       "owner": "Google",
       "owner_brand_asset_id": "google",
-      "description": "Gemini 3 系列最新的 Flash 模型，為長程軟體工程與自主代理打造，兼顧速度與推理品質；Beacon 目前提供文字對話、串流與工具呼叫介面。",
+      "description": "Gemini 3 系列最新的 Flash 模型，為長程軟體工程與自主代理打造，兼顧速度與推理品質；Akentros 目前提供文字對話、串流與工具呼叫介面。",
       "status": "available",
       "capabilities": ["chat", "streaming", "reasoning", "tools"],
       "input_modalities": ["text", "image"],
@@ -173,11 +173,11 @@
       }
     },
     {
-      "id": "beacon/gemini-3.5-flash-lite",
+      "id": "akentros/gemini-3.5-flash-lite",
       "display_name": "Gemini 3.5 Flash-Lite",
       "owner": "Google",
       "owner_brand_asset_id": "google",
-      "description": "Gemini 3.5 家族中最快、最省成本的型號，適合高吞吐量與低延遲工作負載；Beacon 目前提供文字對話、串流與工具呼叫介面。",
+      "description": "Gemini 3.5 家族中最快、最省成本的型號，適合高吞吐量與低延遲工作負載；Akentros 目前提供文字對話、串流與工具呼叫介面。",
       "status": "available",
       "capabilities": ["chat", "streaming", "tools"],
       "input_modalities": ["text", "image"],
@@ -194,11 +194,11 @@
       }
     },
     {
-      "id": "beacon/grok-4.6",
+      "id": "akentros/grok-4.6",
       "display_name": "Grok 4.6",
       "owner": "xAI",
       "owner_brand_asset_id": "xai",
-      "description": "xAI 於 2026 年 8 月發布的旗艦推理模型，擅長複雜推理、長上下文與代理工具使用；Beacon 目前提供文字對話、串流與工具呼叫介面。",
+      "description": "xAI 於 2026 年 8 月發布的旗艦推理模型，擅長複雜推理、長上下文與代理工具使用；Akentros 目前提供文字對話、串流與工具呼叫介面。",
       "status": "available",
       "capabilities": ["chat", "streaming", "reasoning", "tools"],
       "input_modalities": ["text", "image"],
@@ -215,11 +215,11 @@
       }
     },
     {
-      "id": "beacon/grok-4.1-fast",
+      "id": "akentros/grok-4.1-fast",
       "display_name": "Grok 4.1 Fast",
       "owner": "xAI",
       "owner_brand_asset_id": "xai",
-      "description": "xAI 高效率快速模型，以極低成本提供 200 萬 Token 上下文的低延遲推理；Beacon 目前提供文字對話、串流與工具呼叫介面。",
+      "description": "xAI 高效率快速模型，以極低成本提供 200 萬 Token 上下文的低延遲推理；Akentros 目前提供文字對話、串流與工具呼叫介面。",
       "status": "available",
       "capabilities": ["chat", "streaming", "reasoning", "tools"],
       "input_modalities": ["text"],
@@ -236,11 +236,11 @@
       }
     },
     {
-      "id": "beacon/deepseek-v4-pro",
+      "id": "akentros/deepseek-v4-pro",
       "display_name": "DeepSeek V4 Pro",
       "owner": "DeepSeek",
       "owner_brand_asset_id": "deepseek",
-      "description": "DeepSeek V4 旗艦推理模型，擅長程式開發、數學與複雜任務；Beacon 目前提供文字對話、串流與工具呼叫介面。",
+      "description": "DeepSeek V4 旗艦推理模型，擅長程式開發、數學與複雜任務；Akentros 目前提供文字對話、串流與工具呼叫介面。",
       "status": "available",
       "capabilities": ["chat", "streaming", "reasoning", "tools"],
       "input_modalities": ["text"],
@@ -257,11 +257,11 @@
       }
     },
     {
-      "id": "beacon/deepseek-v4.1-flash",
+      "id": "akentros/deepseek-v4.1-flash",
       "display_name": "DeepSeek V4.1 Flash",
       "owner": "DeepSeek",
       "owner_brand_asset_id": "deepseek",
-      "description": "DeepSeek 於 2026 年 9 月發布的開放權重高效模型，以 MIT 授權釋出並具備百萬級上下文；Beacon 目前提供文字對話、串流與工具呼叫介面。",
+      "description": "DeepSeek 於 2026 年 9 月發布的開放權重高效模型，以 MIT 授權釋出並具備百萬級上下文；Akentros 目前提供文字對話、串流與工具呼叫介面。",
       "status": "available",
       "capabilities": ["chat", "streaming", "reasoning", "tools"],
       "input_modalities": ["text"],
@@ -278,11 +278,11 @@
       }
     },
     {
-      "id": "beacon/kimi-k3",
+      "id": "akentros/kimi-k3",
       "display_name": "Kimi K3",
       "owner": "Moonshot AI",
       "owner_brand_asset_id": "moonshot",
-      "description": "Moonshot AI 於 2026 年 7 月發布的開放權重旗艦，2.8 兆參數混合專家架構並原生支援視覺理解；Beacon 目前提供文字對話、串流與工具呼叫介面。",
+      "description": "Moonshot AI 於 2026 年 7 月發布的開放權重旗艦，2.8 兆參數混合專家架構並原生支援視覺理解；Akentros 目前提供文字對話、串流與工具呼叫介面。",
       "status": "available",
       "capabilities": ["chat", "streaming", "reasoning", "tools"],
       "input_modalities": ["text", "image"],
@@ -299,11 +299,11 @@
       }
     },
     {
-      "id": "beacon/glm-5.3",
+      "id": "akentros/glm-5.3",
       "display_name": "GLM-5.3",
       "owner": "Z.ai",
       "owner_brand_asset_id": "z-ai",
-      "description": "Z.ai 於 2026 年 8 月發布的開放權重旗艦，程式開發能力較 GLM-5.2 提升五成並具備百萬級上下文；Beacon 目前提供文字對話、串流與工具呼叫介面。",
+      "description": "Z.ai 於 2026 年 8 月發布的開放權重旗艦，程式開發能力較 GLM-5.2 提升五成並具備百萬級上下文；Akentros 目前提供文字對話、串流與工具呼叫介面。",
       "status": "available",
       "capabilities": ["chat", "streaming", "reasoning", "tools"],
       "input_modalities": ["text"],
@@ -320,11 +320,11 @@
       }
     },
     {
-      "id": "beacon/glm-5.3-flash",
+      "id": "akentros/glm-5.3-flash",
       "display_name": "GLM-5.3 Flash",
       "owner": "Z.ai",
       "owner_brand_asset_id": "z-ai",
-      "description": "GLM-5 系列首個原生多模態模型，320B 總參數僅 18B 激活，為低成本代理部署而生；Beacon 目前提供文字對話、串流與工具呼叫介面。",
+      "description": "GLM-5 系列首個原生多模態模型，320B 總參數僅 18B 激活，為低成本代理部署而生；Akentros 目前提供文字對話、串流與工具呼叫介面。",
       "status": "available",
       "capabilities": ["chat", "streaming", "reasoning", "tools"],
       "input_modalities": ["text", "image"],
@@ -341,11 +341,11 @@
       }
     },
     {
-      "id": "beacon/qwen-3.8-max",
+      "id": "akentros/qwen-3.8-max",
       "display_name": "Qwen 3.8 Max",
       "owner": "Qwen",
       "owner_brand_asset_id": "qwen",
-      "description": "阿里巴巴 2026 年 8 月發布的 Qwen3.8 旗艦，約 2.4 兆參數，在自主編碼與長程軟體工程上表現突出；Beacon 目前提供文字對話、串流與工具呼叫介面。",
+      "description": "阿里巴巴 2026 年 8 月發布的 Qwen3.8 旗艦，約 2.4 兆參數，在自主編碼與長程軟體工程上表現突出；Akentros 目前提供文字對話、串流與工具呼叫介面。",
       "status": "available",
       "capabilities": ["chat", "streaming", "reasoning", "tools"],
       "input_modalities": ["text", "image"],
@@ -362,11 +362,11 @@
       }
     },
     {
-      "id": "beacon/qwen-3.8-flash",
+      "id": "akentros/qwen-3.8-flash",
       "display_name": "Qwen 3.8 Flash",
       "owner": "Qwen",
       "owner_brand_asset_id": "qwen",
-      "description": "Qwen3.8 家族的高效率多模態型號，以更低的成本與延遲兼顧推理品質；Beacon 目前提供文字對話、串流與工具呼叫介面。",
+      "description": "Qwen3.8 家族的高效率多模態型號，以更低的成本與延遲兼顧推理品質；Akentros 目前提供文字對話、串流與工具呼叫介面。",
       "status": "available",
       "capabilities": ["chat", "streaming", "reasoning", "tools"],
       "input_modalities": ["text", "image"],
@@ -383,11 +383,11 @@
       }
     },
     {
-      "id": "beacon/qwen-3.8-27b",
+      "id": "akentros/qwen-3.8-27b",
       "display_name": "Qwen 3.8 27B",
       "owner": "Qwen",
       "owner_brand_asset_id": "qwen",
-      "description": "Qwen3.8 開放權重輕量型號，經 Cloudflare Workers AI 以極低延遲提供日常對話與文字任務；Beacon 目前提供文字對話與串流介面。",
+      "description": "Qwen3.8 開放權重輕量型號，經 Cloudflare Workers AI 以極低延遲提供日常對話與文字任務；Akentros 目前提供文字對話與串流介面。",
       "status": "available",
       "capabilities": ["chat", "streaming", "reasoning"],
       "input_modalities": ["text"],

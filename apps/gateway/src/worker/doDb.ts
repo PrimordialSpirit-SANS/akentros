@@ -14,17 +14,17 @@ import { AsyncLocalStorage } from "node:async_hooks";
 // - 列預設以欄名為 key 的物件回傳(同 node:sqlite 的 .all())。
 // - 不需要 WAL/busy_timeout PRAGMA(workerd 自管 journaling)。
 
-export interface BeaconDoSqlCursor {
+export interface AkentrosDoSqlCursor {
   toArray(): any[];
 }
 
-export interface BeaconDoSql {
-  exec(query: string, ...params: unknown[]): BeaconDoSqlCursor;
+export interface AkentrosDoSql {
+  exec(query: string, ...params: unknown[]): AkentrosDoSqlCursor;
 }
 
-export interface BeaconDoState {
+export interface AkentrosDoState {
   storage: {
-    sql: BeaconDoSql;
+    sql: AkentrosDoSql;
     transaction<T>(fn: () => Promise<T>): Promise<T>;
   };
 }
@@ -42,7 +42,7 @@ function normalizeParam(value: any): string | number | null {
   return value;
 }
 
-export function createDoBeaconDbAdapter(state: BeaconDoState) {
+export function createDoAkentrosDbAdapter(state: AkentrosDoState) {
   const sql = state.storage.sql;
 
   const txStorage = new AsyncLocalStorage<{ depth: number }>();
@@ -89,7 +89,7 @@ export function createDoBeaconDbAdapter(state: BeaconDoState) {
   // Node adapter 的獨佔寫入交易。刻意不用 blockConcurrencyWhile:它會
   // 延遲事件交付,fn 一旦 await runtime I/O 即死鎖(交易 fn 依契約不會,
   // 但不作假設較安全)。以 promise chain 串行化,對齊 SQLite 單寫者語義。
-  function withBeaconTransaction<T>(env: any, fn: () => Promise<T>): Promise<T> {
+  function withAkentrosTransaction<T>(env: any, fn: () => Promise<T>): Promise<T> {
     void env;
     if (txStorage.getStore()) {
       // 巢狀呼叫:沿用外層交易。
@@ -116,9 +116,9 @@ export function createDoBeaconDbAdapter(state: BeaconDoState) {
     return rows[0] ?? null;
   }
 
-  function createBeaconQuery(env: any) {
+  function createAkentrosQuery(env: any) {
     const query = (statement: string, params: any[] = []) => dbQuery(env, statement, params);
-    (query as any).transaction = (fn: () => Promise<any>) => withBeaconTransaction(env, fn);
+    (query as any).transaction = (fn: () => Promise<any>) => withAkentrosTransaction(env, fn);
     return query;
   }
 
@@ -126,5 +126,5 @@ export function createDoBeaconDbAdapter(state: BeaconDoState) {
     // DO 的連線生命週期由 runtime 管理;保留匯出以對齊 adapter 契約。
   }
 
-  return { dbQuery, dbGet, withBeaconTransaction, createBeaconQuery, closePostgresClients };
+  return { dbQuery, dbGet, withAkentrosTransaction, createAkentrosQuery, closePostgresClients };
 }

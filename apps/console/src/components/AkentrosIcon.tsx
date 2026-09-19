@@ -1,14 +1,14 @@
 import type React from "react";
 
-export interface BeaconIconProps extends React.SVGProps<SVGSVGElement> {
+export interface AkentrosIconProps extends React.SVGProps<SVGSVGElement> {
   size?: number | string;
 }
 
 /**
- * Beacon 品牌向量圖標:信號燈塔(基座 + 光點 + 兩道廣播弧線)。
+ * Akentros 品牌向量圖標:信號燈塔(基座 + 光點 + 兩道廣播弧線)。
  * 以 currentColor 描繪,跟隨文字顏色。
  */
-export const BeaconIcon: React.FC<BeaconIconProps> = ({ size = 40, className, ...props }) => {
+export const AkentrosIcon: React.FC<AkentrosIconProps> = ({ size = 40, className, ...props }) => {
   return (
     <svg
       viewBox="0 0 24 24"
@@ -35,4 +35,4 @@ export const BeaconIcon: React.FC<BeaconIconProps> = ({ size = 40, className, ..
   );
 };
 
-export default BeaconIcon;
+export default AkentrosIcon;

@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import brands from "../../../apps/console/public/brand/beacon/providers/manifest.v1.json" with {
+import brands from "../../../apps/console/public/brand/akentros/providers/manifest.v1.json" with {
   type: "json",
 };
-import publicModels from "../../../apps/console/public/data/beacon/models.v1.json" with { type: "json" };
-import publicOfferings from "../../../apps/console/public/data/beacon/provider-offerings.v1.json" with {
+import publicModels from "../../../apps/console/public/data/akentros/models.v1.json" with { type: "json" };
+import publicOfferings from "../../../apps/console/public/data/akentros/provider-offerings.v1.json" with {
   type: "json",
 };
 import providerPools from "../config/provider-pools.v1.json" with { type: "json" };
@@ -20,7 +20,7 @@ function clone(value: any) {
   return structuredClone(value);
 }
 
-test("canonical Beacon pricing and provider pool documents form a valid bundle", () => {
+test("canonical Akentros pricing and provider pool documents form a valid bundle", () => {
   assert.deepEqual(validateBackendPricing(BACKEND_PRICING), { valid: true, errors: [] });
   assert.deepEqual(validateProviderPools(providerPools), { valid: true, errors: [] });
   assert.deepEqual(validateConfigBundle(BACKEND_PRICING, providerPools), { valid: true, errors: [] });
@@ -82,14 +82,14 @@ test("public catalogs match the active backend models, prices, limits and provid
 
 test("provider names use the canonical hugging-face vocabulary", () => {
   const pricing = clone(BACKEND_PRICING);
-  pricing.models["beacon/qwen-3.8-27b"].routes[0].provider = "huggingface";
+  pricing.models["akentros/qwen-3.8-27b"].routes[0].provider = "huggingface";
 
   const pools = clone(providerPools);
   pools.pools["hugging-face-production"].provider = "huggingface";
 
   assert.deepEqual(validateBackendPricing(pricing), {
     valid: false,
-    errors: ["$.models.beacon/qwen-3.8-27b.routes[0].provider: is unsupported"],
+    errors: ["$.models.akentros/qwen-3.8-27b.routes[0].provider: is unsupported"],
   });
   assert.deepEqual(validateProviderPools(pools), {
     valid: false,
@@ -131,11 +131,11 @@ test("bundle validation catches revision and route-to-pool drift", () => {
   });
 
   const pricingDrift = clone(BACKEND_PRICING);
-  pricingDrift.models["beacon/qwen-3.8-27b"].routes[0].credential_pool = "openrouter-production";
+  pricingDrift.models["akentros/qwen-3.8-27b"].routes[0].credential_pool = "openrouter-production";
   assert.deepEqual(validateConfigBundle(pricingDrift, providerPools), {
     valid: false,
     errors: [
-      "$.models.beacon/qwen-3.8-27b.routes.qwen-3.8-27b-cloudflare.provider: does not match its provider pool",
+      "$.models.akentros/qwen-3.8-27b.routes.qwen-3.8-27b-cloudflare.provider: does not match its provider pool",
     ],
   });
 });

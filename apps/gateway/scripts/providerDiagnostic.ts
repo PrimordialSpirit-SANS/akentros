@@ -1,15 +1,15 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { listEnabledModels } from "@beacon/core/pricing";
+import { listEnabledModels } from "@akentros/core/pricing";
 import {
-  BeaconProviderError,
+  AkentrosProviderError,
   invokeProviderRoute,
   listEnabledCredentials,
   normalizeProviderUsage,
   requireProviderPool,
   resolveProviderCredential,
-} from "@beacon/core/providers";
-import { parseSseStream } from "@beacon/core/sse";
+} from "@akentros/core/providers";
+import { parseSseStream } from "@akentros/core/sse";
 import dotenv from "dotenv";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -107,7 +107,7 @@ async function probe(candidate: any, env: Record<string, string | undefined>, st
     return { result: "ok", usage_reported: result.usageSource === "provider" };
   } catch (error: any) {
     return {
-      result: error instanceof BeaconProviderError ? error.category : "diagnostic_error",
+      result: error instanceof AkentrosProviderError ? error.category : "diagnostic_error",
     };
   } finally {
     result?.dispose?.();
@@ -137,7 +137,7 @@ async function main(args = process.argv.slice(2)) {
   if (!all && !requested) throw new Error("Live diagnostics require --model=<public-model> or --all.");
 
   const selected = all ? available : available.filter((item) => item.publicModel === requested);
-  if (selected.length === 0) throw new Error("The requested public Beacon model is unavailable.");
+  if (selected.length === 0) throw new Error("The requested public Akentros model is unavailable.");
   dotenv.config({ path: path.join(__dirname, "../.dev.vars"), quiet: true });
 
   for (const candidate of selected) {

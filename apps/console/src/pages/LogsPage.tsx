@@ -1,13 +1,13 @@
 import React from "react";
 import { Alert, PageHeader, StateBlock } from "../components/ui";
-import { getBeaconRequestDetail, listBeaconLogs } from "../lib/beacon/api/beaconDeveloperApi";
-import type { BeaconRequestDetail, BeaconUsageLog } from "../lib/beacon/types";
+import { getAkentrosRequestDetail, listAkentrosLogs } from "../lib/akentros/api/akentrosDeveloperApi";
+import type { AkentrosRequestDetail, AkentrosUsageLog } from "../lib/akentros/types";
 import {
-  formatBeaconTimestamp,
+  formatAkentrosTimestamp,
   formatLatency,
   formatTokens,
   formatUsd,
-} from "../lib/beacon/utils/formatBeacon";
+} from "../lib/akentros/utils/formatAkentros";
 
 const STATUS_LABELS: Record<string, { label: string; className: string }> = {
   succeeded: { label: "成功", className: "badge badge-ok" },
@@ -24,19 +24,19 @@ function statusBadge(status: string) {
 }
 
 export function LogsPage() {
-  const [logs, setLogs] = React.useState<BeaconUsageLog[]>([]);
+  const [logs, setLogs] = React.useState<AkentrosUsageLog[]>([]);
   const [pagination, setPagination] = React.useState({ next_cursor: null as string | null, has_more: false });
   const [status, setStatus] = React.useState("");
   const [error, setError] = React.useState("");
   const [loading, setLoading] = React.useState(true);
-  const [detail, setDetail] = React.useState<BeaconRequestDetail | null>(null);
+  const [detail, setDetail] = React.useState<AkentrosRequestDetail | null>(null);
 
   const load = React.useCallback(
     async (cursor: string | null = null, append = false) => {
       setLoading(true);
       setError("");
       try {
-        const page = await listBeaconLogs({ cursor, limit: 25, status: status || undefined });
+        const page = await listAkentrosLogs({ cursor, limit: 25, status: status || undefined });
         setLogs((current) => (append ? [...current, ...page.logs] : page.logs));
         setPagination(page.pagination);
       } catch (cause) {
@@ -63,7 +63,7 @@ export function LogsPage() {
 
   const open = async (requestId: string) => {
     try {
-      setDetail(await getBeaconRequestDetail(requestId));
+      setDetail(await getAkentrosRequestDetail(requestId));
     } catch (cause) {
       setError((cause as Error).message);
     }
@@ -142,7 +142,7 @@ export function LogsPage() {
                   }}
                 >
                   <td className="cell-time">
-                    {formatBeaconTimestamp(log.created_at)}
+                    {formatAkentrosTimestamp(log.created_at)}
                     <code>{log.request_id}</code>
                   </td>
                   <td className="cell-model">

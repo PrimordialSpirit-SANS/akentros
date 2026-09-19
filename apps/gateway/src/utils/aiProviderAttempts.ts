@@ -1,33 +1,33 @@
-import type { BeaconAttemptAuditor } from "@beacon/core/providerAttempts";
-import { createBeaconProviderAttemptStore } from "@beacon/core/providerAttempts";
-import type { BeaconRuntimeEnv } from "../types.ts";
+import type { AkentrosAttemptAuditor } from "@akentros/core/providerAttempts";
+import { createAkentrosProviderAttemptStore } from "@akentros/core/providerAttempts";
+import type { AkentrosRuntimeEnv } from "../types.ts";
 import { ensureAiSchema } from "./aiSchema.ts";
-import { createBeaconQuery } from "./db.ts";
+import { createAkentrosQuery } from "./db.ts";
 
-const stores = new Map<string, ReturnType<typeof createBeaconProviderAttemptStore>>();
+const stores = new Map<string, ReturnType<typeof createAkentrosProviderAttemptStore>>();
 
-type BeaconAttemptFinish = NonNullable<BeaconAttemptAuditor["finish"]>;
+type AkentrosAttemptFinish = NonNullable<AkentrosAttemptAuditor["finish"]>;
 
-function storeFor(env: BeaconRuntimeEnv) {
+function storeFor(env: AkentrosRuntimeEnv) {
   const key = env?.DATABASE_URL?.trim() || "unconfigured-main";
   if (!stores.has(key)) {
-    stores.set(key, createBeaconProviderAttemptStore(createBeaconQuery(env)));
+    stores.set(key, createAkentrosProviderAttemptStore(createAkentrosQuery(env)));
   }
   return stores.get(key)!;
 }
 
-export async function startBeaconProviderAttempt(
-  env: BeaconRuntimeEnv,
-  input: Parameters<BeaconAttemptAuditor["start"]>[0],
+export async function startAkentrosProviderAttempt(
+  env: AkentrosRuntimeEnv,
+  input: Parameters<AkentrosAttemptAuditor["start"]>[0],
 ) {
   await ensureAiSchema(env);
   return storeFor(env).start(input);
 }
 
-export async function finishBeaconProviderAttempt(
-  env: BeaconRuntimeEnv,
+export async function finishAkentrosProviderAttempt(
+  env: AkentrosRuntimeEnv,
   attempt: unknown,
-  outcome: Parameters<BeaconAttemptFinish>[1],
+  outcome: Parameters<AkentrosAttemptFinish>[1],
 ) {
   await ensureAiSchema(env);
   return storeFor(env).finish(attempt, outcome);

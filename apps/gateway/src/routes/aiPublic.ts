@@ -1,80 +1,80 @@
 import {
-  createBeaconInferenceRuntime,
-  listPublicBeaconModels,
+  createAkentrosInferenceRuntime,
+  listPublicAkentrosModels,
   measureStreamChunkOutputChars,
   normalizeStreamChunk,
-  prepareBeaconChatRequest,
+  prepareAkentrosChatRequest,
   publicProviderError,
-} from "@beacon/core/inference";
-import { BACKEND_PRICING } from "@beacon/core/pricing";
-import { BeaconProviderError } from "@beacon/core/providers";
+} from "@akentros/core/inference";
+import { BACKEND_PRICING } from "@akentros/core/pricing";
+import { AkentrosProviderError } from "@akentros/core/providers";
 import { Hono } from "hono";
-import { authenticateBeaconKey, requireAiScope } from "../middleware/aiAuth.ts";
+import { authenticateAkentrosKey, requireAiScope } from "../middleware/aiAuth.ts";
 import type {
-  BeaconAuthenticatedKey,
-  BeaconContext,
-  BeaconEnv,
-  BeaconNext,
-  BeaconRuntimeEnv,
+  AkentrosAuthenticatedKey,
+  AkentrosContext,
+  AkentrosEnv,
+  AkentrosNext,
+  AkentrosRuntimeEnv,
 } from "../types.ts";
 import {
-  markBeaconDispatched,
-  markBeaconNeedsReconciliation,
-  refundBeaconSpend,
-  reserveBeaconSpend,
-  settleBeaconSpend,
+  markAkentrosDispatched,
+  markAkentrosNeedsReconciliation,
+  refundAkentrosSpend,
+  reserveAkentrosSpend,
+  settleAkentrosSpend,
 } from "../utils/aiBilling.ts";
-import { BeaconError, invalidRequest, openAiErrorBody, sendOpenAiError } from "../utils/aiErrors.ts";
-import { acquireBeaconApiLimit, releaseBeaconApiLimit } from "../utils/aiLimits.ts";
-import { finishBeaconProviderAttempt, startBeaconProviderAttempt } from "../utils/aiProviderAttempts.ts";
-import { claimBeaconProviderCredential, releaseBeaconProviderCredential } from "../utils/aiProviderPool.ts";
+import { AkentrosError, invalidRequest, openAiErrorBody, sendOpenAiError } from "../utils/aiErrors.ts";
+import { acquireAkentrosApiLimit, releaseAkentrosApiLimit } from "../utils/aiLimits.ts";
+import { finishAkentrosProviderAttempt, startAkentrosProviderAttempt } from "../utils/aiProviderAttempts.ts";
+import { claimAkentrosProviderCredential, releaseAkentrosProviderCredential } from "../utils/aiProviderPool.ts";
 
-export const aiPublicRoutes = new Hono<BeaconEnv>();
+export const aiPublicRoutes = new Hono<AkentrosEnv>();
 
 function newRequestId() {
   return `req_${globalThis.crypto.randomUUID().replaceAll("-", "")}`;
 }
 
-function setPublicHeaders(c: BeaconContext, requestId: string) {
+function setPublicHeaders(c: AkentrosContext, requestId: string) {
   c.header("Cache-Control", "no-store, no-transform");
   c.header("X-Request-Id", requestId);
-  c.header("X-Beacon-Pricing-Revision", BACKEND_PRICING.revision);
+  c.header("X-Akentros-Pricing-Revision", BACKEND_PRICING.revision);
 }
 
-// createBeaconInferenceRuntime 的 options 由 @beacon/core/inference 的
-// BeaconInferenceRuntimeOptions 契約定型;此處的注入 lambda 參數型別由該
+// createAkentrosInferenceRuntime 的 options 由 @akentros/core/inference 的
+// AkentrosInferenceRuntimeOptions 契約定型;此處的注入 lambda 參數型別由該
 // 契約推導,不必再以 any 標註。
-function runtimeFor(env: BeaconRuntimeEnv) {
-  return createBeaconInferenceRuntime({
+function runtimeFor(env: AkentrosRuntimeEnv) {
+  return createAkentrosInferenceRuntime({
     billing: {
-      reserve: (input) => reserveBeaconSpend(env, input),
-      markDispatched: (requestId) => markBeaconDispatched(env, requestId),
-      settle: (input) => settleBeaconSpend(env, input),
-      refund: (input) => refundBeaconSpend(env, input),
-      markNeedsReconciliation: (input) => markBeaconNeedsReconciliation(env, input),
+      reserve: (input) => reserveAkentrosSpend(env, input),
+      markDispatched: (requestId) => markAkentrosDispatched(env, requestId),
+      settle: (input) => settleAkentrosSpend(env, input),
+      refund: (input) => refundAkentrosSpend(env, input),
+      markNeedsReconciliation: (input) => markAkentrosNeedsReconciliation(env, input),
     },
     attempts: {
-      start: (input) => startBeaconProviderAttempt(env, input),
-      finish: (attempt, outcome) => finishBeaconProviderAttempt(env, attempt, outcome),
+      start: (input) => startAkentrosProviderAttempt(env, input),
+      finish: (attempt, outcome) => finishAkentrosProviderAttempt(env, attempt, outcome),
     },
     claimCredential: (route, requestId, excludedCredentialIds) =>
-      claimBeaconProviderCredential(
+      claimAkentrosProviderCredential(
         env,
         route as { credential_pool: string },
         requestId,
         excludedCredentialIds,
       ),
-    releaseCredential: (claim, outcome) => releaseBeaconProviderCredential(env, claim, outcome),
+    releaseCredential: (claim, outcome) => releaseAkentrosProviderCredential(env, claim, outcome),
     cloudflareAiBinding: null, // Bypassed to prevent using Wrangler CLI logged-in account
   });
 }
 
-async function readPublicJsonObject(c: BeaconContext): Promise<Record<string, unknown>> {
+async function readPublicJsonObject(c: AkentrosContext): Promise<Record<string, unknown>> {
   let value: unknown;
   try {
     value = await c.req.json();
   } catch {
-    throw new BeaconError("The request body is not valid JSON.", {
+    throw new AkentrosError("The request body is not valid JSON.", {
       status: 400,
       type: "invalid_request_error",
       code: "invalid_json",
@@ -86,35 +86,35 @@ async function readPublicJsonObject(c: BeaconContext): Promise<Record<string, un
   return value as Record<string, unknown>;
 }
 
-function visibleModels(aiKey: BeaconAuthenticatedKey) {
-  const list = listPublicBeaconModels();
+function visibleModels(aiKey: AkentrosAuthenticatedKey) {
+  const list = listPublicAkentrosModels();
   if (!Array.isArray(aiKey.model_allowlist) || aiKey.model_allowlist.length === 0) return list;
   return { ...list, data: list.data.filter((model) => aiKey.model_allowlist.includes(model.id)) };
 }
 
-type MaybeKey = BeaconAuthenticatedKey | null | undefined;
+type MaybeKey = AkentrosAuthenticatedKey | null | undefined;
 type MaybeKeyOrResolver = MaybeKey | (() => MaybeKey) | (() => Promise<MaybeKey>);
 
-aiPublicRoutes.use("*", async (c: BeaconContext, next: BeaconNext) => {
+aiPublicRoutes.use("*", async (c: AkentrosContext, next: AkentrosNext) => {
   c.set("aiRequestId", newRequestId());
   setPublicHeaders(c, c.get("aiRequestId") || "");
   await next();
 });
-aiPublicRoutes.use("*", authenticateBeaconKey);
+aiPublicRoutes.use("*", authenticateAkentrosKey);
 
-aiPublicRoutes.get("/models", requireAiScope("models:read"), (c: BeaconContext) => {
+aiPublicRoutes.get("/models", requireAiScope("models:read"), (c: AkentrosContext) => {
   return c.json(visibleModels(c.get("aiKey")!));
 });
 
-export async function handleBeaconChatCompletions(
-  c: BeaconContext,
+export async function handleAkentrosChatCompletions(
+  c: AkentrosContext,
   aiKeyOrResolver: MaybeKeyOrResolver = c.get("aiKey"),
 ) {
   if (!c.get("aiRequestId")) {
     c.set("aiRequestId", newRequestId());
   }
   setPublicHeaders(c, c.get("aiRequestId") || "");
-  // prepared/streamContext 的形狀由 @beacon/core/inference 的未型別化 API 決定。
+  // prepared/streamContext 的形狀由 @akentros/core/inference 的未型別化 API 決定。
   let prepared: any;
   let streamContext: any;
   let admissionAcquired = false;
@@ -122,7 +122,7 @@ export async function handleBeaconChatCompletions(
   const releaseAdmissionOnce = () => {
     if (!admissionAcquired || !prepared?.requestId) return Promise.resolve();
     if (!admissionReleasePromise) {
-      admissionReleasePromise = releaseBeaconApiLimit(c.env, prepared.requestId)
+      admissionReleasePromise = releaseAkentrosApiLimit(c.env, prepared.requestId)
         .catch(() => {})
         .finally(() => {
           admissionAcquired = false;
@@ -133,20 +133,20 @@ export async function handleBeaconChatCompletions(
   try {
     const aiKey = typeof aiKeyOrResolver === "function" ? await aiKeyOrResolver() : aiKeyOrResolver;
     if (!aiKey) {
-      throw new BeaconError("Beacon authentication is unavailable.", {
+      throw new AkentrosError("Akentros authentication is unavailable.", {
         status: 503,
         type: "service_unavailable",
         code: "authentication_unavailable",
       });
     }
-    prepared = await prepareBeaconChatRequest({
+    prepared = await prepareAkentrosChatRequest({
       body: await readPublicJsonObject(c),
       aiKey,
       idempotencyKey: c.req.header("idempotency-key") || null,
     });
     c.set("aiRequestId", prepared.requestId);
     setPublicHeaders(c, prepared.requestId);
-    await acquireBeaconApiLimit(c.env, {
+    await acquireAkentrosApiLimit(c.env, {
       apiKeyId: aiKey.id,
       requestId: prepared.requestId,
       rpmLimit: aiKey.rpm_limit,
@@ -157,7 +157,7 @@ export async function handleBeaconChatCompletions(
     });
     admissionAcquired = true;
     if (c.req.raw.signal.aborted) {
-      throw new BeaconProviderError("The client disconnected before dispatch.", {
+      throw new AkentrosProviderError("The client disconnected before dispatch.", {
         category: "client_disconnected",
         fallbackAllowed: false,
       });
@@ -201,7 +201,7 @@ export async function handleBeaconChatCompletions(
             try {
               upstream = JSON.parse(event.data);
             } catch (cause) {
-              throw new BeaconProviderError("The model stream contained invalid JSON.", {
+              throw new AkentrosProviderError("The model stream contained invalid JSON.", {
                 provider: "unknown",
                 category: "invalid_provider_response",
                 fallbackAllowed: false,
@@ -224,7 +224,7 @@ export async function handleBeaconChatCompletions(
             controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`));
           }
           if (!sawDone) {
-            throw new BeaconProviderError("The model stream ended unexpectedly.", {
+            throw new AkentrosProviderError("The model stream ended unexpectedly.", {
               provider: "unknown",
               category: "stream_interrupted",
               fallbackAllowed: false,
@@ -242,9 +242,9 @@ export async function handleBeaconChatCompletions(
           }
           const safe = publicProviderError(error);
           const envelope = openAiErrorBody(
-            safe instanceof BeaconError
+            safe instanceof AkentrosError
               ? safe
-              : new BeaconError("Beacon streaming was interrupted.", {
+              : new AkentrosError("Akentros streaming was interrupted.", {
                   status: 503,
                   type: "server_error",
                   code: "service_unavailable",
@@ -288,7 +288,7 @@ export async function handleBeaconChatCompletions(
         "content-type": "text/event-stream; charset=utf-8",
         "cache-control": "no-store, no-transform",
         "x-request-id": prepared.requestId,
-        "x-beacon-pricing-revision": BACKEND_PRICING.revision,
+        "x-akentros-pricing-revision": BACKEND_PRICING.revision,
       },
     });
   } catch (error) {
@@ -301,14 +301,14 @@ export async function handleBeaconChatCompletions(
   }
 }
 
-aiPublicRoutes.post("/chat/completions", requireAiScope("chat:completions"), (c: BeaconContext) =>
-  handleBeaconChatCompletions(c),
+aiPublicRoutes.post("/chat/completions", requireAiScope("chat:completions"), (c: AkentrosContext) =>
+  handleAkentrosChatCompletions(c),
 );
 
-aiPublicRoutes.all("*", (c: BeaconContext) =>
+aiPublicRoutes.all("*", (c: AkentrosContext) =>
   sendOpenAiError(
     c,
-    new BeaconError("The requested Beacon endpoint does not exist.", {
+    new AkentrosError("The requested Akentros endpoint does not exist.", {
       status: 404,
       type: "invalid_request_error",
       code: "route_not_found",

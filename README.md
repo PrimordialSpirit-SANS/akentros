@@ -1,6 +1,6 @@
-# Beacon Gateway
+# Akentros Gateway
 
-**English.** Beacon Gateway is a self-hosted, OpenAI-compatible AI gateway: USD-based billing, multi-provider pooling with automatic failover, `sk-beacon-*` API keys, and a built-in Traditional-Chinese developer console. Core (`packages/core`) is a portable TypeScript library; the gateway runs as a plain Node.js server on SQLite (no external database) **or on Cloudflare Workers inside a Durable Object**; the console is a React + Vite app deployable to Cloudflare Pages.
+**English.** Akentros Gateway is a self-hosted, OpenAI-compatible AI gateway: USD-based billing, multi-provider pooling with automatic failover, `sk-akentros-*` API keys, and a built-in Traditional-Chinese developer console. Core (`packages/core`) is a portable TypeScript library; the gateway runs as a plain Node.js server on SQLite (no external database) **or on Cloudflare Workers inside a Durable Object**; the console is a React + Vite app deployable to Cloudflare Pages.
 
 ```bash
 cp apps/gateway/.dev.vars.example apps/gateway/.dev.vars   # fill in secrets
@@ -14,7 +14,7 @@ See [Quick start](#快速開始) below, [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)
 
 ---
 
-**Beacon Gateway** 是一個可完全自架的 OpenAI 相容 AI 閘道:以「美元」直接計費(內部微美元整數結算),後方串接多家模型供應商(自動選路、健康狀態、故障轉移),並附帶繁體中文開發者控制台。資料庫使用 SQLite 單檔(Node 22 內建 `node:sqlite`,免裝任何資料庫服務)。整個系統由三個部分組成,全部 TypeScript:
+**Akentros Gateway** 是一個可完全自架的 OpenAI 相容 AI 閘道:以「美元」直接計費(內部微美元整數結算),後方串接多家模型供應商(自動選路、健康狀態、故障轉移),並附帶繁體中文開發者控制台。資料庫使用 SQLite 單檔(Node 22 內建 `node:sqlite`,免裝任何資料庫服務)。整個系統由三個部分組成,全部 TypeScript:
 
 | 目錄 | 說明 |
 | --- | --- |
@@ -24,10 +24,10 @@ See [Quick start](#快速開始) below, [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)
 
 ## 功能特性
 
-- **OpenAI 相容 API**:`GET /api/ai/v1/models`、`POST /api/ai/v1/chat/completions`(支援 SSE 串流、`Idempotency-Key` 冪等),任何 OpenAI SDK 指向 `baseURL` 即可使用。**冪等語意差異**:OpenAI 對已完成的冪等鍵會「重放原始回應」,Beacon 因不落地 prompt/completion 而無法重放——已完成的鍵重送回 `409 idempotent_request_replayed`(附原始 `X-Request-Id`)、進行中的鍵回 `409 idempotent_request_in_progress`;重度依賴冪等重放的客戶端需留意此差異(見 `docs/openapi.yaml` 的 `Idempotency-Key` 參數說明)。
+- **OpenAI 相容 API**:`GET /api/ai/v1/models`、`POST /api/ai/v1/chat/completions`(支援 SSE 串流、`Idempotency-Key` 冪等),任何 OpenAI SDK 指向 `baseURL` 即可使用。**冪等語意差異**:OpenAI 對已完成的冪等鍵會「重放原始回應」,Akentros 因不落地 prompt/completion 而無法重放——已完成的鍵重送回 `409 idempotent_request_replayed`(附原始 `X-Request-Id`)、進行中的鍵回 `409 idempotent_request_in_progress`;重度依賴冪等重放的客戶端需留意此差異(見 `docs/openapi.yaml` 的 `Idempotency-Key` 參數說明)。
 - **美元計費**:內部以微美元整數結算(無浮點誤差),請求前「預留」消費上限、完成後依實際 usage 結算、差額自動退回;全流程冪等、可重跑、可對帳。
 - **多供應商池**:37 條 credential 設定(openrouter、cloudflare-workers-ai、qwencloud、openai、anthropic、groq…),加權輪詢、健康冷卻、in-flight lease、自動 fallback;secret 只存環境變數名稱,資料庫僅存 opaque credential ID。
-- **API 金鑰管理**:`sk-beacon-live_/sk-beacon-test_` 金鑰、只顯示一次、pepper-HMAC digest 落庫;可設定過期時間、模型白名單、RPM、最大併發與美元消費上限。金鑰級 RPM/併發由資料庫交易內原子計數強制;登入與金鑰管理的 IP 限流同樣以 SQLite 固定窗口計數(單程序全域生效),資料庫不可用時降級為 in-process 記憶體視窗。
+- **API 金鑰管理**:`sk-akentros-live_/sk-akentros-test_` 金鑰、只顯示一次、pepper-HMAC digest 落庫;可設定過期時間、模型白名單、RPM、最大併發與美元消費上限。金鑰級 RPM/併發由資料庫交易內原子計數強制;登入與金鑰管理的 IP 限流同樣以 SQLite 固定窗口計數(單程序全域生效),資料庫不可用時降級為 in-process 記憶體視窗。
 - **內建帳號系統**:註冊/登入(JWT cookie + CSRF 雙提交)、migrate 時可種子管理員、新戶送點、可關閉公開註冊。
 - **開發者控制台**:總覽、金鑰、串流測試(逐字渲染、usage 統計)、模型目錄(含免費額度)、請求紀錄與單筆詳情;提供 `?demo=1` 離線示範模式。
 - **維運探針與結構化日誌**:`GET /healthz` 回報程序與資料庫狀態(200 ok / 503 degraded),供負載平衡與監控探測;內部日誌以單行 JSON 輸出,可直接交由 Cloudflare observability、journald 等採集。
@@ -38,10 +38,10 @@ See [Quick start](#快速開始) below, [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)
 ```mermaid
 flowchart LR
     subgraph client["你的應用 / OpenAI SDK"]
-        A["Authorization: Bearer sk-beacon-live_…"]
+        A["Authorization: Bearer sk-akentros-live_…"]
     end
     subgraph worker["apps/gateway(Node + Hono)"]
-        P["/api/ai/v1\n公開推理面\n(sk-beacon-* 金鑰)"]
+        P["/api/ai/v1\n公開推理面\n(sk-akentros-* 金鑰)"]
         D["/api/ai/developer\n管理面\n(登入 cookie + CSRF)"]
         S["scheduled cron\n*/30 * * * *"]
     end
@@ -73,8 +73,8 @@ flowchart LR
 ```bash
 # 1. 設定環境
 cp apps/gateway/.dev.vars.example apps/gateway/.dev.vars
-#   填入 BEACON_DB_PATH=./beacon.db(或不填,預設即此)
-#   並產生 JWT_SECRET / BEACON_API_KEY_PEPPER(openssl rand -hex 32)
+#   填入 AKENTROS_DB_PATH=./akentros.db(或不填,預設即此)
+#   並產生 JWT_SECRET / AKENTROS_API_KEY_PEPPER(openssl rand -hex 32)
 #   填入 ADMIN_EMAIL / ADMIN_PASSWORD(管理員種子)
 #   填入至少一個供應商金鑰(例如 OPENROUTER_API_KEY_1)
 
@@ -86,7 +86,7 @@ npm run migrate
 npm run dev:gateway    # http://localhost:8787
 npm run dev:console    # http://localhost:5173
 #   console 開發時請在 apps/console/.env 設
-#   VITE_BEACON_API_BASE=http://127.0.0.1:8787/api(gateway 的 CORS 已允許 localhost:5173)
+#   VITE_AKENTROS_API_BASE=http://127.0.0.1:8787/api(gateway 的 CORS 已允許 localhost:5173)
 ```
 
 控制台打開 http://localhost:5173 ,登入管理員帳號後即可建立 API 金鑰、測試串流。
@@ -99,12 +99,12 @@ npm run dev:console    # http://localhost:5173
 import OpenAI from 'openai';
 
 const client = new OpenAI({
-  apiKey: 'sk-beacon-live_…',          // 在控制台建立
+  apiKey: 'sk-akentros-live_…',          // 在控制台建立
   baseURL: 'http://localhost:8787/api/ai/v1',
 });
 
 const stream = await client.chat.completions.create({
-  model: 'beacon/llama-3.2-1b-instruct',  // 模型目錄見控制台「模型」頁
+  model: 'akentros/llama-3.2-1b-instruct',  // 模型目錄見控制台「模型」頁
   messages: [{ role: 'user', content: '你好!' }],
   stream: true,
 });
@@ -142,15 +142,15 @@ npx wrangler deploy          # secrets 以 wrangler secret put 設定
 
 | 環境變數 | 必填 | 說明 |
 | --- | --- | --- |
-| `BEACON_DB_PATH` | 建議 | SQLite 資料庫檔案路徑(預設 `./beacon.db`,相對 `apps/gateway/`;相對路徑一律以此目錄為基準,不受啟動目錄影響) |
+| `AKENTROS_DB_PATH` | 建議 | SQLite 資料庫檔案路徑(預設 `./akentros.db`,相對 `apps/gateway/`;相對路徑一律以此目錄為基準,不受啟動目錄影響) |
 | `JWT_SECRET` | ✅ | 會話 cookie 簽名金鑰(≥32 bytes) |
-| `BEACON_API_KEY_PEPPER` | ✅ | API 金鑰 HMAC pepper(≥32 bytes) |
-| `BEACON_ENABLED` | 建議 | fail-closed 開關;僅 `true` 時啟用 `/api/ai/*` |
+| `AKENTROS_API_KEY_PEPPER` | ✅ | API 金鑰 HMAC pepper(≥32 bytes) |
+| `AKENTROS_ENABLED` | 建議 | fail-closed 開關;僅 `true` 時啟用 `/api/ai/*` |
 | `ADMIN_EMAIL` / `ADMIN_PASSWORD` | 選配 | migrate 時的管理員種子 |
-| `BEACON_SIGNUP_BONUS_USD` | 選配 | 註冊初始餘額(預設 $5.00) |
-| `BEACON_ADMIN_STARTING_CREDITS_USD` | 選配 | 管理員初始餘額(預設 $500.00) |
-| `BEACON_DISABLE_REGISTRATION` | 選配 | 設 `true` 關閉公開註冊 |
-| `BEACON_TRUST_PROXY` | 選配 | 登入/註冊限流的用戶端 IP 判定:Node 自架預設用「socket 來源位址」(不可偽造);僅當 gateway 前方有會覆寫 `cf-connecting-ip` 的受信賴反向代理(如 Cloudflare)時設 `true` 改用標頭。Cloudflare Workers 部署一律以標頭為準 |
+| `AKENTROS_SIGNUP_BONUS_USD` | 選配 | 註冊初始餘額(預設 $5.00) |
+| `AKENTROS_ADMIN_STARTING_CREDITS_USD` | 選配 | 管理員初始餘額(預設 $500.00) |
+| `AKENTROS_DISABLE_REGISTRATION` | 選配 | 設 `true` 關閉公開註冊 |
+| `AKENTROS_TRUST_PROXY` | 選配 | 登入/註冊限流的用戶端 IP 判定:Node 自架預設用「socket 來源位址」(不可偽造);僅當 gateway 前方有會覆寫 `cf-connecting-ip` 的受信賴反向代理(如 Cloudflare)時設 `true` 改用標頭。Cloudflare Workers 部署一律以標頭為準 |
 | `FRONTEND_ORIGINS` | 建議 | 允許帶 cookie 的 console 來源(CSV) |
 | `OPENROUTER_API_KEY_1` … | 選配 | 供應商上游金鑰,見 `docs/PROVIDERS.md` |
 

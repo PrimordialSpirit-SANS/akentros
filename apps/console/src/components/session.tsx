@@ -1,13 +1,13 @@
 import React from "react";
-import { fetchBeaconSession } from "../lib/beacon/api/beaconAuthApi";
-import type { BeaconConsoleUser } from "../lib/beacon/types";
+import { fetchAkentrosSession } from "../lib/akentros/api/akentrosAuthApi";
+import type { AkentrosConsoleUser } from "../lib/akentros/types";
 
 // 會話狀態:登入後的 user 由 context 共用;loading 期間由 ConsoleLayout 顯示 spinner。
 
 interface SessionValue {
-  user: BeaconConsoleUser | null;
+  user: AkentrosConsoleUser | null;
   loading: boolean;
-  setUser: (user: BeaconConsoleUser | null) => void;
+  setUser: (user: AkentrosConsoleUser | null) => void;
   refresh: () => Promise<void>;
 }
 
@@ -19,12 +19,12 @@ const SessionContext = React.createContext<SessionValue>({
 });
 
 export function SessionProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = React.useState<BeaconConsoleUser | null>(null);
+  const [user, setUser] = React.useState<AkentrosConsoleUser | null>(null);
   const [loading, setLoading] = React.useState(true);
 
   const refresh = React.useCallback(async () => {
     try {
-      setUser(await fetchBeaconSession());
+      setUser(await fetchAkentrosSession());
     } catch {
       setUser(null);
     } finally {

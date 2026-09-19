@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://beacon.example/schemas/beacon/provider-pools.schema.json",
-  "title": "Beacon provider credential pools",
+  "$id": "https://akentros.example/schemas/akentros/provider-pools.schema.json",
+  "title": "Akentros provider credential pools",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema_version", "revision", "pools"],

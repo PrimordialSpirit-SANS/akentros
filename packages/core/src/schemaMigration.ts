@@ -1,11 +1,11 @@
-import { BEACON_SCHEMA_VERSION, isBeaconSchemaReady } from "./schemaReadiness.ts";
+import { AKENTROS_SCHEMA_VERSION, isAkentrosSchemaReady } from "./schemaReadiness.ts";
 
 export {
-  assertBeaconSchemaReady,
-  BEACON_SCHEMA_VERSION,
-  isBeaconSchemaReady,
-  REQUIRED_BEACON_COLUMNS,
-  REQUIRED_BEACON_INDEXES,
+  assertAkentrosSchemaReady,
+  AKENTROS_SCHEMA_VERSION,
+  isAkentrosSchemaReady,
+  REQUIRED_AKENTROS_COLUMNS,
+  REQUIRED_AKENTROS_INDEXES,
 } from "./schemaReadiness.ts";
 
 // SQLite 方言。時間戳一律 TEXT 存 UTC ISO-8601(含毫秒),預設值以
@@ -13,7 +13,7 @@ export {
 const NOW_DEFAULT_SQL = "TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))";
 
 const MIGRATION_TABLE_SQL = `
-  CREATE TABLE IF NOT EXISTS beacon_ai_schema_migrations (
+  CREATE TABLE IF NOT EXISTS akentros_ai_schema_migrations (
     version INTEGER PRIMARY KEY,
     name VARCHAR(120) NOT NULL,
     applied_at ${NOW_DEFAULT_SQL}
@@ -173,19 +173,19 @@ const CANONICAL_INDEXES = Object.freeze([
   `CREATE INDEX IF NOT EXISTS idx_ai_billing_state_expiry ON ai_billing_reservations (state, expires_at)`,
   `CREATE INDEX IF NOT EXISTS idx_ai_api_inflight_active
    ON ai_api_inflight_leases (api_key_id, expires_at) WHERE released_at IS NULL`,
-  `CREATE UNIQUE INDEX IF NOT EXISTS idx_ledger_entries_beacon_ai_reservation
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_ledger_entries_akentros_ai_reservation
    ON ledger_entries (source_id, transaction_type)
-   WHERE source_type = 'beacon_ai' AND transaction_type = 'ai_usage_reservation'`,
-  `CREATE UNIQUE INDEX IF NOT EXISTS idx_ledger_entries_beacon_ai_refund
+   WHERE source_type = 'akentros_ai' AND transaction_type = 'ai_usage_reservation'`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_ledger_entries_akentros_ai_refund
    ON ledger_entries (source_id, transaction_type)
-   WHERE source_type = 'beacon_ai' AND transaction_type = 'ai_usage_refund'`,
+   WHERE source_type = 'akentros_ai' AND transaction_type = 'ai_usage_refund'`,
 ]);
 
 // 版本歷史:PostgreSQL 時代的 v1–v7(legacy 修復、計費指紋、免費額度桶、
 // IP 限流視窗)在 SQLite 方言下是全新資料庫,legacy 修復不適用,因此版本
 // 歷史重置:v1 = 完整 canonical schema,v2 = 分散式 IP 限流視窗表。
 // PostgreSQL 並行版的歷史請參閱 Git 歷史。
-export const BEACON_MIGRATIONS = Object.freeze([
+export const AKENTROS_MIGRATIONS = Object.freeze([
   Object.freeze({
     version: 1,
     name: "canonical-runtime-schema-sqlite",
@@ -198,7 +198,7 @@ export const BEACON_MIGRATIONS = Object.freeze([
       // 登入/金鑰管理端點的 IP 限流:固定窗口計數,跨請求全域生效。
       // 每個 identity 只保留當前窗口一列;窗口滾動由 upsert 歸零,舊列由
       // middleware 的 sweep 語句背景清理。
-      `CREATE TABLE IF NOT EXISTS beacon_ip_rate_limit_windows (
+      `CREATE TABLE IF NOT EXISTS akentros_ip_rate_limit_windows (
         identity VARCHAR(160) PRIMARY KEY,
         window_start TEXT NOT NULL,
         hit_count INTEGER NOT NULL DEFAULT 0
@@ -211,18 +211,18 @@ function rows(result: any): any[] {
   return Array.isArray(result?.rows) ? result.rows : [];
 }
 
-export async function migrateBeaconSchema(query: any) {
+export async function migrateAkentrosSchema(query: any) {
   if (typeof query !== "function") {
-    throw new TypeError("migrateBeaconSchema requires a database query function.");
+    throw new TypeError("migrateAkentrosSchema requires a database query function.");
   }
 
-  if (await isBeaconSchemaReady(query)) {
-    return { version: BEACON_SCHEMA_VERSION, migrated: false };
+  if (await isAkentrosSchemaReady(query)) {
+    return { version: AKENTROS_SCHEMA_VERSION, migrated: false };
   }
 
   await query(MIGRATION_TABLE_SQL);
-  for (const migration of BEACON_MIGRATIONS) {
-    const alreadyRecorded = await query("SELECT version FROM beacon_ai_schema_migrations WHERE version = ?", [
+  for (const migration of AKENTROS_MIGRATIONS) {
+    const alreadyRecorded = await query("SELECT version FROM akentros_ai_schema_migrations WHERE version = ?", [
       migration.version,
     ]);
     if (rows(alreadyRecorded).length) continue;
@@ -230,19 +230,19 @@ export async function migrateBeaconSchema(query: any) {
       await query(statement);
     }
     const recorded = await query(
-      "INSERT INTO beacon_ai_schema_migrations (version, name) VALUES (?, ?) " +
+      "INSERT INTO akentros_ai_schema_migrations (version, name) VALUES (?, ?) " +
         "ON CONFLICT (version) DO UPDATE SET " +
         "name = EXCLUDED.name " +
         "RETURNING version",
       [migration.version, migration.name],
     );
     if (Number(rows(recorded)[0]?.version || 0) !== migration.version) {
-      throw new Error(`Beacon schema migration ${migration.version} was not recorded.`);
+      throw new Error(`Akentros schema migration ${migration.version} was not recorded.`);
     }
   }
 
-  if (!(await isBeaconSchemaReady(query))) {
-    throw new Error("Beacon schema migration did not produce the required columns and indexes.");
+  if (!(await isAkentrosSchemaReady(query))) {
+    throw new Error("Akentros schema migration did not produce the required columns and indexes.");
   }
-  return { version: BEACON_SCHEMA_VERSION, migrated: true };
+  return { version: AKENTROS_SCHEMA_VERSION, migrated: true };
 }

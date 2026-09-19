@@ -1,6 +1,6 @@
-import type { BeaconContext, BeaconNext, BeaconRuntimeEnv } from "../types.ts";
+import type { AkentrosContext, AkentrosNext, AkentrosRuntimeEnv } from "../types.ts";
 import { dbQuery } from "../utils/db.ts";
-import { logBeaconEvent } from "../utils/logger.ts";
+import { logAkentrosEvent } from "../utils/logger.ts";
 
 // 限流分兩層:
 // 1. 資料庫路徑:SQLite 固定窗口計數(經安裝的 DB adapter;Workers 部署即
@@ -20,27 +20,27 @@ const MAX_TRACKED_KEYS = 10_000;
 
 const memoryBuckets = new Map<string, WindowBucket>();
 
-// 資料表 `beacon_ip_rate_limit_windows` 由 schema migration v7 建立(schema
+// 資料表 `akentros_ip_rate_limit_windows` 由 schema migration v7 建立(schema
 // 只進不退的治理規則),limiter 本身不做 DDL。
 
-export const BEACON_IP_RATE_LIMIT_SQL = Object.freeze({
+export const AKENTROS_IP_RATE_LIMIT_SQL = Object.freeze({
   // 同一窗口內累加;窗口滾動後歸零重計。RETURNING 的 hit_count 即本窗口
   // 已含本次請求的總數,由呼叫端與 max 比較。
   increment: `
-    INSERT INTO beacon_ip_rate_limit_windows (identity, window_start, hit_count)
+    INSERT INTO akentros_ip_rate_limit_windows (identity, window_start, hit_count)
     VALUES (?, ?, 1)
     ON CONFLICT (identity) DO UPDATE
     SET window_start = EXCLUDED.window_start,
         hit_count = CASE
-          WHEN beacon_ip_rate_limit_windows.window_start = EXCLUDED.window_start
-          THEN beacon_ip_rate_limit_windows.hit_count + 1
+          WHEN akentros_ip_rate_limit_windows.window_start = EXCLUDED.window_start
+          THEN akentros_ip_rate_limit_windows.hit_count + 1
           ELSE 1
         END
     RETURNING hit_count
   `,
   // 淘汰已滾出窗口的舊身份;在計數恰好歸零重計時觸發,頻率隨流量自適應。
   sweep: `
-    DELETE FROM beacon_ip_rate_limit_windows
+    DELETE FROM akentros_ip_rate_limit_windows
     WHERE window_start < ?
   `,
 });
@@ -49,11 +49,11 @@ export const BEACON_IP_RATE_LIMIT_SQL = Object.freeze({
 export function createDbWindowStore(query: (sql: string, params: any[]) => Promise<{ rows: any[] }>) {
   return {
     async increment(identity: string, windowStartIso: string, sweepBeforeIso: string): Promise<number> {
-      const result = await query(BEACON_IP_RATE_LIMIT_SQL.increment, [identity, windowStartIso]);
+      const result = await query(AKENTROS_IP_RATE_LIMIT_SQL.increment, [identity, windowStartIso]);
       const hitCount = Number(result?.rows?.[0]?.hit_count || 0);
       if (hitCount === 1) {
         try {
-          await query(BEACON_IP_RATE_LIMIT_SQL.sweep, [sweepBeforeIso]);
+          await query(AKENTROS_IP_RATE_LIMIT_SQL.sweep, [sweepBeforeIso]);
         } catch {
           // 掃描失敗不影響本次計數判斷。
         }
@@ -67,7 +67,7 @@ function windowStartIso(now: number, windowMs: number): string {
   return new Date(Math.floor(now / windowMs) * windowMs).toISOString();
 }
 
-function databaseConfigured(env: BeaconRuntimeEnv): boolean {
+function databaseConfigured(env: AkentrosRuntimeEnv): boolean {
   return Boolean(String(env?.DATABASE_URL || "").trim());
 }
 
@@ -89,12 +89,12 @@ export function createRateLimit(options: {
   keyPrefix: string;
   windowMs: number;
   max: number;
-  keyGenerator?: (c: BeaconContext) => string;
+  keyGenerator?: (c: AkentrosContext) => string;
 }) {
   const windowMs = Math.max(1000, options.windowMs);
   const max = Math.max(1, options.max);
 
-  return async (c: BeaconContext, next: BeaconNext) => {
+  return async (c: AkentrosContext, next: AkentrosNext) => {
     const identity = options.keyGenerator ? String(options.keyGenerator(c) || "anonymous") : "global";
     const key = identityKey(options.keyPrefix, identity);
     const now = Date.now();
@@ -130,7 +130,7 @@ export function createRateLimit(options: {
         await next();
         return;
       } catch (error: any) {
-        logBeaconEvent("warn", "rate_limit_db_unavailable_fallback_memory", {
+        logAkentrosEvent("warn", "rate_limit_db_unavailable_fallback_memory", {
           errorCode: error?.code || error?.name || "unknown",
         });
         // 落到下面的記憶體降級路徑。

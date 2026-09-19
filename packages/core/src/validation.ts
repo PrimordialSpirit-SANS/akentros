@@ -1,4 +1,4 @@
-export interface BeaconConfigValidationError extends Error {
+export interface AkentrosConfigValidationError extends Error {
   validationErrors: string[];
 }
 
@@ -6,7 +6,7 @@ const REVISION = /^[0-9]{4}-[0-9]{2}-[0-9]{2}\.[1-9][0-9]*$/;
 const _DECIMAL = /^(0|[1-9][0-9]*)$/;
 const USD_DECIMAL = /^(0|[1-9][0-9]*)(\.[0-9]{1,6})?$/;
 const _POSITIVE_DECIMAL = /^[1-9][0-9]*$/;
-const MODEL_ID = /^beacon\/[a-z0-9][a-z0-9._-]+$/;
+const MODEL_ID = /^akentros\/[a-z0-9][a-z0-9._-]+$/;
 const INTERNAL_ID = /^[a-z0-9][a-z0-9.-]{2,79}$/;
 const ENV_REFERENCE = /^[A-Z][A-Z0-9_]{2,127}$/;
 const PROVIDER_API_STYLES = new Map([
@@ -97,8 +97,8 @@ function result(errors: string[]) {
 function assertionError(label: string, validation: { errors: string[] }) {
   const error = new Error(
     `${label} validation failed:\n${validation.errors.join("\n")}`,
-  ) as BeaconConfigValidationError;
-  error.name = "BeaconConfigValidationError";
+  ) as AkentrosConfigValidationError;
+  error.name = "AkentrosConfigValidationError";
   error.validationErrors = validation.errors;
   return error;
 }
@@ -164,7 +164,7 @@ export function validateBackendPricing(config: Record<string, any>) {
       `${path}.display_name`,
       "must contain 1-120 characters",
     );
-    push(errors, model.owned_by === "beacon", `${path}.owned_by`, "must equal beacon");
+    push(errors, model.owned_by === "akentros", `${path}.owned_by`, "must equal akentros");
 
     const capabilityKeys = ["chat_completions", "streaming", "tools", "json_mode", "vision"];
     if (hasExactKeys(errors, model.capabilities, `${path}.capabilities`, capabilityKeys)) {
@@ -471,6 +471,6 @@ export function validateConfigBundle(pricing: Record<string, any>, pools: Record
 
 export function assertValidConfigBundle(pricing: Record<string, any>, pools: Record<string, any>) {
   const validation = validateConfigBundle(pricing, pools);
-  if (!validation.valid) throw assertionError("Beacon config bundle", validation);
+  if (!validation.valid) throw assertionError("Akentros config bundle", validation);
   return { pricing, pools };
 }

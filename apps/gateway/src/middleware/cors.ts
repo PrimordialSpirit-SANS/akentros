@@ -1,12 +1,12 @@
 import { cors } from "hono/cors";
 import { DEFAULT_ALLOWED_ORIGINS } from "../constants.ts";
-import type { BeaconContext, BeaconRuntimeEnv } from "../types.ts";
+import type { AkentrosContext, AkentrosRuntimeEnv } from "../types.ts";
 
 function trimTrailingSlash(value: unknown) {
   return String(value || "").replace(/\/+$/, "");
 }
 
-function getAllowedOrigins(env: BeaconRuntimeEnv = {}) {
+function getAllowedOrigins(env: AkentrosRuntimeEnv = {}) {
   const configuredOrigins = String(env.FRONTEND_ORIGINS || "")
     .split(",")
     .map((origin) => trimTrailingSlash(origin.trim()))
@@ -31,7 +31,7 @@ function isLocalHostname(hostname: unknown) {
   );
 }
 
-function isLocalDevelopmentRequest(c: BeaconContext) {
+function isLocalDevelopmentRequest(c: AkentrosContext) {
   try {
     return (
       isLocalHostname(new URL(c.req.url).hostname) ||
@@ -51,7 +51,7 @@ function isLocalDevelopmentOrigin(value: unknown) {
   }
 }
 
-export function isCredentialedOriginAllowed(c: BeaconContext, origin: unknown) {
+export function isCredentialedOriginAllowed(c: AkentrosContext, origin: unknown) {
   const normalized = trimTrailingSlash(origin);
   if (isLocalDevelopmentOrigin(normalized)) {
     return isLocalDevelopmentRequest(c);
@@ -61,10 +61,10 @@ export function isCredentialedOriginAllowed(c: BeaconContext, origin: unknown) {
 }
 
 // 公開推理端點的額外放行來源(例如你的 API 遊樂場、文件站),
-// 以逗號分隔的 BEACON_PUBLIC_ORIGINS 環境變數設定。
-function getBeaconPublicOrigins(env: BeaconRuntimeEnv = {}): Set<string> {
+// 以逗號分隔的 AKENTROS_PUBLIC_ORIGINS 環境變數設定。
+function getAkentrosPublicOrigins(env: AkentrosRuntimeEnv = {}): Set<string> {
   return new Set(
-    String(env.BEACON_PUBLIC_ORIGINS || "")
+    String(env.AKENTROS_PUBLIC_ORIGINS || "")
       .split(",")
       .map((origin) => trimTrailingSlash(origin.trim()))
       .filter(Boolean),
@@ -86,12 +86,12 @@ export function createCorsMiddleware() {
   });
 }
 
-export function createBeaconPublicCorsMiddleware() {
+export function createAkentrosPublicCorsMiddleware() {
   return cors({
     origin: (origin, c) => {
       if (!origin) return null;
       return isCredentialedOriginAllowed(c, origin) ||
-        getBeaconPublicOrigins(c?.env).has(trimTrailingSlash(origin))
+        getAkentrosPublicOrigins(c?.env).has(trimTrailingSlash(origin))
         ? origin
         : null;
     },

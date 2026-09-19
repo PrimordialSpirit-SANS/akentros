@@ -3,28 +3,28 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import {
-  BeaconProviderError,
+  AkentrosProviderError,
   invokeProviderRoute,
   listEnabledCredentials,
   requireProviderPool,
   resolveProviderCredential,
-} from "@beacon/core/providers";
+} from "@akentros/core/providers";
 import dotenv from "dotenv";
 import { listDiagnosticModels } from "../scripts/providerDiagnostic.ts";
 
 // 真實上游煙霧測試(可選):預設 skip,不影響本地/CI 測試迴圈。設定
-// BEACON_SMOKE_TEST=1(可另以 BEACON_SMOKE_PROVIDER / BEACON_SMOKE_MODEL
+// AKENTROS_SMOKE_TEST=1(可另以 AKENTROS_SMOKE_PROVIDER / AKENTROS_SMOKE_MODEL
 // 縮小範圍)並備妥對應供應商金鑰後,以最小請求驗證「路由啟用、憑證可解析、
 // 上游回 200、usage 來源」端到端可用,補上單元/契約測試無法涵蓋的真實
 // 上游整合面。與 scripts/providerDiagnostic.ts 的 --live 模式同一套邏輯。
 
-const enabled = String(process.env.BEACON_SMOKE_TEST || "").trim() === "1";
-const provider = String(process.env.BEACON_SMOKE_PROVIDER || "cloudflare-workers-ai").trim();
-const requestedModel = String(process.env.BEACON_SMOKE_MODEL || "").trim();
+const enabled = String(process.env.AKENTROS_SMOKE_TEST || "").trim() === "1";
+const provider = String(process.env.AKENTROS_SMOKE_PROVIDER || "cloudflare-workers-ai").trim();
+const requestedModel = String(process.env.AKENTROS_SMOKE_MODEL || "").trim();
 const TIMEOUT_MS = 30_000;
 
 test("provider smoke: live completion over an enabled route", {
-  skip: enabled ? false : "opt-in: set BEACON_SMOKE_TEST=1 (and provider credentials) to run",
+  skip: enabled ? false : "opt-in: set AKENTROS_SMOKE_TEST=1 (and provider credentials) to run",
 }, async (t) => {
   dotenv.config({
     path: path.join(fileURLToPath(new URL("../", import.meta.url)), ".dev.vars"),
@@ -40,7 +40,7 @@ test("provider smoke: live completion over an enabled route", {
     ? candidates.filter((item) => item.publicModel === requestedModel)
     : candidates;
   if (selected.length === 0) {
-    t.skip(`BEACON_SMOKE_MODEL=${requestedModel} has no enabled route for ${provider}`);
+    t.skip(`AKENTROS_SMOKE_MODEL=${requestedModel} has no enabled route for ${provider}`);
     return;
   }
 
@@ -81,7 +81,7 @@ test("provider smoke: live completion over an enabled route", {
       return;
     } catch (error) {
       lastOutcome = {
-        result: error instanceof BeaconProviderError ? error.category : "smoke_error",
+        result: error instanceof AkentrosProviderError ? error.category : "smoke_error",
         message: error instanceof Error ? error.message : String(error),
         public_model: candidate.publicModel,
       };

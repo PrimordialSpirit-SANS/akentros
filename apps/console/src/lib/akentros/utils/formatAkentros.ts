@@ -22,7 +22,7 @@ export function formatTokens(value: number): string {
   return new Intl.NumberFormat("zh-TW").format(value);
 }
 
-export function formatBeaconTimestamp(value: string | null | undefined): string {
+export function formatAkentrosTimestamp(value: string | null | undefined): string {
   if (!value) return "尚未使用";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "—";

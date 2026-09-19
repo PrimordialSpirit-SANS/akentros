@@ -1,13 +1,13 @@
 import React from "react";
 import { Alert, Dialog, PageHeader, StateBlock } from "../components/ui";
 import {
-  createBeaconKey,
-  listBeaconKeys,
-  revokeBeaconKey,
-  rotateBeaconKey,
-} from "../lib/beacon/api/beaconDeveloperApi";
-import type { BeaconApiKey } from "../lib/beacon/types";
-import { formatBeaconTimestamp, formatUsd } from "../lib/beacon/utils/formatBeacon";
+  createAkentrosKey,
+  listAkentrosKeys,
+  revokeAkentrosKey,
+  rotateAkentrosKey,
+} from "../lib/akentros/api/akentrosDeveloperApi";
+import type { AkentrosApiKey } from "../lib/akentros/types";
+import { formatAkentrosTimestamp, formatUsd } from "../lib/akentros/utils/formatAkentros";
 
 const MIN_KEY_TTL_MS = 60 * 60 * 1000;
 
@@ -24,11 +24,11 @@ function defaultKeyExpiryValue(): string {
 }
 
 function formatKeyExpiry(value: string | null): string {
-  return value ? formatBeaconTimestamp(value) : "永不過期";
+  return value ? formatAkentrosTimestamp(value) : "永不過期";
 }
 
 export function KeysPage() {
-  const [keys, setKeys] = React.useState<BeaconApiKey[]>([]);
+  const [keys, setKeys] = React.useState<AkentrosApiKey[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState("");
   const [name, setName] = React.useState("Production");
@@ -38,13 +38,13 @@ export function KeysPage() {
   const [pointLimitValue, setPointLimitValue] = React.useState("50.00");
   const [secret, setSecret] = React.useState("");
   const [busy, setBusy] = React.useState("");
-  const [pendingRevoke, setPendingRevoke] = React.useState<BeaconApiKey | null>(null);
+  const [pendingRevoke, setPendingRevoke] = React.useState<AkentrosApiKey | null>(null);
 
   const reload = React.useCallback(async () => {
     setLoading(true);
     setError("");
     try {
-      setKeys(await listBeaconKeys());
+      setKeys(await listAkentrosKeys());
     } catch (cause) {
       setError((cause as Error).message);
     } finally {
@@ -83,7 +83,7 @@ export function KeysPage() {
     setBusy("create");
     setError("");
     try {
-      const result = await createBeaconKey({
+      const result = await createAkentrosKey({
         name: name.trim(),
         expires_at: expiresAt,
         spend_limit_usd: spendLimitUsd,
@@ -97,11 +97,11 @@ export function KeysPage() {
     }
   };
 
-  const rotate = async (key: BeaconApiKey) => {
+  const rotate = async (key: AkentrosApiKey) => {
     setBusy(key.id);
     setError("");
     try {
-      const result = await rotateBeaconKey(key.id);
+      const result = await rotateAkentrosKey(key.id);
       setSecret(result.api_key);
       await reload();
     } catch (cause) {
@@ -115,7 +115,7 @@ export function KeysPage() {
     if (!pendingRevoke) return;
     setBusy(pendingRevoke.id);
     try {
-      await revokeBeaconKey(pendingRevoke.id);
+      await revokeAkentrosKey(pendingRevoke.id);
       setPendingRevoke(null);
       await reload();
     } catch (cause) {
@@ -282,8 +282,8 @@ export function KeysPage() {
                   )}
                 </div>
                 <div className="key-meta">
-                  <span>建立 {formatBeaconTimestamp(key.created_at)}</span>
-                  <span>最後使用 {formatBeaconTimestamp(key.last_used_at)}</span>
+                  <span>建立 {formatAkentrosTimestamp(key.created_at)}</span>
+                  <span>最後使用 {formatAkentrosTimestamp(key.last_used_at)}</span>
                   <span>到期 {formatKeyExpiry(key.expires_at)}</span>
                   <span>
                     消費 {formatUsd(key.spend_used_usd)} /{" "}

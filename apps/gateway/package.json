@@ -1,12 +1,12 @@
 {
-  "name": "@beacon/gateway",
+  "name": "@akentros/gateway",
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "Beacon gateway: OpenAI-compatible API, key management and billing. Runs as a Node server (nodeServer.ts) or on Cloudflare Workers via a Durable Object (worker.ts).",
+  "description": "Akentros gateway: OpenAI-compatible API, key management and billing. Runs as a Node server (nodeServer.ts) or on Cloudflare Workers via a Durable Object (worker.ts).",
   "license": "MIT",
   "scripts": {
-    "migrate": "node scripts/migrateBeacon.ts",
+    "migrate": "node scripts/migrateAkentros.ts",
     "typecheck": "tsc --noEmit",
     "test": "node --test \"tests/*.test.ts\"",
     "start": "node src/nodeServer.ts",
@@ -14,7 +14,7 @@
     "deploy:worker": "wrangler deploy"
   },
   "dependencies": {
-    "@beacon/core": "*",
+    "@akentros/core": "*",
     "dotenv": "^17.2.0",
     "hono": "^4.9.0"
   },

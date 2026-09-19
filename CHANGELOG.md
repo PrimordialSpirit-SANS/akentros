@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to Beacon Gateway are documented here.
+All notable changes to Akentros Gateway are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versioning follows [SemVer](https://semver.org/).
 
@@ -28,14 +28,14 @@ versioning follows [SemVer](https://semver.org/).
   deployment an attacker could send a different fake IP per request to defeat
   the 60/15 min limit entirely (unlimited password brute force and signup
   farming). The Node entry point now injects the socket remote address into
-  each request env (`BEACON_REMOTE_ADDR`) and the limiter uses it as the
-  identity; the header is only honored when `BEACON_TRUST_PROXY=true`
+  each request env (`AKENTROS_REMOTE_ADDR`) and the limiter uses it as the
+  identity; the header is only honored when `AKENTROS_TRUST_PROXY=true`
   explicitly opts into a trusted reverse proxy. Cloudflare Workers/Durable
   Object deployments (where every request transits Cloudflare and the runtime
   cannot expose the socket address) keep using the header. Unit tests pin the
   full decision table.
 - **Node SQLite adapter did not serialize transactions.**
-  `withBeaconTransaction` executed `BEGIN IMMEDIATE` immediately; two
+  `withAkentrosTransaction` executed `BEGIN IMMEDIATE` immediately; two
   overlapping transactions would make the second throw `cannot start a
   transaction within a transaction` (surfacing as a 503). It worked only by
   the accident that every transaction body so far contains only synchronous
@@ -60,12 +60,12 @@ versioning follows [SemVer](https://semver.org/).
   shutdown flow indefinitely. Connections are now tracked; after a 3s grace
   they are destroyed, and a 10s hard timeout forces exit regardless.
 
-- **`BEACON_DB_PATH` was resolved against `process.cwd()`, so `npm run
+- **`AKENTROS_DB_PATH` was resolved against `process.cwd()`, so `npm run
   migrate` and `npm run dev:gateway` opened different databases.** `migrate`
   is a workspace script (cwd `apps/gateway/`) while `dev:gateway` /
   `start:gateway` run from the repo root; with the documented default
-  `./beacon.db` the schema landed in `apps/gateway/beacon.db` but the server
-  opened a fresh, empty `beacon.db` at the repo root, and the first request
+  `./akentros.db` the schema landed in `apps/gateway/akentros.db` but the server
+  opened a fresh, empty `akentros.db` at the repo root, and the first request
   failed with `500 no such table: users`. Relative paths — including the
   `sqlite://` / `file:` forms — now anchor to the gateway package directory
   regardless of cwd; absolute paths and `:memory:` keep their literal
@@ -73,7 +73,7 @@ versioning follows [SemVer](https://semver.org/).
   slash of `file:///abs/path` (which previously degraded absolute paths to
   package-relative ones). Regression tests pin cwd-invariance from both the
   repo root and `apps/gateway/`.
-- **Same-UTC-day API key expiry bypass.** `authenticateBeaconApiKey` compared
+- **Same-UTC-day API key expiry bypass.** `authenticateAkentrosApiKey` compared
   `expires_at` (stored as UTC ISO-8601 text, e.g. `2026-09-15T10:00:00.000Z`)
   against SQLite `CURRENT_TIMESTAMP` (rendered with a space separator,
   `2026-09-15 10:00:00`). Lexicographically `T` > ` `, so a key expiring
@@ -85,14 +85,14 @@ versioning follows [SemVer](https://semver.org/).
   SELECT never returned a `points` column (the users table has no such
   column; the billing ledger is USD-only), so `key.user.points` was always
   `NaN`. The field is removed, and the SELECT result is now typed by a
-  `BeaconApiKeyAuthRow` interface so reading a column outside the SELECT is a
+  `AkentrosApiKeyAuthRow` interface so reading a column outside the SELECT is a
   compile-time error.
-- **README documented a `BEACON_SIGNUP_BONUS_POINTS` environment variable**
+- **README documented a `AKENTROS_SIGNUP_BONUS_POINTS` environment variable**
   that does not exist; the row was removed.
 
 ### Added
 
-- **`BEACON_TRUST_PROXY` configuration.** Opt-in flag (see Fixed above and
+- **`AKENTROS_TRUST_PROXY` configuration.** Opt-in flag (see Fixed above and
   `apps/gateway/.dev.vars.example`) controlling whether the auth rate limiter
   trusts the `cf-connecting-ip` header on Node self-hosted deployments behind
   a reverse proxy that overwrites it. Default (unset) uses the socket remote
@@ -101,12 +101,12 @@ versioning follows [SemVer](https://semver.org/).
 - **`GET /healthz` liveness/readiness probe.** Reports `200 ok` or
   `503 degraded` (with `database: ok|unavailable`) based on a `SELECT 1`
   probe through the installed DB adapter. The endpoint sits outside the
-  `BEACON_ENABLED` fail-closed gate and sends `Cache-Control: no-store`, so
+  `AKENTROS_ENABLED` fail-closed gate and sends `Cache-Control: no-store`, so
   load balancers can distinguish "alive but not ready" even before the
   gateway is enabled. Covered by a gateway surface test (degraded path via
   the missing adapter, ok path via a fake adapter).
 - **Structured JSON logging.** New `src/utils/logger.ts`
-  (`logBeaconEvent(level, event, fields)`) emits one JSON line per event
+  (`logAkentrosEvent(level, event, fields)`) emits one JSON line per event
   (`time`, `level`, `event`, plus event metadata) on both runtimes; all
   free-text `console.error` call sites (gateway onError, key auth, key
   management, usage queries, rate-limit degradation, scheduled maintenance)
@@ -114,7 +114,7 @@ versioning follows [SemVer](https://semver.org/).
   no-keys rule from the security model is unchanged.
 - **Opt-in provider smoke test** (`apps/gateway/tests/providerSmoke.test.ts`).
   Skipped by default so local runs and CI are unaffected; with
-  `BEACON_SMOKE_TEST=1` (plus `BEACON_SMOKE_PROVIDER` / `BEACON_SMOKE_MODEL`
+  `AKENTROS_SMOKE_TEST=1` (plus `AKENTROS_SMOKE_PROVIDER` / `AKENTROS_SMOKE_MODEL`
   to narrow scope and the matching provider credentials) it sends a minimal
   live completion over an enabled route, asserting route enablement,
   credential resolution, a 200 upstream response and the usage source — the
@@ -128,7 +128,7 @@ versioning follows [SemVer](https://semver.org/).
 ### Changed
 
 - **Idempotency replay semantics are now documented explicitly.** OpenAI
-  replays the original response for a completed idempotency key; Beacon
+  replays the original response for a completed idempotency key; Akentros
   (which never persists prompts/completions) returns
   `409 idempotent_request_replayed` with the original `X-Request-Id`, and
   `409 idempotent_request_in_progress` for keys still in flight. The README
@@ -140,24 +140,24 @@ versioning follows [SemVer](https://semver.org/).
   PBKDF2-HMAC-SHA256). Old-format hashes still verify: the iteration count
   is stored inside the hash string, so no migration is needed. The
   timing-safe dummy hash used when an account does not exist now derives
-  from `BEACON_PASSWORD_ITERATIONS` instead of a hardcoded `25000` literal,
+  from `AKENTROS_PASSWORD_ITERATIONS` instead of a hardcoded `25000` literal,
   keeping both login paths equally expensive, and `verifyPassword` rejects
   iteration counts below the 10,000 floor the hasher already enforced.
   Cloudflare Workers free-plan CPU limits may require lowering
-  `BEACON_PBKDF2_ITERATIONS` on that topology (documented in
+  `AKENTROS_PBKDF2_ITERATIONS` on that topology (documented in
   `.dev.vars.example`).
 - **The core billing/provider-pool/attempt interfaces are fully typed.** New
   `packages/core/src/query.ts` defines the DB query contract
-  (`BeaconQuery`/`BeaconQueryResult`) shared by the node:sqlite and Durable
-  Object adapters; `billing.ts` exports `BeaconBillingStore`,
-  `BeaconBillableBilling` (the runtime-consumed subset), typed
-  reserve/settle/refund inputs and `BeaconBillingRow`; `providerPool.ts`
-  exports `BeaconCredentialClaim`/`BeaconProviderPoolClaimStore`;
-  `providerAttempts.ts` exports `BeaconAttemptAuditor`;
-  `inference.ts`'s `createBeaconInferenceRuntime` now takes
-  `BeaconInferenceRuntimeOptions` instead of `any`. The gateway side
+  (`AkentrosQuery`/`AkentrosQueryResult`) shared by the node:sqlite and Durable
+  Object adapters; `billing.ts` exports `AkentrosBillingStore`,
+  `AkentrosBillableBilling` (the runtime-consumed subset), typed
+  reserve/settle/refund inputs and `AkentrosBillingRow`; `providerPool.ts`
+  exports `AkentrosCredentialClaim`/`AkentrosProviderPoolClaimStore`;
+  `providerAttempts.ts` exports `AkentrosAttemptAuditor`;
+  `inference.ts`'s `createAkentrosInferenceRuntime` now takes
+  `AkentrosInferenceRuntimeOptions` instead of `any`. The gateway side
   (`aiBilling.ts`, `aiProviderPool.ts`, `aiProviderAttempts.ts`,
-  `createBeaconQuery`) and its runtime wiring lost their `any` annotations;
+  `createAkentrosQuery`) and its runtime wiring lost their `any` annotations;
   a wrong field on a billing call is now a compile error instead of a
   runtime surprise. Test doubles were updated to the typed contracts.
 - **All Biome a11y warnings fixed and the severity overrides removed.** The
@@ -171,14 +171,14 @@ versioning follows [SemVer](https://semver.org/).
   `role="img"` for their `aria-label`s, a decorative `aria-label` on
   `<code>` became a `title`, and every brand SVG gained a `<title>`.
 - **The gateway's Hono layer is fully typed.** New `src/types.ts` defines the
-  shared `BeaconEnv` (Bindings: `BeaconRuntimeEnv`; Variables: `user`,
-  `aiKey`, `aiUser`, `aiRequestId`) plus `BeaconAuthenticatedKey`; all
-  middleware, routes and handlers now use `BeaconContext`/`BeaconNext`
+  shared `AkentrosEnv` (Bindings: `AkentrosRuntimeEnv`; Variables: `user`,
+  `aiKey`, `aiUser`, `aiRequestId`) plus `AkentrosAuthenticatedKey`; all
+  middleware, routes and handlers now use `AkentrosContext`/`AkentrosNext`
   instead of `(c: any, next: any)`, `sendOpenAiError` takes `unknown` errors,
-  `authenticateBeaconApiKey`/`ensureBeaconSessionCredential` have explicit
+  `authenticateAkentrosApiKey`/`ensureAkentrosSessionCredential` have explicit
   return types, and `env` parameters across gateway utils are typed as
-  `BeaconRuntimeEnv`. Remaining `any`s are limited to the deliberate
-  boundary to `@beacon/core`'s untyped inference-runtime factory.
+  `AkentrosRuntimeEnv`. Remaining `any`s are limited to the deliberate
+  boundary to `@akentros/core`'s untyped inference-runtime factory.
 - Removed the unused `distributed` option from `createRateLimit` (dead code;
   the DB path is selected by `DATABASE_URL` presence) and its one vestigial
   caller flag.
@@ -187,11 +187,11 @@ versioning follows [SemVer](https://semver.org/).
 
 ### Changed
 
-- **Gateway imports `@beacon/core` through the workspace package boundary.**
+- **Gateway imports `@akentros/core` through the workspace package boundary.**
   All 19 gateway source/script/test files previously reached into
   `packages/core/src/*` via four-level relative paths; they now import
-  subpaths (`@beacon/core/billing`, `@beacon/core/pricing`, …) declared in a
-  new `exports` map in `packages/core/package.json`, with `@beacon/core`
+  subpaths (`@akentros/core/billing`, `@akentros/core/pricing`, …) declared in a
+  new `exports` map in `packages/core/package.json`, with `@akentros/core`
   added to the gateway's dependencies. The core boundary is now enforced by
   module resolution instead of convention. Behavior is unchanged; both the
   Node server and the Workers bundle resolve identically.
@@ -212,7 +212,7 @@ versioning follows [SemVer](https://semver.org/).
   MiniMax, Gemini 2.5, Grok 4.x, DeepSeek V3.2, Kimi K2, GLM-5.2) were
   removed from the catalogs and their tests/fixtures updated to match.
 - **Official brand icons shipped locally.** `apps/console/public/brand/
-  beacon/providers/` now bundles each provider's official mark (downloaded
+  akentros/providers/` now bundles each provider's official mark (downloaded
   from official sites / Wikimedia Commons: OpenAI blossom, Claude starburst,
   Gemini sparkle, xAI, DeepSeek whale, Kimi K, Z.ai, Qwen, Cloudflare), the
   manifest points `display_asset_url` at the local files instead of showing
@@ -255,7 +255,7 @@ versioning follows [SemVer](https://semver.org/).
     v2 IP rate-limit windows).
   - `docker-compose.yml` and the Cloudflare Worker entrypoint (`index.ts`,
     `wrangler.toml`) removed; new Node entrypoint `apps/gateway/src/nodeServer.ts`.
-  - `BEACON_DB_PATH` replaces `DATABASE_URL`/`POSTGRES_DB_URL`.
+  - `AKENTROS_DB_PATH` replaces `DATABASE_URL`/`POSTGRES_DB_URL`.
 - Core behavioral tests upgraded from fake query mocks to a real in-memory
   SQLite database (`packages/core/tests/sqliteTestDb.ts`).
 
@@ -264,12 +264,12 @@ versioning follows [SemVer](https://semver.org/).
 - Gateway-layer test suite (auth session, CSRF double-submit, fail-closed gate,
   input validation, rate-limit fallback paths) running under `node --test`.
 - Distributed rate limiting for auth and key-management endpoints: fixed-window
-  counters stored in PostgreSQL (`beacon_ip_rate_limit_windows`), effective across
+  counters stored in PostgreSQL (`akentros_ip_rate_limit_windows`), effective across
   Worker isolates, with an in-isolate memory limiter as degraded fallback.
 - Biome lint/format toolchain (`npm run lint`), enforced in CI.
 - `npm audit` dependency check in CI; Dependabot for npm actions/updates.
 
-- Schema migration v7 (`beacon_ip_rate_limit_windows`): the IP rate-limit table
+- Schema migration v7 (`akentros_ip_rate_limit_windows`): the IP rate-limit table
   is created through the versioned migration instead of ad-hoc DDL, per the
   "schema only moves forward" rule in CONTRIBUTING.md.
 

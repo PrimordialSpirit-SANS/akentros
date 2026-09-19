@@ -1,16 +1,16 @@
 import React from "react";
 import { Alert, BrandMark, CopyButton, PageHeader, StateBlock } from "../components/ui";
-import { loadBeaconBrandManifest, loadBeaconModels } from "../lib/beacon/catalog/loadBeaconCatalog";
-import type { BeaconModel } from "../lib/beacon/types";
-import { formatModelLimit, formatUsd } from "../lib/beacon/utils/formatBeacon";
+import { loadAkentrosBrandManifest, loadAkentrosModels } from "../lib/akentros/catalog/loadAkentrosCatalog";
+import type { AkentrosModel } from "../lib/akentros/types";
+import { formatModelLimit, formatUsd } from "../lib/akentros/utils/formatAkentros";
 
-// 模型目錄:資料來自 public/data/beacon(僅介面展示)。
+// 模型目錄:資料來自 public/data/akentros(僅介面展示)。
 // 計費卡片顯示每百萬 Token 的輸入/輸出美元價。
 
 function InputModalityBadge({ modalities }: { modalities: string[] }) {
   const supported = modalities.includes("image");
   const description = supported
-    ? "模型原生支援多模態輸入;Beacon API 目前仍提供文字介面。"
+    ? "模型原生支援多模態輸入;Akentros API 目前仍提供文字介面。"
     : "此模型不支援多模態圖片輸入。";
   return (
     <span
@@ -26,7 +26,7 @@ function InputModalityBadge({ modalities }: { modalities: string[] }) {
 }
 
 export function ModelsPage() {
-  const [catalog, setCatalog] = React.useState<Awaited<ReturnType<typeof loadBeaconModels>> | null>(null);
+  const [catalog, setCatalog] = React.useState<Awaited<ReturnType<typeof loadAkentrosModels>> | null>(null);
   const [brandAssets, setBrandAssets] = React.useState<
     Map<string, { display_asset_url: string | null; name: string; fallback_label: string }>
   >(new Map());
@@ -34,12 +34,12 @@ export function ModelsPage() {
 
   React.useEffect(() => {
     const controller = new AbortController();
-    loadBeaconModels(controller.signal)
+    loadAkentrosModels(controller.signal)
       .then(setCatalog)
       .catch((cause: Error) => {
         if (cause.name !== "AbortError") setError(cause.message);
       });
-    loadBeaconBrandManifest(controller.signal)
+    loadAkentrosBrandManifest(controller.signal)
       .then((manifest) => {
         setBrandAssets(new Map(manifest.assets.map((asset) => [asset.id, asset])));
       })
@@ -67,7 +67,7 @@ export function ModelsPage() {
       )}
       {catalog && (
         <div className="model-grid">
-          {catalog.models.map((model: BeaconModel) => {
+          {catalog.models.map((model: AkentrosModel) => {
             const brand = brandAssets.get(model.owner_brand_asset_id);
             return (
               <article className="card model-card" key={model.id}>

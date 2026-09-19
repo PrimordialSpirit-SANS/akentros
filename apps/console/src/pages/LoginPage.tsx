@@ -1,18 +1,18 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
-import { BeaconIcon } from "../components/BeaconIcon";
-import { BeaconAuthError, loginBeaconAccount, registerBeaconAccount } from "../lib/beacon/api/beaconAuthApi";
-import type { BeaconConsoleUser } from "../lib/beacon/types";
-import { isBeaconDemoMode } from "../services/demoApi";
+import { AkentrosIcon } from "../components/AkentrosIcon";
+import { AkentrosAuthError, loginAkentrosAccount, registerAkentrosAccount } from "../lib/akentros/api/akentrosAuthApi";
+import type { AkentrosConsoleUser } from "../lib/akentros/types";
+import { isAkentrosDemoMode } from "../services/demoApi";
 
 // 登入/註冊二合一頁。成功後寫入 session context 並導向控制台。
 // 示範模式會顯示提示:任意帳號密碼即可登入。
 
 type AuthMode = "login" | "register";
 
-export function LoginPage({ onAuthenticated }: { onAuthenticated: (user: BeaconConsoleUser) => void }) {
+export function LoginPage({ onAuthenticated }: { onAuthenticated: (user: AkentrosConsoleUser) => void }) {
   const navigate = useNavigate();
-  const demo = isBeaconDemoMode();
+  const demo = isAkentrosDemoMode();
   const [mode, setMode] = React.useState<AuthMode>("login");
   const [email, setEmail] = React.useState("");
   const [username, setUsername] = React.useState("");
@@ -28,12 +28,12 @@ export function LoginPage({ onAuthenticated }: { onAuthenticated: (user: BeaconC
     try {
       const user =
         mode === "login"
-          ? await loginBeaconAccount(email, password)
-          : await registerBeaconAccount(email, username, password);
+          ? await loginAkentrosAccount(email, password)
+          : await registerAkentrosAccount(email, username, password);
       onAuthenticated(user);
       navigate("/", { replace: true });
     } catch (cause) {
-      setError(cause instanceof BeaconAuthError ? cause.message : "操作失敗,請稍後再試。");
+      setError(cause instanceof AkentrosAuthError ? cause.message : "操作失敗,請稍後再試。");
     } finally {
       setBusy(false);
     }
@@ -43,9 +43,9 @@ export function LoginPage({ onAuthenticated }: { onAuthenticated: (user: BeaconC
     <div className="auth-wrap">
       <section className="card auth-card">
         <div className="auth-brand">
-          <BeaconIcon size={40} />
-          <h1>Beacon 控制台</h1>
-          <p>{mode === "login" ? "登入以管理 API 金鑰與用量" : "建立新帳號,開始使用 Beacon"}</p>
+          <AkentrosIcon size={40} />
+          <h1>Akentros 控制台</h1>
+          <p>{mode === "login" ? "登入以管理 API 金鑰與用量" : "建立新帳號,開始使用 Akentros"}</p>
         </div>
         <form className="auth-form" onSubmit={submit}>
           <label className="field">
@@ -56,7 +56,7 @@ export function LoginPage({ onAuthenticated }: { onAuthenticated: (user: BeaconC
               value={email}
               onChange={(event) => setEmail(event.target.value)}
               autoComplete="email"
-              placeholder={demo ? "demo@beacon.dev" : "you@example.com"}
+              placeholder={demo ? "demo@akentros.dev" : "you@example.com"}
               required
             />
           </label>

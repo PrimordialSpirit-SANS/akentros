@@ -9,11 +9,11 @@
     "micros_per_usd": 1000000
   },
   "models": {
-    "beacon/gpt-6-astra": {
+    "akentros/gpt-6-astra": {
       "object": "model",
       "enabled": true,
       "display_name": "GPT-6 Astra",
-      "owned_by": "beacon",
+      "owned_by": "akentros",
       "capabilities": {
         "chat_completions": true,
         "streaming": true,
@@ -44,11 +44,11 @@
         }
       ]
     },
-    "beacon/gpt-5.2": {
+    "akentros/gpt-5.2": {
       "object": "model",
       "enabled": true,
       "display_name": "GPT-5.2",
-      "owned_by": "beacon",
+      "owned_by": "akentros",
       "capabilities": {
         "chat_completions": true,
         "streaming": true,
@@ -79,11 +79,11 @@
         }
       ]
     },
-    "beacon/gpt-5.2-codex": {
+    "akentros/gpt-5.2-codex": {
       "object": "model",
       "enabled": true,
       "display_name": "GPT-5.2 Codex",
-      "owned_by": "beacon",
+      "owned_by": "akentros",
       "capabilities": {
         "chat_completions": true,
         "streaming": true,
@@ -114,11 +114,11 @@
         }
       ]
     },
-    "beacon/claude-opus-4-8": {
+    "akentros/claude-opus-4-8": {
       "object": "model",
       "enabled": true,
       "display_name": "Claude Opus 4.8",
-      "owned_by": "beacon",
+      "owned_by": "akentros",
       "capabilities": {
         "chat_completions": true,
         "streaming": true,
@@ -149,11 +149,11 @@
         }
       ]
     },
-    "beacon/claude-sonnet-5": {
+    "akentros/claude-sonnet-5": {
       "object": "model",
       "enabled": true,
       "display_name": "Claude Sonnet 5",
-      "owned_by": "beacon",
+      "owned_by": "akentros",
       "capabilities": {
         "chat_completions": true,
         "streaming": true,
@@ -184,11 +184,11 @@
         }
       ]
     },
-    "beacon/claude-haiku-4-5": {
+    "akentros/claude-haiku-4-5": {
       "object": "model",
       "enabled": true,
       "display_name": "Claude Haiku 4.5",
-      "owned_by": "beacon",
+      "owned_by": "akentros",
       "capabilities": {
         "chat_completions": true,
         "streaming": true,
@@ -219,11 +219,11 @@
         }
       ]
     },
-    "beacon/gemini-3.5-pro": {
+    "akentros/gemini-3.5-pro": {
       "object": "model",
       "enabled": true,
       "display_name": "Gemini 3.5 Pro",
-      "owned_by": "beacon",
+      "owned_by": "akentros",
       "capabilities": {
         "chat_completions": true,
         "streaming": true,
@@ -254,11 +254,11 @@
         }
       ]
     },
-    "beacon/gemini-3.8-flash": {
+    "akentros/gemini-3.8-flash": {
       "object": "model",
       "enabled": true,
       "display_name": "Gemini 3.8 Flash",
-      "owned_by": "beacon",
+      "owned_by": "akentros",
       "capabilities": {
         "chat_completions": true,
         "streaming": true,
@@ -289,11 +289,11 @@
         }
       ]
     },
-    "beacon/gemini-3.5-flash-lite": {
+    "akentros/gemini-3.5-flash-lite": {
       "object": "model",
       "enabled": true,
       "display_name": "Gemini 3.5 Flash-Lite",
-      "owned_by": "beacon",
+      "owned_by": "akentros",
       "capabilities": {
         "chat_completions": true,
         "streaming": true,
@@ -324,11 +324,11 @@
         }
       ]
     },
-    "beacon/grok-4.6": {
+    "akentros/grok-4.6": {
       "object": "model",
       "enabled": true,
       "display_name": "Grok 4.6",
-      "owned_by": "beacon",
+      "owned_by": "akentros",
       "capabilities": {
         "chat_completions": true,
         "streaming": true,
@@ -359,11 +359,11 @@
         }
       ]
     },
-    "beacon/grok-4.1-fast": {
+    "akentros/grok-4.1-fast": {
       "object": "model",
       "enabled": true,
       "display_name": "Grok 4.1 Fast",
-      "owned_by": "beacon",
+      "owned_by": "akentros",
       "capabilities": {
         "chat_completions": true,
         "streaming": true,
@@ -394,11 +394,11 @@
         }
       ]
     },
-    "beacon/deepseek-v4-pro": {
+    "akentros/deepseek-v4-pro": {
       "object": "model",
       "enabled": true,
       "display_name": "DeepSeek V4 Pro",
-      "owned_by": "beacon",
+      "owned_by": "akentros",
       "capabilities": {
         "chat_completions": true,
         "streaming": true,
@@ -438,11 +438,11 @@
         }
       ]
     },
-    "beacon/deepseek-v4.1-flash": {
+    "akentros/deepseek-v4.1-flash": {
       "object": "model",
       "enabled": true,
       "display_name": "DeepSeek V4.1 Flash",
-      "owned_by": "beacon",
+      "owned_by": "akentros",
       "capabilities": {
         "chat_completions": true,
         "streaming": true,
@@ -482,11 +482,11 @@
         }
       ]
     },
-    "beacon/kimi-k3": {
+    "akentros/kimi-k3": {
       "object": "model",
       "enabled": true,
       "display_name": "Kimi K3",
-      "owned_by": "beacon",
+      "owned_by": "akentros",
       "capabilities": {
         "chat_completions": true,
         "streaming": true,
@@ -526,11 +526,11 @@
         }
       ]
     },
-    "beacon/glm-5.3": {
+    "akentros/glm-5.3": {
       "object": "model",
       "enabled": true,
       "display_name": "GLM-5.3",
-      "owned_by": "beacon",
+      "owned_by": "akentros",
       "capabilities": {
         "chat_completions": true,
         "streaming": true,
@@ -570,11 +570,11 @@
         }
       ]
     },
-    "beacon/glm-5.3-flash": {
+    "akentros/glm-5.3-flash": {
       "object": "model",
       "enabled": true,
       "display_name": "GLM-5.3 Flash",
-      "owned_by": "beacon",
+      "owned_by": "akentros",
       "capabilities": {
         "chat_completions": true,
         "streaming": true,
@@ -614,11 +614,11 @@
         }
       ]
     },
-    "beacon/qwen-3.8-max": {
+    "akentros/qwen-3.8-max": {
       "object": "model",
       "enabled": true,
       "display_name": "Qwen 3.8 Max",
-      "owned_by": "beacon",
+      "owned_by": "akentros",
       "capabilities": {
         "chat_completions": true,
         "streaming": true,
@@ -649,11 +649,11 @@
         }
       ]
     },
-    "beacon/qwen-3.8-flash": {
+    "akentros/qwen-3.8-flash": {
       "object": "model",
       "enabled": true,
       "display_name": "Qwen 3.8 Flash",
-      "owned_by": "beacon",
+      "owned_by": "akentros",
       "capabilities": {
         "chat_completions": true,
         "streaming": true,
@@ -684,11 +684,11 @@
         }
       ]
     },
-    "beacon/qwen-3.8-27b": {
+    "akentros/qwen-3.8-27b": {
       "object": "model",
       "enabled": true,
       "display_name": "Qwen 3.8 27B",
-      "owned_by": "beacon",
+      "owned_by": "akentros",
       "capabilities": {
         "chat_completions": true,
         "streaming": true,

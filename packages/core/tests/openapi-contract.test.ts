@@ -25,7 +25,7 @@ function collectReferences(value: any, references: string[] = []): string[] {
   return references;
 }
 
-test("Beacon OpenAPI document parses and resolves every local reference", () => {
+test("Akentros OpenAPI document parses and resolves every local reference", () => {
   assert.equal(specification.openapi, "3.1.0");
   const references = collectReferences(specification);
   assert.ok(references.length > 0);
@@ -38,7 +38,7 @@ test("Beacon OpenAPI document parses and resolves every local reference", () => 
 test("inference and developer surfaces keep separate authentication contracts", () => {
   for (const path of ["/api/ai/v1/models", "/api/ai/v1/chat/completions"]) {
     const operation: any = Object.values(specification.paths[path])[0];
-    assert.deepEqual(operation.security, [{ BeaconKey: [] }]);
+    assert.deepEqual(operation.security, [{ AkentrosKey: [] }]);
   }
 
   const developerPaths = Object.entries(specification.paths).filter(([path]) =>
@@ -104,7 +104,7 @@ test("chat contracts reject undeclared routing controls while preserving public 
   assert.equal(schemas.TokenUsage.additionalProperties, false);
 });
 
-test("developer usage contracts preserve shape with Beacon-owned neutral metadata", () => {
+test("developer usage contracts preserve shape with Akentros-owned neutral metadata", () => {
   const schemas = specification.components.schemas;
   assert.equal(schemas.UsageSummary.additionalProperties, false);
   assert.ok(schemas.UsageSummary.required.includes("free_model_quotas"));
@@ -115,7 +115,7 @@ test("developer usage contracts preserve shape with Beacon-owned neutral metadat
   assert.deepEqual(schemas.FreeModelQuota.required, ["used", "limit"]);
   const usage = schemas.UsageLog;
   assert.equal(usage.additionalProperties, false);
-  assert.equal(usage.properties.provider.const, "beacon");
+  assert.equal(usage.properties.provider.const, "akentros");
   assert.equal(usage.properties.provider.type, "string");
   assert.match(usage.properties.actual_model.description, /mirrors requested_model/i);
   assert.match(usage.properties.error_code.description, /internal execution codes are never returned/i);
@@ -136,9 +136,9 @@ test("developer usage contracts preserve shape with Beacon-owned neutral metadat
   );
 
   const completionResponses = specification.paths["/api/ai/v1/chat/completions"].post.responses;
-  assert.ok(completionResponses["403"], "native Beacon authorization failures remain documented");
-  assert.ok(completionResponses["408"], "Beacon request cancellation remains documented");
-  assert.ok(completionResponses["503"], "normalized Beacon availability failures remain documented");
+  assert.ok(completionResponses["403"], "native Akentros authorization failures remain documented");
+  assert.ok(completionResponses["408"], "Akentros request cancellation remains documented");
+  assert.ok(completionResponses["503"], "normalized Akentros availability failures remain documented");
   assert.equal(completionResponses["502"], undefined);
   assert.equal(completionResponses["504"], undefined);
 });
@@ -154,6 +154,6 @@ test("Standalone gateway mounts the Hono app and documents every provider secret
     pool.credentials.flatMap((credential: any) => Object.values(credential.secret_refs)),
   );
   const example = readFileSync(new URL("../../../apps/gateway/.dev.vars.example", import.meta.url), "utf8");
-  assert.match(example, /BEACON_API_KEY_PEPPER/);
+  assert.match(example, /AKENTROS_API_KEY_PEPPER/);
   for (const binding of requiredBindings) assert.match(example, new RegExp(binding));
 });

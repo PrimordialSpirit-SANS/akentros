@@ -1,19 +1,19 @@
-import { assertBeaconSchemaReady } from "@beacon/core/schemaReadiness";
-import type { BeaconRuntimeEnv } from "../types.ts";
+import { assertAkentrosSchemaReady } from "@akentros/core/schemaReadiness";
+import type { AkentrosRuntimeEnv } from "../types.ts";
 import { dbQuery } from "./db.ts";
 
 const schemaPromises = new Map();
 
-function databaseKey(env: BeaconRuntimeEnv) {
+function databaseKey(env: AkentrosRuntimeEnv) {
   return env?.DATABASE_URL?.trim() || "unconfigured-main";
 }
 
-export function ensureAiSchema(env: BeaconRuntimeEnv) {
+export function ensureAiSchema(env: AkentrosRuntimeEnv) {
   const key = databaseKey(env);
   if (schemaPromises.has(key)) return schemaPromises.get(key);
 
   const promise = (async () => {
-    await assertBeaconSchemaReady((sql: any, params: any[] = []) => dbQuery(env, sql, params));
+    await assertAkentrosSchemaReady((sql: any, params: any[] = []) => dbQuery(env, sql, params));
   })().catch((error: any) => {
     schemaPromises.delete(key);
     throw error;

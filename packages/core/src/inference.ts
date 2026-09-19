@@ -1,6 +1,6 @@
-import type { BeaconBillableBilling } from "./billing.ts";
-import { createBeaconRequestFingerprint } from "./billing.ts";
-import { BeaconError, invalidRequest } from "./openaiErrors.ts";
+import type { AkentrosBillableBilling } from "./billing.ts";
+import { createAkentrosRequestFingerprint } from "./billing.ts";
+import { AkentrosError, invalidRequest } from "./openaiErrors.ts";
 import {
   BACKEND_PRICING,
   calculateActualCostMicros,
@@ -11,9 +11,9 @@ import {
   listEnabledModels,
   requireModelPricing,
 } from "./pricing.ts";
-import type { BeaconAttemptAuditor } from "./providerAttempts.ts";
-import type { BeaconCredentialClaim } from "./providerPool.ts";
-import { BeaconProviderError, invokeProviderRoute, normalizeProviderUsage } from "./providers.ts";
+import type { AkentrosAttemptAuditor } from "./providerAttempts.ts";
+import type { AkentrosCredentialClaim } from "./providerPool.ts";
+import { AkentrosProviderError, invokeProviderRoute, normalizeProviderUsage } from "./providers.ts";
 import { parseSseStream } from "./sse.ts";
 
 const MESSAGE_ROLES = new Set(["system", "developer", "user", "assistant", "tool"]);
@@ -38,7 +38,7 @@ const PUBLIC_REQUEST_FIELDS = new Set([
   "response_format",
 ]);
 const PUBLIC_FINISH_REASONS = new Set(["stop", "length", "content_filter", "tool_calls"]);
-const PUBLIC_BEACON_ERROR_CODES = new Set([
+const PUBLIC_AKENTROS_ERROR_CODES = new Set([
   "invalid_request",
   "invalid_json",
   "unsupported_parameter",
@@ -129,7 +129,7 @@ function validateStreamOptions(value: unknown, stream: boolean) {
 function validateChatTemplateKwargs(value: unknown, _modelId: string) {
   if (value === undefined) return undefined;
   throw invalidRequest(
-    "chat_template_kwargs only supports a boolean thinking option for this Beacon model.",
+    "chat_template_kwargs only supports a boolean thinking option for this Akentros model.",
     "chat_template_kwargs",
     "unsupported_parameter",
   );
@@ -256,7 +256,7 @@ function validateToolChoice(value: any, tools: any[]) {
 
 function replayError(reserved: { status?: string; requestId: string }) {
   const inProgress = reserved.status === "dispatched" || reserved.status === "reserved";
-  const error = new BeaconError(
+  const error = new AkentrosError(
     inProgress
       ? "A request with this Idempotency-Key is already in progress."
       : "This Idempotency-Key has already completed and will not be executed again.",
@@ -271,7 +271,7 @@ function replayError(reserved: { status?: string; requestId: string }) {
   return error;
 }
 
-export function listPublicBeaconModels(config = BACKEND_PRICING) {
+export function listPublicAkentrosModels(config = BACKEND_PRICING) {
   const created = Math.floor(Date.parse(config.published_at) / 1000);
   return {
     object: "list",
@@ -284,7 +284,7 @@ export function listPublicBeaconModels(config = BACKEND_PRICING) {
   };
 }
 
-export async function prepareBeaconChatRequest({
+export async function prepareAkentrosChatRequest({
   body,
   aiKey,
   idempotencyKey = null,
@@ -297,7 +297,7 @@ export async function prepareBeaconChatRequest({
   const unsupportedField = Object.keys(body).find((field) => !PUBLIC_REQUEST_FIELDS.has(field));
   if (unsupportedField) {
     throw invalidRequest(
-      `The parameter '${unsupportedField}' is not supported by Beacon.`,
+      `The parameter '${unsupportedField}' is not supported by Akentros.`,
       unsupportedField,
       "unsupported_parameter",
     );
@@ -307,7 +307,7 @@ export async function prepareBeaconChatRequest({
   try {
     model = requireModelPricing(modelId);
   } catch {
-    throw new BeaconError(`The model '${modelId || "unknown"}' does not exist or is disabled.`, {
+    throw new AkentrosError(`The model '${modelId || "unknown"}' does not exist or is disabled.`, {
       status: 404,
       type: "invalid_request_error",
       code: "model_not_found",
@@ -319,7 +319,7 @@ export async function prepareBeaconChatRequest({
     aiKey.model_allowlist.length > 0 &&
     !aiKey.model_allowlist.includes(modelId)
   ) {
-    throw new BeaconError("The API key does not allow this model.", {
+    throw new AkentrosError("The API key does not allow this model.", {
       status: 403,
       type: "permission_error",
       code: "model_not_allowed",
@@ -328,7 +328,7 @@ export async function prepareBeaconChatRequest({
   }
   if (body.response_format !== undefined) {
     throw invalidRequest(
-      "response_format is not enabled for this Beacon model.",
+      "response_format is not enabled for this Akentros model.",
       "response_format",
       "unsupported_feature",
     );
@@ -340,7 +340,7 @@ export async function prepareBeaconChatRequest({
     messages.some((message) => message.role === "tool" || message.tool_calls !== undefined);
   if (usesTools && model.capabilities.tools !== true) {
     throw invalidRequest(
-      "Tool calling is not enabled for this Beacon model.",
+      "Tool calling is not enabled for this Akentros model.",
       "tools",
       "unsupported_feature",
     );
@@ -428,7 +428,7 @@ export async function prepareBeaconChatRequest({
   } catch (error) {
     if (error instanceof RangeError) {
       throw invalidRequest(
-        "The request exceeds this Beacon model context limit.",
+        "The request exceeds this Akentros model context limit.",
         "messages",
         "context_length_exceeded",
       );
@@ -440,7 +440,7 @@ export async function prepareBeaconChatRequest({
     aiKey?.spend_limit_usd_micros !== undefined &&
     reservedCostMicros > Number(aiKey.spend_limit_usd_micros)
   ) {
-    throw new BeaconError("The request exceeds this API key point limit.", {
+    throw new AkentrosError("The request exceeds this API key point limit.", {
       status: 402,
       type: "insufficient_funds_error",
       code: "spend_limit_exceeded",
@@ -448,7 +448,7 @@ export async function prepareBeaconChatRequest({
   }
   const id = requestId();
   const snapshot = createBillingSnapshot(modelId);
-  const fingerprint = await createBeaconRequestFingerprint({
+  const fingerprint = await createAkentrosRequestFingerprint({
     endpoint: "chat.completions",
     body: upstreamBody,
   });
@@ -481,25 +481,25 @@ export async function prepareBeaconChatRequest({
 }
 
 export function publicProviderError(error: unknown) {
-  if (error instanceof BeaconProviderError) {
+  if (error instanceof AkentrosProviderError) {
     if (error.category === "client_disconnected") {
-      return new BeaconError("The Beacon request was cancelled.", {
+      return new AkentrosError("The Akentros request was cancelled.", {
         status: 408,
         type: "invalid_request_error",
         code: "request_cancelled",
       });
     }
     if (error.category === "invalid_request") {
-      return new BeaconError("Beacon could not process the supplied request.", {
+      return new AkentrosError("Akentros could not process the supplied request.", {
         status: 400,
         type: "invalid_request_error",
         code: "invalid_request",
       });
     }
-  } else if (error instanceof BeaconError && PUBLIC_BEACON_ERROR_CODES.has(error.code)) {
+  } else if (error instanceof AkentrosError && PUBLIC_AKENTROS_ERROR_CODES.has(error.code)) {
     return error;
   }
-  return new BeaconError("Beacon is temporarily unable to process this request. Please retry shortly.", {
+  return new AkentrosError("Akentros is temporarily unable to process this request. Please retry shortly.", {
     status: 503,
     type: "server_error",
     code: "service_unavailable",
@@ -671,27 +671,27 @@ function completionPayloadOutputChars(payload: any) {
 // 推論 runtime 的組裝契約:billing/attempts/claim/release 由宿主(gateway、
 // 測試)注入,core 只定義介面,不依賴宿主型別。過去此邊界整個是 any,
 // 計費呼叫的形狀錯誤只能在執行期被發現;現在由編譯期檢查。
-export interface BeaconInferenceRuntimeOptions {
-  billing: BeaconBillableBilling;
-  attempts?: BeaconAttemptAuditor | null;
+export interface AkentrosInferenceRuntimeOptions {
+  billing: AkentrosBillableBilling;
+  attempts?: AkentrosAttemptAuditor | null;
   claimCredential: (
     route: unknown,
     requestId: string,
     excludedCredentialIds: string[],
-  ) => Promise<BeaconCredentialClaim | null | undefined>;
-  releaseCredential: (claim: BeaconCredentialClaim, outcome: unknown) => Promise<unknown>;
+  ) => Promise<AkentrosCredentialClaim | null | undefined>;
+  releaseCredential: (claim: AkentrosCredentialClaim, outcome: unknown) => Promise<unknown>;
   fetchImpl?: typeof fetch;
   cloudflareAiBinding?: unknown;
 }
 
-export function createBeaconInferenceRuntime({
+export function createAkentrosInferenceRuntime({
   billing,
   attempts = null,
   claimCredential,
   releaseCredential,
   fetchImpl = globalThis.fetch,
   cloudflareAiBinding = null,
-}: BeaconInferenceRuntimeOptions) {
+}: AkentrosInferenceRuntimeOptions) {
   if (!billing || typeof billing.reserve !== "function") throw new TypeError("billing is required.");
   if (typeof claimCredential !== "function" || typeof releaseCredential !== "function") {
     throw new TypeError("Provider claim and release functions are required.");
@@ -737,7 +737,7 @@ export function createBeaconInferenceRuntime({
         attemptedCredentialIds.add(claim.credentialId);
         attemptNumber += 1;
         const started = Date.now();
-        let attempt: Awaited<ReturnType<BeaconAttemptAuditor["start"]>> = null;
+        let attempt: Awaited<ReturnType<AkentrosAttemptAuditor["start"]>> = null;
         if (attempts?.start) {
           try {
             attempt = await attempts.start({
@@ -751,7 +751,7 @@ export function createBeaconInferenceRuntime({
               success: false,
               category: "attempt_audit_unavailable",
             }).catch(() => {});
-            throw new BeaconProviderError("Provider attempt audit is unavailable.", {
+            throw new AkentrosProviderError("Provider attempt audit is unavailable.", {
               provider: route.provider,
               status: 503,
               category: "attempt_audit_unavailable",
@@ -764,7 +764,7 @@ export function createBeaconInferenceRuntime({
               success: false,
               category: "attempt_audit_unavailable",
             }).catch(() => {});
-            throw new BeaconProviderError("Provider attempt audit is unavailable.", {
+            throw new AkentrosProviderError("Provider attempt audit is unavailable.", {
               provider: route.provider,
               status: 503,
               category: "attempt_audit_unavailable",
@@ -804,7 +804,7 @@ export function createBeaconInferenceRuntime({
           } catch {
             // The lease expires automatically; do not mask provider fallback semantics.
           }
-          if (!(error instanceof BeaconProviderError) || !error.fallbackAllowed || error.responseStarted)
+          if (!(error instanceof AkentrosProviderError) || !error.fallbackAllowed || error.responseStarted)
             throw error;
           continue;
         }
@@ -828,7 +828,7 @@ export function createBeaconInferenceRuntime({
     }
     throw (
       lastError ||
-      new BeaconProviderError("No provider capacity is available.", {
+      new AkentrosProviderError("No provider capacity is available.", {
         provider: "none",
         status: 503,
         category: "no_provider_available",
@@ -866,7 +866,7 @@ export function createBeaconInferenceRuntime({
           requestId: prepared.requestId,
           errorCode: "protocol_mismatch",
         });
-        throw new BeaconError("Beacon returned an unexpected response.", {
+        throw new AkentrosError("Akentros returned an unexpected response.", {
           status: 503,
           type: "server_error",
           code: "service_unavailable",
@@ -960,7 +960,7 @@ export function createBeaconInferenceRuntime({
           requestId: prepared.requestId,
           errorCode: "protocol_mismatch",
         });
-        throw new BeaconError("Beacon returned an unexpected response.", {
+        throw new AkentrosError("Akentros returned an unexpected response.", {
           status: 503,
           type: "server_error",
           code: "service_unavailable",
@@ -1124,14 +1124,14 @@ export function createBeaconInferenceRuntime({
 
 export function normalizeStreamChunk(payload: any, prepared: any) {
   if (!isObject(payload))
-    throw new BeaconProviderError("The provider emitted an invalid SSE payload.", {
+    throw new AkentrosProviderError("The provider emitted an invalid SSE payload.", {
       provider: "unknown",
       category: "invalid_provider_response",
       responseStarted: true,
       usageUnknown: true,
     });
   if (payload.error)
-    throw new BeaconProviderError("The provider failed after streaming started.", {
+    throw new AkentrosProviderError("The provider failed after streaming started.", {
       provider: "unknown",
       status: Number(payload.error.code) || 502,
       category: "midstream_provider_error",
@@ -1195,7 +1195,7 @@ export function normalizeStreamChunk(payload: any, prepared: any) {
       choices: [],
     };
   }
-  throw new BeaconProviderError("The provider emitted an unsupported SSE payload.", {
+  throw new AkentrosProviderError("The provider emitted an unsupported SSE payload.", {
     provider: "unknown",
     category: "invalid_provider_response",
     responseStarted: true,

@@ -14,7 +14,7 @@ export function buildCodeExamples(apiRoot: string, model: string): Record<CodeLa
       label: "cURL",
       language: "bash",
       code: `curl ${endpoint} \\
-  -H "Authorization: Bearer $BEACON_API_KEY" \\
+  -H "Authorization: Bearer $AKENTROS_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
     "model": "${model}",
@@ -30,7 +30,7 @@ export function buildCodeExamples(apiRoot: string, model: string): Record<CodeLa
       code: `import OpenAI from "openai";
 
 const client = new OpenAI({
-  apiKey: process.env.BEACON_API_KEY,
+  apiKey: process.env.AKENTROS_API_KEY,
   baseURL: "${apiRoot}",
 });
 
@@ -52,7 +52,7 @@ for await (const chunk of stream) {
       code: `import OpenAI from "openai";
 
 const client = new OpenAI({
-  apiKey: process.env.BEACON_API_KEY!,
+  apiKey: process.env.AKENTROS_API_KEY!,
   baseURL: "${apiRoot}",
 });
 
@@ -75,7 +75,7 @@ for await (const chunk of stream) {
 from openai import OpenAI
 
 client = OpenAI(
-    api_key=os.environ["BEACON_API_KEY"],
+    api_key=os.environ["AKENTROS_API_KEY"],
     base_url="${apiRoot}",
 )
 

@@ -1,4 +1,4 @@
-import type { BeaconRuntimeEnv } from "../types.ts";
+import type { AkentrosRuntimeEnv } from "../types.ts";
 import { randomBytesHex } from "./crypto.ts";
 import { dbGet, dbQuery } from "./db.ts";
 
@@ -8,9 +8,9 @@ import { dbGet, dbQuery } from "./db.ts";
 
 // OWASP Password Storage Cheat Sheet 對 PBKDF2-HMAC-SHA256 的建議值
 // (600,000)。舊格式雜湊仍可驗證:迭代數記錄在雜湊字串本身。
-export const BEACON_PASSWORD_ITERATIONS = 600_000;
+export const AKENTROS_PASSWORD_ITERATIONS = 600_000;
 
-export interface BeaconAccount {
+export interface AkentrosAccount {
   id: string;
   username: string;
   email: string;
@@ -23,10 +23,10 @@ export interface BeaconAccount {
 }
 
 // PBKDF2-SHA256。格式:pbkdf2$<iterations>$<salt_hex>$<hash_hex>
-export async function hashPassword(password: string, env: BeaconRuntimeEnv): Promise<string> {
-  const configured = Number(env?.BEACON_PBKDF2_ITERATIONS);
+export async function hashPassword(password: string, env: AkentrosRuntimeEnv): Promise<string> {
+  const configured = Number(env?.AKENTROS_PBKDF2_ITERATIONS);
   const iterations =
-    Number.isSafeInteger(configured) && configured >= 10_000 ? configured : BEACON_PASSWORD_ITERATIONS;
+    Number.isSafeInteger(configured) && configured >= 10_000 ? configured : AKENTROS_PASSWORD_ITERATIONS;
   const salt = randomBytesHex(16);
   const derived = await derivePasswordBits(password, salt, iterations);
   return `pbkdf2$${iterations}$${salt}$${derived}`;
@@ -37,7 +37,7 @@ export async function verifyPassword(password: string, stored: string | null | u
   const [scheme, iterationsText, salt, hash] = String(stored).split("$");
   if (scheme !== "pbkdf2" || !iterationsText || !salt || !hash) return false;
   const iterations = Number(iterationsText);
-  // 本系統產生的雜湊迭代數一律 ≥ BEACON_PASSWORD_ITERATIONS(歷史版本)或
+  // 本系統產生的雜湊迭代數一律 ≥ AKENTROS_PASSWORD_ITERATIONS(歷史版本)或
   // 設定下限 10,000;低於下限的「雜湊」不是本系統寫入的,拒絕以免弱雜湊被
   // 塞進資料庫後通過驗證。
   if (!Number.isSafeInteger(iterations) || iterations < 10_000) return false;
@@ -73,7 +73,7 @@ async function derivePasswordBits(password: string, saltHex: string, iterations:
   return [...new Uint8Array(bits)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-function serializeAccount(row: any): BeaconAccount {
+function serializeAccount(row: any): AkentrosAccount {
   return {
     id: String(row.id),
     username: String(row.username || ""),
@@ -87,7 +87,7 @@ function serializeAccount(row: any): BeaconAccount {
   };
 }
 
-export async function ensureUsersSchema(env: BeaconRuntimeEnv): Promise<void> {
+export async function ensureUsersSchema(env: AkentrosRuntimeEnv): Promise<void> {
   await dbQuery(
     env,
     `
@@ -109,21 +109,21 @@ export async function ensureUsersSchema(env: BeaconRuntimeEnv): Promise<void> {
   );
 }
 
-export async function findUserByEmail(env: BeaconRuntimeEnv, email: string): Promise<BeaconAccount | null> {
+export async function findUserByEmail(env: AkentrosRuntimeEnv, email: string): Promise<AkentrosAccount | null> {
   const row = await dbGet(env, `SELECT * FROM users WHERE email = ? LIMIT 1`, [email.trim().toLowerCase()]);
   return row ? serializeAccount(row) : null;
 }
 
 export async function findUserById(
-  env: BeaconRuntimeEnv,
+  env: AkentrosRuntimeEnv,
   id: string | number,
-): Promise<BeaconAccount | null> {
+): Promise<AkentrosAccount | null> {
   if (!/^[1-9][0-9]*$/.test(String(id))) return null;
   const row = await dbGet(env, `SELECT * FROM users WHERE id = ? LIMIT 1`, [String(id)]);
   return row ? serializeAccount(row) : null;
 }
 
-export async function findUserPasswordHash(env: BeaconRuntimeEnv, email: string): Promise<string | null> {
+export async function findUserPasswordHash(env: AkentrosRuntimeEnv, email: string): Promise<string | null> {
   const row = await dbGet(env, `SELECT password_hash FROM users WHERE email = ? LIMIT 1`, [
     email.trim().toLowerCase(),
   ]);
@@ -131,7 +131,7 @@ export async function findUserPasswordHash(env: BeaconRuntimeEnv, email: string)
 }
 
 export async function createUser(
-  env: BeaconRuntimeEnv,
+  env: AkentrosRuntimeEnv,
   options: {
     email: string;
     username: string;
@@ -139,7 +139,7 @@ export async function createUser(
     role?: string;
     balanceUsdMicros?: string;
   },
-): Promise<BeaconAccount> {
+): Promise<AkentrosAccount> {
   const row = await dbGet(
     env,
     `
@@ -161,7 +161,7 @@ export async function createUser(
 
 // migrate script 的管理員種子:已存在時僅確保 role = admin,不覆寫密碼。
 export async function upsertAdminUser(
-  env: BeaconRuntimeEnv,
+  env: AkentrosRuntimeEnv,
   options: { email: string; passwordHash: string; username: string; balanceUsdMicros: string },
 ): Promise<{ created: boolean }> {
   const existing = await dbGet(env, `SELECT id, role FROM users WHERE email = ? LIMIT 1`, [

@@ -1,9 +1,9 @@
 import { PROVIDER_POOLS, resolveProviderCredential } from "./providers.ts";
-import type { BeaconQuery } from "./query.ts";
-import { beaconQueryRows as rows } from "./query.ts";
+import type { AkentrosQuery } from "./query.ts";
+import { akentrosQueryRows as rows } from "./query.ts";
 
 /** pool store 的 claim 在設定解析前的租約形狀(normalizeClaim 輸出)。 */
-export interface BeaconCredentialLease {
+export interface AkentrosCredentialLease {
   leaseId: string;
   requestId: string;
   credentialId: string;
@@ -12,9 +12,9 @@ export interface BeaconCredentialLease {
   expiresAt: string;
 }
 
-/** claimConfiguredBeaconProviderCredential 的輸出:租約 + 已解析的 secret
+/** claimConfiguredAkentrosProviderCredential 的輸出:租約 + 已解析的 secret
  * 與 pool 設定文件。secrets 的值只存在記憶體,不落庫、不落 log。 */
-export interface BeaconCredentialClaim extends BeaconCredentialLease {
+export interface AkentrosCredentialClaim extends AkentrosCredentialLease {
   secrets: Readonly<Record<string, string>>;
   // pool 為 provider-pools 設定文件(含 selection 策略),形狀由
   // provider-pools.v1.json 決定,此處僅整體傳遞。
@@ -50,7 +50,7 @@ function normalizeExcludedCredentialIds(value: any): string[] {
   ];
 }
 
-function normalizeClaim(row: any): BeaconCredentialLease | null {
+function normalizeClaim(row: any): AkentrosCredentialLease | null {
   if (!row) return null;
   return {
     leaseId: String(row.lease_id),
@@ -65,7 +65,7 @@ function normalizeClaim(row: any): BeaconCredentialLease | null {
 // SQLite 方言:排他選取以「交易 + 單連線序列化」取代 PG 的
 // FOR UPDATE SKIP LOCKED;時間與排除清單由呼叫端綁定
 // (json_each 取代 PG 陣列參數)。
-export const BEACON_PROVIDER_POOL_SQL = Object.freeze({
+export const AKENTROS_PROVIDER_POOL_SQL = Object.freeze({
   syncCredential: `
     INSERT INTO ai_provider_credentials (
       credential_id, provider, pool_id, enabled, weight, max_in_flight,
@@ -161,13 +161,13 @@ export const BEACON_PROVIDER_POOL_SQL = Object.freeze({
   `,
 });
 
-export async function syncBeaconProviderCredentials(query: BeaconQuery, config: any = PROVIDER_POOLS) {
+export async function syncAkentrosProviderCredentials(query: AkentrosQuery, config: any = PROVIDER_POOLS) {
   if (typeof query !== "function") throw new TypeError("A database query function is required.");
   const credentialIds: string[] = [];
   for (const [poolId, pool] of Object.entries(config.pools || {}) as Array<[string, any]>) {
     for (const credential of pool.credentials || []) {
       credentialIds.push(credential.credential_id);
-      await query(BEACON_PROVIDER_POOL_SQL.syncCredential, [
+      await query(AKENTROS_PROVIDER_POOL_SQL.syncCredential, [
         credential.credential_id,
         pool.provider,
         poolId,
@@ -179,7 +179,7 @@ export async function syncBeaconProviderCredentials(query: BeaconQuery, config: 
     }
   }
   if (credentialIds.length) {
-    await query(BEACON_PROVIDER_POOL_SQL.disableMissingCredentials, [
+    await query(AKENTROS_PROVIDER_POOL_SQL.disableMissingCredentials, [
       new Date().toISOString(),
       JSON.stringify(credentialIds),
     ]);
@@ -188,17 +188,17 @@ export async function syncBeaconProviderCredentials(query: BeaconQuery, config: 
 }
 
 // 執行交易:query 介面可選提供 transaction(fn)。
-async function withTransaction<T>(query: BeaconQuery, fn: () => Promise<T>): Promise<T> {
+async function withTransaction<T>(query: AkentrosQuery, fn: () => Promise<T>): Promise<T> {
   if (typeof query?.transaction === "function") {
     return (await query.transaction(fn)) as T;
   }
   return fn();
 }
 
-export function createBeaconProviderPoolStore(query: BeaconQuery) {
+export function createAkentrosProviderPoolStore(query: AkentrosQuery) {
   if (typeof query !== "function") throw new TypeError("A database query function is required.");
   return Object.freeze({
-    sync: (config: any) => syncBeaconProviderCredentials(query, config),
+    sync: (config: any) => syncAkentrosProviderCredentials(query, config),
 
     async claim({
       poolId,
@@ -212,7 +212,7 @@ export function createBeaconProviderPoolStore(query: BeaconQuery) {
       leaseTtlMs: number;
       excludedCredentialIds?: string[];
       leaseId?: string;
-    }): Promise<BeaconCredentialLease | null> {
+    }): Promise<AkentrosCredentialLease | null> {
       const normalizedPool = requiredString(poolId, "poolId", 120);
       const normalizedRequest = requiredString(requestId, "requestId", 80);
       const normalizedExcludedCredentialIds = normalizeExcludedCredentialIds(excludedCredentialIds);
@@ -222,7 +222,7 @@ export function createBeaconProviderPoolStore(query: BeaconQuery) {
       const excludedJson = JSON.stringify(normalizedExcludedCredentialIds);
 
       return withTransaction(query, async () => {
-        const candidates = await query(BEACON_PROVIDER_POOL_SQL.candidateCredentials, [
+        const candidates = await query(AKENTROS_PROVIDER_POOL_SQL.candidateCredentials, [
           now,
           normalizedPool,
           excludedJson,
@@ -232,7 +232,7 @@ export function createBeaconProviderPoolStore(query: BeaconQuery) {
         const candidate: any = rows(candidates)[0];
         if (!candidate) return null;
 
-        await query(BEACON_PROVIDER_POOL_SQL.markClaimed, [
+        await query(AKENTROS_PROVIDER_POOL_SQL.markClaimed, [
           Number(candidate.active_leases) + 1,
           now,
           expiresAt,
@@ -240,7 +240,7 @@ export function createBeaconProviderPoolStore(query: BeaconQuery) {
           candidate.credential_id,
         ]);
 
-        const lease = await query(BEACON_PROVIDER_POOL_SQL.insertLease, [
+        const lease = await query(AKENTROS_PROVIDER_POOL_SQL.insertLease, [
           leaseId,
           normalizedRequest,
           candidate.credential_id,
@@ -295,12 +295,12 @@ export function createBeaconProviderPoolStore(query: BeaconQuery) {
 
       return withTransaction(query, async () => {
         const now = new Date().toISOString();
-        const released = await query(BEACON_PROVIDER_POOL_SQL.markReleased, [now, normalizedLease]);
+        const released = await query(AKENTROS_PROVIDER_POOL_SQL.markReleased, [now, normalizedLease]);
         const releasedRow: any = rows(released)[0];
         if (!releasedRow) return null;
         const credentialId = String(releasedRow.credential_id);
 
-        const stateRows = await query(BEACON_PROVIDER_POOL_SQL.credentialState, [credentialId]);
+        const stateRows = await query(AKENTROS_PROVIDER_POOL_SQL.credentialState, [credentialId]);
         const state: any = rows(stateRows)[0];
         if (!state) return null;
 
@@ -315,7 +315,7 @@ export function createBeaconProviderPoolStore(query: BeaconQuery) {
             : Number(state.ewma_latency_ms);
         const ewma = latency === null ? oldEwma : oldEwma === null ? latency : oldEwma * 0.8 + latency * 0.2;
 
-        const applied = await query(BEACON_PROVIDER_POOL_SQL.applyRelease, [
+        const applied = await query(AKENTROS_PROVIDER_POOL_SQL.applyRelease, [
           Math.max(Number(state.in_flight || 0) - 1, 0),
           ok ? 1 : 0,
           ok ? 0 : 1,
@@ -335,15 +335,15 @@ export function createBeaconProviderPoolStore(query: BeaconQuery) {
   });
 }
 
-/** claimConfiguredBeaconProviderCredential 需要的 pool store 子集
- * (完整的 createBeaconProviderPoolStore 回傳值為其超集)。 */
-export interface BeaconProviderPoolClaimStore {
+/** claimConfiguredAkentrosProviderCredential 需要的 pool store 子集
+ * (完整的 createAkentrosProviderPoolStore 回傳值為其超集)。 */
+export interface AkentrosProviderPoolClaimStore {
   claim(input: {
     poolId: string;
     requestId: string;
     leaseTtlMs?: number;
     excludedCredentialIds?: string[];
-  }): Promise<BeaconCredentialLease | null>;
+  }): Promise<AkentrosCredentialLease | null>;
   release(input: {
     leaseId: string;
     success: boolean;
@@ -353,7 +353,7 @@ export interface BeaconProviderPoolClaimStore {
   }): Promise<unknown>;
 }
 
-export async function claimConfiguredBeaconProviderCredential({
+export async function claimConfiguredAkentrosProviderCredential({
   store,
   pool,
   poolId,
@@ -363,7 +363,7 @@ export async function claimConfiguredBeaconProviderCredential({
   leaseTtlMs = pool?.selection?.lease_ttl_ms,
   resolveSecrets = true,
 }: {
-  store: BeaconProviderPoolClaimStore;
+  store: AkentrosProviderPoolClaimStore;
   pool: any;
   poolId: string;
   requestId: string;
@@ -371,7 +371,7 @@ export async function claimConfiguredBeaconProviderCredential({
   excludedCredentialIds?: string[] | Set<string>;
   leaseTtlMs?: number;
   resolveSecrets?: boolean;
-}): Promise<BeaconCredentialClaim | null> {
+}): Promise<AkentrosCredentialClaim | null> {
   if (!store || typeof store.claim !== "function" || typeof store.release !== "function") {
     throw new TypeError("A provider pool store with claim and release functions is required.");
   }

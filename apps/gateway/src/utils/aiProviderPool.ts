@@ -1,25 +1,25 @@
-import type { BeaconCredentialClaim } from "@beacon/core/providerPool";
+import type { AkentrosCredentialClaim } from "@akentros/core/providerPool";
 import {
-  claimConfiguredBeaconProviderCredential,
-  createBeaconProviderPoolStore,
-} from "@beacon/core/providerPool";
-import { PROVIDER_POOLS, requireProviderPool } from "@beacon/core/providers";
-import type { BeaconRuntimeEnv } from "../types.ts";
+  claimConfiguredAkentrosProviderCredential,
+  createAkentrosProviderPoolStore,
+} from "@akentros/core/providerPool";
+import { PROVIDER_POOLS, requireProviderPool } from "@akentros/core/providers";
+import type { AkentrosRuntimeEnv } from "../types.ts";
 import { ensureAiSchema } from "./aiSchema.ts";
-import { createBeaconQuery } from "./db.ts";
+import { createAkentrosQuery } from "./db.ts";
 
-const stores = new Map<string, ReturnType<typeof createBeaconProviderPoolStore>>();
+const stores = new Map<string, ReturnType<typeof createAkentrosProviderPoolStore>>();
 const syncPromises = new Map<string, Promise<unknown>>();
 
-function databaseKey(env: BeaconRuntimeEnv) {
+function databaseKey(env: AkentrosRuntimeEnv) {
   return env?.DATABASE_URL?.trim() || "unconfigured-main";
 }
 
-async function ready(env: BeaconRuntimeEnv) {
+async function ready(env: AkentrosRuntimeEnv) {
   await ensureAiSchema(env);
   const key = databaseKey(env);
   if (!stores.has(key)) {
-    stores.set(key, createBeaconProviderPoolStore(createBeaconQuery(env)));
+    stores.set(key, createAkentrosProviderPoolStore(createAkentrosQuery(env)));
   }
   if (!syncPromises.has(key)) {
     syncPromises.set(
@@ -37,17 +37,17 @@ async function ready(env: BeaconRuntimeEnv) {
   return stores.get(key)!;
 }
 
-export async function claimBeaconProviderCredential(
-  env: BeaconRuntimeEnv,
+export async function claimAkentrosProviderCredential(
+  env: AkentrosRuntimeEnv,
   route: { credential_pool: string; timeout_ms?: number },
   requestId: string,
   excludedCredentialIds: string[] = [],
-): Promise<BeaconCredentialClaim | null> {
+): Promise<AkentrosCredentialClaim | null> {
   const store = await ready(env);
   const pool = requireProviderPool(route.credential_pool);
   const environment: Record<string, string | undefined> = {};
   Object.assign(environment, globalThis.process?.env || {}, env || {});
-  return claimConfiguredBeaconProviderCredential({
+  return claimConfiguredAkentrosProviderCredential({
     store,
     pool,
     poolId: route.credential_pool,
@@ -59,9 +59,9 @@ export async function claimBeaconProviderCredential(
   });
 }
 
-export async function releaseBeaconProviderCredential(
-  env: BeaconRuntimeEnv,
-  claim: Pick<BeaconCredentialClaim, "leaseId" | "pool">,
+export async function releaseAkentrosProviderCredential(
+  env: AkentrosRuntimeEnv,
+  claim: Pick<AkentrosCredentialClaim, "leaseId" | "pool">,
   outcome: unknown,
 ) {
   const store = await ready(env);

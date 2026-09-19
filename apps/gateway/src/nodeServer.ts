@@ -8,10 +8,10 @@ import { fileURLToPath } from "node:url";
 import { serve } from "@hono/node-server";
 import dotenv from "dotenv";
 import { createApp } from "./app.ts";
-import type { BeaconRuntimeEnv } from "./types.ts";
-import { installNodeBeaconDbAdapter } from "./utils/db.ts";
-import { logBeaconEvent } from "./utils/logger.ts";
-import { runBeaconMaintenance } from "./utils/maintenance.ts";
+import type { AkentrosRuntimeEnv } from "./types.ts";
+import { installNodeAkentrosDbAdapter } from "./utils/db.ts";
+import { logAkentrosEvent } from "./utils/logger.ts";
+import { runAkentrosMaintenance } from "./utils/maintenance.ts";
 
 // .dev.vars 相對於此檔;dotenv/config 預設只讀 .env,這裡補載 .dev.vars。
 dotenv.config({
@@ -22,13 +22,13 @@ dotenv.config({
 
 // Node 自架部署:啟動時安裝 node:sqlite adapter(Workers 部署由 DO 建構子
 // 安裝 storage.sql adapter,見 src/worker/)。
-await installNodeBeaconDbAdapter();
+await installNodeAkentrosDbAdapter();
 
-const env = process.env as BeaconRuntimeEnv;
+const env = process.env as AkentrosRuntimeEnv;
 
-const port = Number(env.BEACON_PORT || env.PORT || 8787);
+const port = Number(env.AKENTROS_PORT || env.PORT || 8787);
 
-const intervalMs = Number(env.BEACON_MAINTENANCE_INTERVAL_MS) || 30 * 60_000;
+const intervalMs = Number(env.AKENTROS_MAINTENANCE_INTERVAL_MS) || 30 * 60_000;
 
 // 關機緩衝:等在途請求自然完成;逾時後主動斷開仍在串流的連線(SSE 等)。
 const SHUTDOWN_GRACE_MS = 3_000;
@@ -51,19 +51,19 @@ const app = createApp(env);
 const server = serve(
   {
     // 第二個參數是 @hono/node-server 的連線綁定({ incoming, outgoing })。
-    // 把 socket 來源位址以 BEACON_REMOTE_ADDR 注入每請求 env 供 auth 限流
+    // 把 socket 來源位址以 AKENTROS_REMOTE_ADDR 注入每請求 env 供 auth 限流
     // 使用(見 routes/auth.ts);其餘照抄 env,行為與其他部署一致。
     fetch: (request, binding) => {
       const perRequestEnv = {
         ...env,
-        BEACON_REMOTE_ADDR: socketRemoteAddress((binding as { incoming?: unknown } | undefined)?.incoming),
+        AKENTROS_REMOTE_ADDR: socketRemoteAddress((binding as { incoming?: unknown } | undefined)?.incoming),
       };
       return app.fetch(request, perRequestEnv as unknown as typeof env);
     },
     port,
   },
   (info) => {
-    logBeaconEvent("info", "beacon_gateway_listening", {
+    logAkentrosEvent("info", "akentros_gateway_listening", {
       port: info.port,
       maintenanceIntervalMinutes: Math.round(intervalMs / 60_000),
     });
@@ -79,8 +79,8 @@ server.on("connection", (socket) => {
 });
 
 const maintenanceTimer = setInterval(() => {
-  runBeaconMaintenance(env).catch((error: any) => {
-    logBeaconEvent("error", "beacon_scheduled_maintenance_failed", {
+  runAkentrosMaintenance(env).catch((error: any) => {
+    logAkentrosEvent("error", "akentros_scheduled_maintenance_failed", {
       errorCode: error?.code || error?.name || "unknown",
     });
   });

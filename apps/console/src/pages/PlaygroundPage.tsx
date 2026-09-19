@@ -1,8 +1,8 @@
 import React from "react";
 import { Alert, formatDuration, PageHeader } from "../components/ui";
-import { type BeaconStreamDeltaEvent, streamBeaconChat } from "../lib/beacon/api/beaconChatStream";
-import { loadBeaconModels } from "../lib/beacon/catalog/loadBeaconCatalog";
-import type { BeaconChatUsage, BeaconModel } from "../lib/beacon/types";
+import { type AkentrosStreamDeltaEvent, streamAkentrosChat } from "../lib/akentros/api/akentrosChatStream";
+import { loadAkentrosModels } from "../lib/akentros/catalog/loadAkentrosCatalog";
+import type { AkentrosChatUsage, AkentrosModel } from "../lib/akentros/types";
 
 // 串流測試(Playground):雙欄佈局,左側請求參數、右側即時輸出。
 // 輸出以 rAF 節流更新,避免每個 delta 都觸發 re-render。
@@ -39,7 +39,7 @@ function isAbortError(cause: unknown): boolean {
 }
 
 export function PlaygroundPage() {
-  const [models, setModels] = React.useState<BeaconModel[]>([]);
+  const [models, setModels] = React.useState<AkentrosModel[]>([]);
   const [catalogError, setCatalogError] = React.useState("");
   const [authMode, setAuthMode] = React.useState<"account" | "api-key">("account");
   const [apiKey, setApiKey] = React.useState("");
@@ -51,7 +51,7 @@ export function PlaygroundPage() {
   const [status, setStatus] = React.useState<RunStatus>("idle");
   const [output, setOutput] = React.useState("");
   const [reasoningCharacters, setReasoningCharacters] = React.useState(0);
-  const [usage, setUsage] = React.useState<BeaconChatUsage | null>(null);
+  const [usage, setUsage] = React.useState<AkentrosChatUsage | null>(null);
   const [firstDeltaMs, setFirstDeltaMs] = React.useState<number | null>(null);
   const [elapsedMs, setElapsedMs] = React.useState(0);
   const [error, setError] = React.useState("");
@@ -86,7 +86,7 @@ export function PlaygroundPage() {
 
   React.useEffect(() => {
     const controller = new AbortController();
-    loadBeaconModels(controller.signal)
+    loadAkentrosModels(controller.signal)
       .then((catalog) => {
         const streamable = catalog.models.filter(
           (model) => model.status === "available" && model.capabilities.includes("streaming"),
@@ -154,7 +154,7 @@ export function PlaygroundPage() {
   }, []);
 
   const onDelta = React.useCallback(
-    (event: BeaconStreamDeltaEvent) => {
+    (event: AkentrosStreamDeltaEvent) => {
       contentRef.current += event.content;
       reasoningRef.current += event.reasoning;
       if (firstDeltaRef.current === null) {
@@ -173,7 +173,7 @@ export function PlaygroundPage() {
     if (nextModel) setMaxTokens((current) => Math.min(current, nextModel.max_output_tokens));
   };
 
-  const chooseModel = (model: BeaconModel) => {
+  const chooseModel = (model: AkentrosModel) => {
     changeModel(model.id);
     setModelMenuOpen(false);
     setActiveModelIndex(0);
@@ -203,7 +203,7 @@ export function PlaygroundPage() {
     abortRef.current = controller;
 
     try {
-      const result = await streamBeaconChat({
+      const result = await streamAkentrosChat({
         authMode,
         apiKey: authMode === "api-key" ? apiKey.trim() : undefined,
         model: normalizedModelId,
@@ -225,7 +225,7 @@ export function PlaygroundPage() {
         setStatus("stopped");
       } else {
         setStatus("error");
-        setError(cause instanceof Error ? cause.message : "Beacon 串流測試失敗。");
+        setError(cause instanceof Error ? cause.message : "Akentros 串流測試失敗。");
       }
     } finally {
       if (abortRef.current === controller) abortRef.current = null;
@@ -289,7 +289,7 @@ export function PlaygroundPage() {
             <small>
               {authMode === "account"
                 ? "免填金鑰,直接使用帳戶餘額測試。"
-                : "輸入專屬 sk-beacon-live_… 金鑰進行公開端點驗證。"}
+                : "輸入專屬 sk-akentros-live_… 金鑰進行公開端點驗證。"}
             </small>
           </div>
 
@@ -303,7 +303,7 @@ export function PlaygroundPage() {
                 onChange={(event) => setApiKey(event.target.value)}
                 autoComplete="off"
                 spellCheck={false}
-                placeholder="sk-beacon-live_…"
+                placeholder="sk-akentros-live_…"
                 disabled={running}
               />
             </label>
@@ -342,11 +342,11 @@ export function PlaygroundPage() {
                 spellCheck={false}
                 role="combobox"
                 aria-expanded={modelMenuOpen}
-                aria-controls="beacon-model-options"
+                aria-controls="akentros-model-options"
                 disabled={running}
               />
               {modelMenuOpen && (
-                <div className="model-picker-menu" id="beacon-model-options" role="listbox">
+                <div className="model-picker-menu" id="akentros-model-options" role="listbox">
                   {filteredModels.length ? (
                     filteredModels.map((model, index) => (
                       <button

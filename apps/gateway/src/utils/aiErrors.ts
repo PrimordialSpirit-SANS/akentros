@@ -1,14 +1,14 @@
-import { BeaconError, invalidRequest, openAiErrorBody } from "@beacon/core/openaiErrors";
+import { AkentrosError, invalidRequest, openAiErrorBody } from "@akentros/core/openaiErrors";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
-import type { BeaconContext } from "../types.ts";
+import type { AkentrosContext } from "../types.ts";
 
-export { BeaconError, invalidRequest, openAiErrorBody };
+export { AkentrosError, invalidRequest, openAiErrorBody };
 
-export function sendOpenAiError(c: BeaconContext, error: unknown, requestId = "") {
+export function sendOpenAiError(c: AkentrosContext, error: unknown, requestId = "") {
   const safe =
-    error instanceof BeaconError
+    error instanceof AkentrosError
       ? error
-      : new BeaconError("Beacon could not complete the request.", { expose: false });
+      : new AkentrosError("Akentros could not complete the request.", { expose: false });
   if (requestId) c.header("X-Request-Id", requestId);
   c.header("Cache-Control", "no-store, no-transform");
   c.header("Pragma", "no-cache");

@@ -1,5 +1,5 @@
 {
-  "name": "beacon",
+  "name": "akentros",
   "private": true,
   "version": "0.1.0",
   "type": "module",
@@ -16,11 +16,11 @@
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
     "build": "npm run build --workspaces --if-present",
-    "dev:console": "npm run dev --workspace @beacon/console",
+    "dev:console": "npm run dev --workspace @akentros/console",
     "dev:gateway": "node apps/gateway/src/nodeServer.ts",
-    "dev:worker": "npm run dev:worker --workspace @beacon/gateway",
-    "deploy:worker": "npm run deploy:worker --workspace @beacon/gateway",
-    "migrate": "npm run migrate --workspace @beacon/gateway",
+    "dev:worker": "npm run dev:worker --workspace @akentros/gateway",
+    "deploy:worker": "npm run deploy:worker --workspace @akentros/gateway",
+    "migrate": "npm run migrate --workspace @akentros/gateway",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "start:gateway": "node apps/gateway/src/nodeServer.ts"

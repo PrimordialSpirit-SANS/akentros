@@ -1,13 +1,13 @@
-import { parseUsdToMicros, usdMicrosToDecimalString } from "@beacon/core/pricing";
+import { parseUsdToMicros, usdMicrosToDecimalString } from "@akentros/core/pricing";
 import { Hono } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { createRateLimit } from "../middleware/rateLimit.ts";
-import type { BeaconContext, BeaconEnv, BeaconNext, BeaconRuntimeEnv } from "../types.ts";
+import type { AkentrosContext, AkentrosEnv, AkentrosNext, AkentrosRuntimeEnv } from "../types.ts";
 import { randomBytesHex } from "../utils/crypto.ts";
-import { signBeaconJwt, verifyBeaconJwt } from "../utils/jwt.ts";
-import type { BeaconAccount } from "../utils/users.ts";
+import { signAkentrosJwt, verifyAkentrosJwt } from "../utils/jwt.ts";
+import type { AkentrosAccount } from "../utils/users.ts";
 import {
-  BEACON_PASSWORD_ITERATIONS,
+  AKENTROS_PASSWORD_ITERATIONS,
   createUser,
   findUserByEmail,
   findUserById,
@@ -18,19 +18,19 @@ import {
 
 // 內建帳號系統:會話端點 + authenticateToken/requireCsrfToken 中介層。
 // 與前端的約定:
-// - beacon_token:httpOnly 會話 cookie(authenticateToken 驗證)
+// - akentros_token:httpOnly 會話 cookie(authenticateToken 驗證)
 // - csrf_token:可讀 cookie,apiFetch 會放進 X-CSRF-Token(雙提交)
 
-export const authRoutes = new Hono<BeaconEnv>();
+export const authRoutes = new Hono<AkentrosEnv>();
 
-export const BEACON_SESSION_COOKIE = "beacon_token";
-export const BEACON_CSRF_COOKIE = "csrf_token";
-export const BEACON_SESSION_TTL_SECONDS = 7 * 24 * 60 * 60;
+export const AKENTROS_SESSION_COOKIE = "akentros_token";
+export const AKENTROS_CSRF_COOKIE = "csrf_token";
+export const AKENTROS_SESSION_TTL_SECONDS = 7 * 24 * 60 * 60;
 
-// 開發者管理面的會話認證:驗 beacon_token cookie(HS256 JWT)→ 載入使用者 →
+// 開發者管理面的會話認證:驗 akentros_token cookie(HS256 JWT)→ 載入使用者 →
 // c.set('user', …)。aiDeveloper.ts 依賴 user.id / role / is_banned /
-// restricted_services 等欄位,形狀需與 utils/users.ts 的 BeaconAccount 一致。
-export async function authenticateToken(c: BeaconContext, next: BeaconNext) {
+// restricted_services 等欄位,形狀需與 utils/users.ts 的 AkentrosAccount 一致。
+export async function authenticateToken(c: AkentrosContext, next: AkentrosNext) {
   const secret = String(c.env?.JWT_SECRET || "");
   if (secret.length < 32) {
     return c.json(
@@ -42,8 +42,8 @@ export async function authenticateToken(c: BeaconContext, next: BeaconNext) {
     );
   }
 
-  const token = getCookie(c, BEACON_SESSION_COOKIE) || "";
-  const payload = token ? await verifyBeaconJwt(token, secret) : null;
+  const token = getCookie(c, AKENTROS_SESSION_COOKIE) || "";
+  const payload = token ? await verifyAkentrosJwt(token, secret) : null;
   if (!payload) {
     return c.json(
       {
@@ -72,13 +72,13 @@ export async function authenticateToken(c: BeaconContext, next: BeaconNext) {
 // CSRF:雙提交 cookie。前端 apiFetch 會讀 csrf_token cookie 並帶 X-CSRF-Token。
 // 沒有 csrf_token cookie 的請求(尚未取得 session 的 login/register)直接放行,
 // 因為此時沒有可被冒用的憑證;取得 session 後所有 mutating 請求都會被要求比對。
-export async function requireCsrfToken(c: BeaconContext, next: BeaconNext) {
+export async function requireCsrfToken(c: AkentrosContext, next: AkentrosNext) {
   const method = c.req.method.toUpperCase();
   if (method === "GET" || method === "HEAD" || method === "OPTIONS") {
     await next();
     return;
   }
-  const cookieToken = getCookie(c, BEACON_CSRF_COOKIE) || "";
+  const cookieToken = getCookie(c, AKENTROS_CSRF_COOKIE) || "";
   if (!cookieToken) {
     await next();
     return;
@@ -107,38 +107,38 @@ function timingSafeEqual(left: string, right: string): boolean {
 }
 
 const authLimiter = createRateLimit({
-  keyPrefix: "beacon-auth",
+  keyPrefix: "akentros-auth",
   windowMs: 15 * 60 * 1000,
   max: 60,
-  keyGenerator: beaconAuthRateLimitIdentity,
+  keyGenerator: akentrosAuthRateLimitIdentity,
 });
 
 // auth 限流(登入/註冊/登出)的身份決定順序:
-// 1. BEACON_TRUST_PROXY=true:明確宣告信任反向代理,以 cf-connecting-ip 標頭
+// 1. AKENTROS_TRUST_PROXY=true:明確宣告信任反向代理,以 cf-connecting-ip 標頭
 //    為準。僅當 gateway 前方有會「覆寫」此標頭的受信賴代理(Cloudflare 等)
 //    才應開啟。
 // 2. 連線來源位址:Node 自架部署由 nodeServer 從 socket 注入
-//    BEACON_REMOTE_ADDR,不可偽造,是未開啟信任代理時的預設身份。若直接
+//    AKENTROS_REMOTE_ADDR,不可偽造,是未開啟信任代理時的預設身份。若直接
 //    讀請求標頭,Node/http 不會過濾 cf-connecting-ip,攻擊者每個請求帶一個
 //    不同的假 IP 即可完全繞過限流(無限暴力嘗試密碼、洗註冊附贈點數)。
 // 3. Workers/DO 部署:流量一律經 Cloudflare 代理,標頭由其附加、用戶端
 //    帶入的同名標頭會被覆蓋,且 runtime 內拿不到 socket 位址 → 以標頭為準。
 // 4. 都拿不到(本地 IPC、Unix socket)併入 "local" 共享桶。
-export function beaconAuthRateLimitIdentity(c: BeaconContext): string {
+export function akentrosAuthRateLimitIdentity(c: AkentrosContext): string {
   const forwarded = String(c.req.header("cf-connecting-ip") || "").trim();
   if (
-    String(c.env?.BEACON_TRUST_PROXY || "")
+    String(c.env?.AKENTROS_TRUST_PROXY || "")
       .trim()
       .toLowerCase() === "true"
   ) {
     return forwarded || "local";
   }
-  const remote = String((c.env as Record<string, unknown>)?.BEACON_REMOTE_ADDR || "").trim();
+  const remote = String((c.env as Record<string, unknown>)?.AKENTROS_REMOTE_ADDR || "").trim();
   if (remote) return remote;
   return forwarded || "local";
 }
 
-function isSecureRequest(c: BeaconContext): boolean {
+function isSecureRequest(c: AkentrosContext): boolean {
   try {
     return (
       new URL(c.req.url).protocol === "https:" || String(c.req.header("x-forwarded-proto") || "") === "https"
@@ -148,12 +148,12 @@ function isSecureRequest(c: BeaconContext): boolean {
   }
 }
 
-function requireJwtSecret(env: BeaconRuntimeEnv): string | null {
+function requireJwtSecret(env: AkentrosRuntimeEnv): string | null {
   const secret = String(env?.JWT_SECRET || "");
   return secret.length >= 32 ? secret : null;
 }
 
-function issueSession(c: BeaconContext, env: BeaconRuntimeEnv, userId: string) {
+function issueSession(c: AkentrosContext, env: AkentrosRuntimeEnv, userId: string) {
   const secret = requireJwtSecret(env);
   if (!secret) {
     return c.json(
@@ -164,35 +164,35 @@ function issueSession(c: BeaconContext, env: BeaconRuntimeEnv, userId: string) {
       503,
     );
   }
-  return signBeaconJwt({ sub: userId }, secret, BEACON_SESSION_TTL_SECONDS).then((jwt) => {
-    setCookie(c, BEACON_SESSION_COOKIE, jwt, {
+  return signAkentrosJwt({ sub: userId }, secret, AKENTROS_SESSION_TTL_SECONDS).then((jwt) => {
+    setCookie(c, AKENTROS_SESSION_COOKIE, jwt, {
       httpOnly: true,
       sameSite: "Lax",
       secure: isSecureRequest(c),
       path: "/",
-      maxAge: BEACON_SESSION_TTL_SECONDS,
+      maxAge: AKENTROS_SESSION_TTL_SECONDS,
     });
-    setCookie(c, BEACON_CSRF_COOKIE, randomBytesHex(32), {
+    setCookie(c, AKENTROS_CSRF_COOKIE, randomBytesHex(32), {
       httpOnly: false,
       sameSite: "Lax",
       secure: isSecureRequest(c),
       path: "/",
-      maxAge: BEACON_SESSION_TTL_SECONDS,
+      maxAge: AKENTROS_SESSION_TTL_SECONDS,
     });
   });
 }
 
-function registrationDisabled(env: BeaconRuntimeEnv): boolean {
+function registrationDisabled(env: AkentrosRuntimeEnv): boolean {
   return (
-    String(env?.BEACON_DISABLE_REGISTRATION || "")
+    String(env?.AKENTROS_DISABLE_REGISTRATION || "")
       .trim()
       .toLowerCase() === "true"
   );
 }
 
-function signupBonusUsdMicros(env: BeaconRuntimeEnv): string {
+function signupBonusUsdMicros(env: AkentrosRuntimeEnv): string {
   try {
-    return parseUsdToMicros(env?.BEACON_SIGNUP_BONUS_USD ?? "5.00", "BEACON_SIGNUP_BONUS_USD").toString();
+    return parseUsdToMicros(env?.AKENTROS_SIGNUP_BONUS_USD ?? "5.00", "AKENTROS_SIGNUP_BONUS_USD").toString();
   } catch {
     return "5000000";
   }
@@ -209,7 +209,7 @@ const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 authRoutes.use("*", authLimiter);
 
-authRoutes.post("/register", async (c: BeaconContext) => {
+authRoutes.post("/register", async (c: AkentrosContext) => {
   if (registrationDisabled(c.env)) {
     return c.json(
       { error: "Registration is disabled on this deployment.", code: "registration_disabled" },
@@ -242,7 +242,7 @@ authRoutes.post("/register", async (c: BeaconContext) => {
   }
 
   const passwordHash = await hashPassword(password, c.env);
-  let user: BeaconAccount;
+  let user: AkentrosAccount;
   try {
     user = await createUser(c.env, {
       email,
@@ -263,7 +263,7 @@ authRoutes.post("/register", async (c: BeaconContext) => {
   return c.json({ user: publicUser(user) }, 201);
 });
 
-authRoutes.post("/login", async (c: BeaconContext) => {
+authRoutes.post("/login", async (c: AkentrosContext) => {
   let body: Record<string, unknown>;
   try {
     body = await c.req.json();
@@ -280,7 +280,7 @@ authRoutes.post("/login", async (c: BeaconContext) => {
   const storedHash = await findUserPasswordHash(c.env, email);
   const passwordOk = await verifyPassword(
     password,
-    storedHash || `pbkdf2$${BEACON_PASSWORD_ITERATIONS}$00$00`,
+    storedHash || `pbkdf2$${AKENTROS_PASSWORD_ITERATIONS}$00$00`,
   );
   const user = passwordOk ? await findUserByEmail(c.env, email) : null;
   if (!user || user.is_banned || !passwordOk) {
@@ -291,20 +291,20 @@ authRoutes.post("/login", async (c: BeaconContext) => {
   return c.json({ user: publicUser(user) });
 });
 
-authRoutes.post("/logout", async (c: BeaconContext) => {
-  deleteCookie(c, BEACON_SESSION_COOKIE, { path: "/" });
-  deleteCookie(c, BEACON_CSRF_COOKIE, { path: "/" });
+authRoutes.post("/logout", async (c: AkentrosContext) => {
+  deleteCookie(c, AKENTROS_SESSION_COOKIE, { path: "/" });
+  deleteCookie(c, AKENTROS_CSRF_COOKIE, { path: "/" });
   return c.json({ ok: true });
 });
 
-authRoutes.get("/me", authenticateToken, async (c: BeaconContext) => {
+authRoutes.get("/me", authenticateToken, async (c: AkentrosContext) => {
   // authenticateToken 已設 c.set('user', …);重新讀取以取得最新點數。
   const user = await findUserById(c.env, c.get("user")?.id || "");
   if (!user) return c.json({ error: "Account not found.", code: "user_not_found" }, 404);
   return c.json({ user: publicUser(user) });
 });
 
-function publicUser(user: BeaconAccount) {
+function publicUser(user: AkentrosAccount) {
   return {
     id: user.id,
     username: user.username,

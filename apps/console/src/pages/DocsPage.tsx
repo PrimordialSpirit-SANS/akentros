@@ -1,11 +1,11 @@
 import React from "react";
 import { CopyButton, PageHeader } from "../components/ui";
-import { getBeaconChatCompletionsUrl, getBeaconPublicApiRoot } from "../lib/beacon/api/beaconDeveloperApi";
-import { buildCodeExamples, type CodeLanguage } from "../lib/beacon/utils/buildCodeExamples";
+import { getAkentrosChatCompletionsUrl, getAkentrosPublicApiRoot } from "../lib/akentros/api/akentrosDeveloperApi";
+import { buildCodeExamples, type CodeLanguage } from "../lib/akentros/utils/buildCodeExamples";
 
 export function DocsPage() {
   const [language, setLanguage] = React.useState<CodeLanguage>("curl");
-  const examples = buildCodeExamples(getBeaconPublicApiRoot(), "YOUR_MODEL_ID");
+  const examples = buildCodeExamples(getAkentrosPublicApiRoot(), "YOUR_MODEL_ID");
   const current = examples[language];
 
   return (
@@ -23,7 +23,7 @@ export function DocsPage() {
         <li className="card">
           <span>02</span>
           <strong>設定環境變數</strong>
-          <code>BEACON_API_KEY=sk-beacon-live_…</code>
+          <code>AKENTROS_API_KEY=sk-akentros-live_…</code>
         </li>
         <li className="card">
           <span>03</span>
@@ -76,7 +76,7 @@ export function DocsPage() {
         <div>
           <strong style={{ fontSize: "0.84rem" }}>Endpoint</strong>
           <div>
-            <code>{getBeaconChatCompletionsUrl()}</code>
+            <code>{getAkentrosChatCompletionsUrl()}</code>
           </div>
         </div>
       </div>
@@ -97,7 +97,7 @@ export function DocsPage() {
         <div>
           <strong style={{ fontSize: "0.84rem" }}>Idempotency-Key 語意</strong>
           <p style={{ margin: "4px 0 0", fontSize: "0.85rem", lineHeight: 1.6 }}>
-            冪等鍵用於防止同一請求被重複執行與重複扣款。與 OpenAI「重放原始回應」的語意不同:Beacon 不落地
+            冪等鍵用於防止同一請求被重複執行與重複扣款。與 OpenAI「重放原始回應」的語意不同:Akentros 不落地
             prompt 與 completion,已完成的冪等鍵重送會回
             <code>409 idempotent_request_replayed</code>(附原始 X-Request-Id),進行中的鍵則回
             <code>409 idempotent_request_in_progress</code>。依賴冪等重放的客戶端應將 409

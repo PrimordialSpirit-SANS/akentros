@@ -6,7 +6,7 @@ labels: enhancement
 
 **Problem**
 
-What are you trying to do that Beacon currently does not support?
+What are you trying to do that Akentros currently does not support?
 
 **Proposed solution**
 

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { buildCodeExamples } from "./buildCodeExamples";
 
 const API_ROOT = "https://api.example.com/api/ai/v1";
-const MODEL = "beacon-mini";
+const MODEL = "akentros-mini";
 
 describe("buildCodeExamples", () => {
   it("returns all four languages", () => {
@@ -23,7 +23,7 @@ describe("buildCodeExamples", () => {
 
   it("uses bearer authorization in the curl example", () => {
     const examples = buildCodeExamples(API_ROOT, MODEL);
-    expect(examples.curl.code).toContain("Authorization: Bearer $BEACON_API_KEY");
+    expect(examples.curl.code).toContain("Authorization: Bearer $AKENTROS_API_KEY");
   });
 
   it("requests streaming in every example", () => {

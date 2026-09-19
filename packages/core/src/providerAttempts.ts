@@ -1,9 +1,9 @@
-import type { BeaconQuery } from "./query.ts";
-import { beaconQueryRows as rows } from "./query.ts";
+import type { AkentrosQuery } from "./query.ts";
+import { akentrosQueryRows as rows } from "./query.ts";
 
 // SQLite 方言:finish 的「更新 attempt + 成功時回寫 ai_requests」由
 // transaction(fn) 保證原子性;時間由呼叫端綁定。
-export const BEACON_PROVIDER_ATTEMPT_SQL = Object.freeze({
+export const AKENTROS_PROVIDER_ATTEMPT_SQL = Object.freeze({
   start: `
     INSERT INTO ai_provider_attempts (
       ai_request_id, request_id, attempt_number, provider, pool_id,
@@ -42,7 +42,7 @@ export const BEACON_PROVIDER_ATTEMPT_SQL = Object.freeze({
 });
 
 // 執行交易:query 介面可選提供 transaction(fn)。
-async function withTransaction<T>(query: BeaconQuery, fn: () => Promise<T>): Promise<T> {
+async function withTransaction<T>(query: AkentrosQuery, fn: () => Promise<T>): Promise<T> {
   if (typeof query?.transaction === "function") {
     return (await query.transaction(fn)) as T;
   }
@@ -65,15 +65,15 @@ function bounded(value: unknown, label: string, maximum: number, optional = fals
   return normalized;
 }
 
-export interface BeaconAttemptAuditRecord {
+export interface AkentrosAttemptAuditRecord {
   id: string;
   requestId: string;
   attemptNumber: number;
 }
 
 /** 嘗試稽核的消費端契約:runtime 只讀 start 回傳的 id,並以 finish? 記錄
- * 結果;完整 store 回傳 BeaconAttemptAuditRecord(為 { id } 的超集)。 */
-export interface BeaconAttemptAuditor {
+ * 結果;完整 store 回傳 AkentrosAttemptAuditRecord(為 { id } 的超集)。 */
+export interface AkentrosAttemptAuditor {
   start(input: {
     requestId: string;
     attemptNumber: number;
@@ -92,7 +92,7 @@ export interface BeaconAttemptAuditor {
   ): Promise<unknown>;
 }
 
-export function createBeaconProviderAttemptStore(query: BeaconQuery) {
+export function createAkentrosProviderAttemptStore(query: AkentrosQuery) {
   if (typeof query !== "function") throw new TypeError("A database query function is required.");
   return Object.freeze({
     async start({
@@ -105,8 +105,8 @@ export function createBeaconProviderAttemptStore(query: BeaconQuery) {
       attemptNumber: number;
       route: any;
       credentialId: string | null;
-    }): Promise<BeaconAttemptAuditRecord | null> {
-      const result = await query(BEACON_PROVIDER_ATTEMPT_SQL.start, [
+    }): Promise<AkentrosAttemptAuditRecord | null> {
+      const result = await query(AKENTROS_PROVIDER_ATTEMPT_SQL.start, [
         positiveInteger(attemptNumber, "attemptNumber"),
         bounded(route.provider, "route.provider", 40),
         bounded(route.credential_pool, "route.credential_pool", 120),
@@ -142,7 +142,7 @@ export function createBeaconProviderAttemptStore(query: BeaconQuery) {
       const latency = latencyMs === null ? null : Math.max(0, Math.round(Number(latencyMs)));
       const now = new Date().toISOString();
       return withTransaction(query, async () => {
-        const finished = await query(BEACON_PROVIDER_ATTEMPT_SQL.finishAttempt, [
+        const finished = await query(AKENTROS_PROVIDER_ATTEMPT_SQL.finishAttempt, [
           success ? "succeeded" : "failed",
           httpStatus === null ? null : Number(httpStatus),
           bounded(errorCategory, "errorCategory", 80, true),
@@ -154,7 +154,7 @@ export function createBeaconProviderAttemptStore(query: BeaconQuery) {
         const row: any = rows(finished)[0];
         if (!row) return null;
         if (success) {
-          await query(BEACON_PROVIDER_ATTEMPT_SQL.attachToRequest, [
+          await query(AKENTROS_PROVIDER_ATTEMPT_SQL.attachToRequest, [
             row.provider,
             row.upstream_model,
             row.route_id,

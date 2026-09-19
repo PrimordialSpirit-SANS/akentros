@@ -14,12 +14,12 @@ import {
   requireModelPricing,
 } from "../src/pricing.ts";
 
-const GPT_6_ASTRA = "beacon/gpt-6-astra";
-const GPT_52 = "beacon/gpt-5.2";
-const GPT_52_CODEX = "beacon/gpt-5.2-codex";
-const CLAUDE_OPUS_48 = "beacon/claude-opus-4-8";
-const QWEN_38_27B = "beacon/qwen-3.8-27b";
-const QWEN_38_FLASH = "beacon/qwen-3.8-flash";
+const GPT_6_ASTRA = "akentros/gpt-6-astra";
+const GPT_52 = "akentros/gpt-5.2";
+const GPT_52_CODEX = "akentros/gpt-5.2-codex";
+const CLAUDE_OPUS_48 = "akentros/claude-opus-4-8";
+const QWEN_38_27B = "akentros/qwen-3.8-27b";
+const QWEN_38_FLASH = "akentros/qwen-3.8-flash";
 
 function createSyntheticModel(billing: any) {
   return {
@@ -41,19 +41,19 @@ test("canonical pricing exposes only enabled public models", () => {
       GPT_52,
       GPT_52_CODEX,
       CLAUDE_OPUS_48,
-      "beacon/claude-sonnet-5",
-      "beacon/claude-haiku-4-5",
-      "beacon/gemini-3.5-pro",
-      "beacon/gemini-3.8-flash",
-      "beacon/gemini-3.5-flash-lite",
-      "beacon/grok-4.6",
-      "beacon/grok-4.1-fast",
-      "beacon/deepseek-v4-pro",
-      "beacon/deepseek-v4.1-flash",
-      "beacon/kimi-k3",
-      "beacon/glm-5.3",
-      "beacon/glm-5.3-flash",
-      "beacon/qwen-3.8-max",
+      "akentros/claude-sonnet-5",
+      "akentros/claude-haiku-4-5",
+      "akentros/gemini-3.5-pro",
+      "akentros/gemini-3.8-flash",
+      "akentros/gemini-3.5-flash-lite",
+      "akentros/grok-4.6",
+      "akentros/grok-4.1-fast",
+      "akentros/deepseek-v4-pro",
+      "akentros/deepseek-v4.1-flash",
+      "akentros/kimi-k3",
+      "akentros/glm-5.3",
+      "akentros/glm-5.3-flash",
+      "akentros/qwen-3.8-max",
       QWEN_38_FLASH,
       QWEN_38_27B,
     ],
@@ -63,10 +63,10 @@ test("canonical pricing exposes only enabled public models", () => {
   assert.equal(getModelPricing(GPT_52_CODEX), BACKEND_PRICING.models[GPT_52_CODEX]);
   assert.equal(getModelPricing(CLAUDE_OPUS_48), BACKEND_PRICING.models[CLAUDE_OPUS_48]);
   assert.equal(getModelPricing(QWEN_38_27B), BACKEND_PRICING.models[QWEN_38_27B]);
-  assert.equal(getModelPricing("beacon/unknown"), null);
-  assert.throws(() => requireModelPricing("beacon/unknown"), {
+  assert.equal(getModelPricing("akentros/unknown"), null);
+  assert.throws(() => requireModelPricing("akentros/unknown"), {
     name: "RangeError",
-    message: "Unknown or disabled Beacon model: beacon/unknown",
+    message: "Unknown or disabled Akentros model: akentros/unknown",
   });
 });
 
@@ -100,12 +100,12 @@ test("USD billing is exact to micro-USD, rounds up once, and applies the minimum
 
 test("USD rates pass through upstream provider prices exactly", () => {
   for (const [modelId, inputUsd, outputUsd] of [
-    ["beacon/qwen-3.8-max", "2.01", "6.00"],
+    ["akentros/qwen-3.8-max", "2.01", "6.00"],
     [QWEN_38_FLASH, "0.15", "0.48"],
-    ["beacon/glm-5.3", "1.41", "4.41"],
-    ["beacon/kimi-k3", "3.00", "15.00"],
-    ["beacon/deepseek-v4.1-flash", "0.15", "0.60"],
-    ["beacon/deepseek-v4-pro", "1.32", "3.96"],
+    ["akentros/glm-5.3", "1.41", "4.41"],
+    ["akentros/kimi-k3", "3.00", "15.00"],
+    ["akentros/deepseek-v4.1-flash", "0.15", "0.60"],
+    ["akentros/deepseek-v4-pro", "1.32", "3.96"],
   ] as const) {
     assert.equal(calculateActualCostMicros(modelId, 1_000_000, 0), Number(parseUsdToMicros(inputUsd)));
     assert.equal(calculateActualCostMicros(modelId, 0, 1_000_000), Number(parseUsdToMicros(outputUsd)));
@@ -184,41 +184,41 @@ test("Claude Opus 4.8 keeps its official Anthropic route", () => {
 });
 
 test("Gemini 3.5 Pro bills through the official Gemini API route", () => {
-  assert.equal(calculateActualCostMicros("beacon/gemini-3.5-pro", 1_000_000, 1_000_000), 14030000);
+  assert.equal(calculateActualCostMicros("akentros/gemini-3.5-pro", 1_000_000, 1_000_000), 14030000);
   assert.deepEqual(
-    listCandidateRoutes("beacon/gemini-3.5-pro").map((route) => route.upstream_model),
+    listCandidateRoutes("akentros/gemini-3.5-pro").map((route) => route.upstream_model),
     ["gemini-3.5-pro"],
   );
 });
 
 test("Grok 4.6 bills through the official xAI route", () => {
-  assert.equal(calculateActualCostMicros("beacon/grok-4.6", 1_000_000, 1_000_000), 8010000);
+  assert.equal(calculateActualCostMicros("akentros/grok-4.6", 1_000_000, 1_000_000), 8010000);
   assert.deepEqual(
-    listCandidateRoutes("beacon/grok-4.6").map((route) => route.upstream_model),
+    listCandidateRoutes("akentros/grok-4.6").map((route) => route.upstream_model),
     ["grok-4.6"],
   );
 });
 
 test("DeepSeek V4 Pro falls back from the official API to QwenCloud", () => {
-  assert.equal(calculateActualCostMicros("beacon/deepseek-v4-pro", 1_000_000, 1_000_000), 5280000);
+  assert.equal(calculateActualCostMicros("akentros/deepseek-v4-pro", 1_000_000, 1_000_000), 5280000);
   assert.deepEqual(
-    listCandidateRoutes("beacon/deepseek-v4-pro").map((route) => route.route_id),
+    listCandidateRoutes("akentros/deepseek-v4-pro").map((route) => route.route_id),
     ["deepseek-v4-pro-deepseek", "deepseek-v4-pro-qwencloud"],
   );
 });
 
 test("Kimi K3 falls back from Moonshot AI to QwenCloud", () => {
-  assert.equal(calculateActualCostMicros("beacon/kimi-k3", 1_000_000, 1_000_000), 18000000);
+  assert.equal(calculateActualCostMicros("akentros/kimi-k3", 1_000_000, 1_000_000), 18000000);
   assert.deepEqual(
-    listCandidateRoutes("beacon/kimi-k3").map((route) => route.route_id),
+    listCandidateRoutes("akentros/kimi-k3").map((route) => route.route_id),
     ["kimi-k3-moonshot", "kimi-k3-qwencloud"],
   );
 });
 
 test("GLM-5.3 falls back from Z.ai to QwenCloud", () => {
-  assert.equal(calculateActualCostMicros("beacon/glm-5.3", 1_000_000, 1_000_000), 5820000);
+  assert.equal(calculateActualCostMicros("akentros/glm-5.3", 1_000_000, 1_000_000), 5820000);
   assert.deepEqual(
-    listCandidateRoutes("beacon/glm-5.3").map((route) => route.route_id),
+    listCandidateRoutes("akentros/glm-5.3").map((route) => route.route_id),
     ["glm-5.3-zhipu", "glm-5.3-qwencloud"],
   );
 });

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { loadBeaconBrandManifest, loadBeaconModels, loadBeaconProviderOfferings } from "./loadBeaconCatalog";
+import { loadAkentrosBrandManifest, loadAkentrosModels, loadAkentrosProviderOfferings } from "./loadAkentrosCatalog";
 
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -12,45 +12,45 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("loadBeaconModels", () => {
+describe("loadAkentrosModels", () => {
   it("returns a valid catalog", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       jsonResponse(200, {
         schema_version: 1,
         pricing_revision: "rev-1",
         updated_at: "2026-01-01",
-        models: [{ id: "beacon-mini" }],
+        models: [{ id: "akentros-mini" }],
       }),
     );
-    const catalog = await loadBeaconModels();
+    const catalog = await loadAkentrosModels();
     expect(catalog.pricing_revision).toBe("rev-1");
     expect(catalog.models).toHaveLength(1);
     expect(globalThis.fetch).toHaveBeenCalledWith(
-      "/data/beacon/models.v1.json",
+      "/data/akentros/models.v1.json",
       expect.objectContaining({ credentials: "same-origin" }),
     );
   });
 
   it("rejects unsupported schema versions", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse(200, { schema_version: 2 }));
-    await expect(loadBeaconModels()).rejects.toThrow("格式版本不受支援");
+    await expect(loadAkentrosModels()).rejects.toThrow("格式版本不受支援");
   });
 
   it("rejects catalogs with missing required fields", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       jsonResponse(200, { schema_version: 1, models: [{ name: "no-id" }] }),
     );
-    await expect(loadBeaconModels()).rejects.toThrow("缺少必要欄位");
+    await expect(loadAkentrosModels()).rejects.toThrow("缺少必要欄位");
   });
 
   it("surfaces HTTP failures with the status code", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse(404, {}));
-    await expect(loadBeaconModels()).rejects.toThrow("HTTP 404");
+    await expect(loadAkentrosModels()).rejects.toThrow("HTTP 404");
   });
 });
 
-describe("loadBeaconProviderOfferings", () => {
-  it("requires beacon_point currency and per million tokens billing", async () => {
+describe("loadAkentrosProviderOfferings", () => {
+  it("requires akentros_point currency and per million tokens billing", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       jsonResponse(200, {
         schema_version: 1,
@@ -60,7 +60,7 @@ describe("loadBeaconProviderOfferings", () => {
         offerings: [],
       }),
     );
-    await expect(loadBeaconProviderOfferings()).rejects.toThrow("缺少必要欄位");
+    await expect(loadAkentrosProviderOfferings()).rejects.toThrow("缺少必要欄位");
   });
 
   it("returns valid offerings", async () => {
@@ -68,29 +68,29 @@ describe("loadBeaconProviderOfferings", () => {
       jsonResponse(200, {
         schema_version: 1,
         pricing_revision: "rev-1",
-        currency: "beacon_point",
+        currency: "akentros_point",
         billing_unit: "per_million_tokens",
         offerings: [{ id: "offering-1" }],
       }),
     );
-    const offerings = await loadBeaconProviderOfferings();
+    const offerings = await loadAkentrosProviderOfferings();
     expect(offerings.offerings).toHaveLength(1);
   });
 });
 
-describe("loadBeaconBrandManifest", () => {
+describe("loadAkentrosBrandManifest", () => {
   it("validates asset identifiers", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       jsonResponse(200, { schema_version: 1, assets: [{ src: "no-id.png" }] }),
     );
-    await expect(loadBeaconBrandManifest()).rejects.toThrow("缺少必要欄位");
+    await expect(loadAkentrosBrandManifest()).rejects.toThrow("缺少必要欄位");
   });
 
   it("returns a valid manifest", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       jsonResponse(200, { schema_version: 1, assets: [{ id: "logo" }] }),
     );
-    const manifest = await loadBeaconBrandManifest();
+    const manifest = await loadAkentrosBrandManifest();
     expect(manifest.assets).toHaveLength(1);
   });
 });

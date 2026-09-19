@@ -1,9 +1,9 @@
 {
-  "name": "@beacon/core",
+  "name": "@akentros/core",
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "Portable Beacon core: pricing authority, billing, API keys, provider pools, inference and SSE.",
+  "description": "Portable Akentros core: pricing authority, billing, API keys, provider pools, inference and SSE.",
   "license": "MIT",
   "exports": {
     "./package.json": "./package.json",

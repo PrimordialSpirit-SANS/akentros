@@ -1,9 +1,9 @@
 import { parseUsdToMicros, usdMicrosToDecimalString } from "./pricing.ts";
 
-const BEACON_API_KEY_PATTERN = /^sk-beacon-(live|test)_[A-Za-z0-9_-]{40,}$/;
-export const BEACON_DEFAULT_SCOPES = Object.freeze(["chat:completions", "models:read"]);
-export const BEACON_MAX_ACTIVE_KEYS = 10;
-export const BEACON_MIN_KEY_TTL_MS = 60 * 60 * 1000;
+const AKENTROS_API_KEY_PATTERN = /^sk-akentros-(live|test)_[A-Za-z0-9_-]{40,}$/;
+export const AKENTROS_DEFAULT_SCOPES = Object.freeze(["chat:completions", "models:read"]);
+export const AKENTROS_MAX_ACTIVE_KEYS = 10;
+export const AKENTROS_MIN_KEY_TTL_MS = 60 * 60 * 1000;
 
 const MAX_BIGINT_ID = 9_223_372_036_854_775_807n;
 const ALLOWED_OPTION_KEYS = new Set([
@@ -23,7 +23,7 @@ function optionError(message: string, code = "INVALID_AI_KEY_CONFIGURATION") {
   return error;
 }
 
-export function parseBeaconJsonArray(value: any): any[] {
+export function parseAkentrosJsonArray(value: any): any[] {
   if (Array.isArray(value)) return value;
   try {
     const parsed = JSON.parse(value || "[]");
@@ -35,9 +35,9 @@ export function parseBeaconJsonArray(value: any): any[] {
 
 // 嚴格版的 model_allowlist 解析:此欄位一律由本系統寫入(必為合法 JSON 陣列),
 // 解析失敗代表資料列損毀。回傳 null 讓呼叫端 fail-closed(拒絕該金鑰);
-// 若使用 parseBeaconJsonArray 會得到 [] = 「不限制任何模型」,形同損毀
+// 若使用 parseAkentrosJsonArray 會得到 [] = 「不限制任何模型」,形同損毀
 // 靜默解除金鑰的模型限制。
-export function parseBeaconModelAllowlistStrict(value: any): string[] | null {
+export function parseAkentrosModelAllowlistStrict(value: any): string[] | null {
   if (value == null || value === "") return [];
   let parsed: any = value;
   if (typeof value === "string") {
@@ -71,40 +71,40 @@ function optionalBoundedInteger(
   return value;
 }
 
-export function requireBeaconApiKeyPepper(value: any) {
+export function requireAkentrosApiKeyPepper(value: any) {
   const pepper = String(value || "");
   if (new TextEncoder().encode(pepper).byteLength < 32) {
-    const error = new Error("BEACON_API_KEY_PEPPER must contain at least 32 bytes.") as Error & {
+    const error = new Error("AKENTROS_API_KEY_PEPPER must contain at least 32 bytes.") as Error & {
       code?: string;
     };
-    error.code = "BEACON_API_KEY_PEPPER_INVALID";
+    error.code = "AKENTROS_API_KEY_PEPPER_INVALID";
     throw error;
   }
   return pepper;
 }
 
-export function isBeaconApiKey(value: any) {
-  return BEACON_API_KEY_PATTERN.test(String(value || ""));
+export function isAkentrosApiKey(value: any) {
+  return AKENTROS_API_KEY_PATTERN.test(String(value || ""));
 }
 
-export function maskBeaconApiKey(value: any) {
+export function maskAkentrosApiKey(value: any) {
   const secret = String(value || "");
   return {
-    // 僅保留固定的環境前綴(sk-beacon-live_ / sk-beacon-test_,13 字)+ 4 個
+    // 僅保留固定的環境前綴(sk-akentros-live_ / sk-akentros-test_,13 字)+ 4 個
     // 秘密字元,足以辨識金鑰;再長就會不必要地洩漏 token 前段。
     key_prefix: secret.slice(0, 17),
     key_suffix: secret.slice(-4),
   };
 }
 
-export function normalizeBeaconKeyOptions(options: any, enabledModelIds: string[] = []) {
+export function normalizeAkentrosKeyOptions(options: any, enabledModelIds: string[] = []) {
   if (!options || typeof options !== "object" || Array.isArray(options)) {
     throw optionError("The request body must be a JSON object.");
   }
 
   for (const key of Object.keys(options)) {
     if (!ALLOWED_OPTION_KEYS.has(key)) {
-      throw optionError(`Unsupported Beacon key option: ${key}.`);
+      throw optionError(`Unsupported Akentros key option: ${key}.`);
     }
   }
 
@@ -125,7 +125,7 @@ export function normalizeBeaconKeyOptions(options: any, enabledModelIds: string[
   if (modelAllowlist.length > 0 && (!Array.isArray(enabledModelIds) || enabledModelIds.length === 0)) {
     // 指定了白名單卻沒有可用的模型目錄 = 設定錯誤;此時略過驗證會讓任意
     // (可能已停用)模型 id 進入白名單,因此明確拒絕。
-    throw optionError("The Beacon model catalog is unavailable; model_allowlist cannot be validated.");
+    throw optionError("The Akentros model catalog is unavailable; model_allowlist cannot be validated.");
   }
   const enabledModels = new Set(enabledModelIds);
   const normalizedAllowlist: string[] = [];
@@ -135,7 +135,7 @@ export function normalizeBeaconKeyOptions(options: any, enabledModelIds: string[
     }
     const modelId = rawModelId.trim();
     if (enabledModels.size > 0 && !enabledModels.has(modelId)) {
-      throw optionError(`Unknown or disabled Beacon model: ${modelId}.`);
+      throw optionError(`Unknown or disabled Akentros model: ${modelId}.`);
     }
     if (!normalizedAllowlist.includes(modelId)) normalizedAllowlist.push(modelId);
   }
@@ -165,7 +165,7 @@ export function normalizeBeaconKeyOptions(options: any, enabledModelIds: string[
     if (Number.isNaN(parsedExpiry.getTime())) {
       throw optionError("expires_at must be an RFC 3339 date-time.");
     }
-    if (parsedExpiry.getTime() < Date.now() + BEACON_MIN_KEY_TTL_MS) {
+    if (parsedExpiry.getTime() < Date.now() + AKENTROS_MIN_KEY_TTL_MS) {
       throw optionError("expires_at must be at least 1 hour in the future.");
     }
     expiresAt = parsedExpiry.toISOString();
@@ -182,14 +182,14 @@ export function normalizeBeaconKeyOptions(options: any, enabledModelIds: string[
   };
 }
 
-export function parseBeaconKeyId(value: any) {
+export function parseAkentrosKeyId(value: any) {
   const raw = String(value || "");
   if (!/^[1-9][0-9]*$/.test(raw)) return null;
   const parsed = BigInt(raw);
   return parsed <= MAX_BIGINT_ID ? parsed.toString() : null;
 }
 
-export function serializeBeaconApiKey(row: any) {
+export function serializeAkentrosApiKey(row: any) {
   if (!row) return null;
   const keyPrefix = String(row.key_prefix ?? row.prefix ?? "");
   const keySuffix = String(row.key_suffix ?? row.suffix ?? "");
@@ -200,8 +200,8 @@ export function serializeBeaconApiKey(row: any) {
     key_prefix: keyPrefix,
     key_suffix: keySuffix,
     masked_key: `${keyPrefix}...${keySuffix}`,
-    scopes: parseBeaconJsonArray(row.scopes),
-    model_allowlist: parseBeaconJsonArray(row.model_allowlist),
+    scopes: parseAkentrosJsonArray(row.scopes),
+    model_allowlist: parseAkentrosJsonArray(row.model_allowlist),
     rpm_limit: Number(row.rpm_limit),
     max_in_flight: Number(row.max_in_flight),
     spend_limit_usd:
@@ -216,8 +216,8 @@ export function serializeBeaconApiKey(row: any) {
   };
 }
 
-export function isBeaconServiceRestricted(user: any) {
+export function isAkentrosServiceRestricted(user: any) {
   if (!user?.is_flagged) return false;
-  const restrictions = parseBeaconJsonArray(user.restricted_services);
+  const restrictions = parseAkentrosJsonArray(user.restricted_services);
   return restrictions.some((item: any) => AI_SERVICE_ALIASES.has(String(item).trim().toLowerCase()));
 }

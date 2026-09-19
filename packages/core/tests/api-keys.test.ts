@@ -1,70 +1,70 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { digestBeaconApiKey, generateBeaconApiKey } from "../../../apps/gateway/src/utils/aiApiKeys.ts";
+import { digestAkentrosApiKey, generateAkentrosApiKey } from "../../../apps/gateway/src/utils/aiApiKeys.ts";
 import {
-  isBeaconApiKey,
-  isBeaconServiceRestricted,
-  maskBeaconApiKey,
-  normalizeBeaconKeyOptions,
-  parseBeaconKeyId,
-  serializeBeaconApiKey,
+  isAkentrosApiKey,
+  isAkentrosServiceRestricted,
+  maskAkentrosApiKey,
+  normalizeAkentrosKeyOptions,
+  parseAkentrosKeyId,
+  serializeAkentrosApiKey,
 } from "../src/apiKeys.ts";
 
-const TEST_PEPPER = "test-only-beacon-pepper-with-at-least-32-bytes";
+const TEST_PEPPER = "test-only-akentros-pepper-with-at-least-32-bytes";
 
-test("Hono backend generates opaque Beacon keys", () => {
-  for (const key of [generateBeaconApiKey("live"), generateBeaconApiKey("test")]) {
-    assert.equal(isBeaconApiKey(key), true);
+test("Hono backend generates opaque Akentros keys", () => {
+  for (const key of [generateAkentrosApiKey("live"), generateAkentrosApiKey("test")]) {
+    assert.equal(isAkentrosApiKey(key), true);
     assert.equal(key.includes("="), false);
   }
 });
 
 test("Hono backend derives deterministic HMAC digests", async () => {
-  const secret = "sk-beacon-live_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnop";
-  const digest = await digestBeaconApiKey({}, secret, TEST_PEPPER);
+  const secret = "sk-akentros-live_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnop";
+  const digest = await digestAkentrosApiKey({}, secret, TEST_PEPPER);
   assert.match(digest, /^[a-f0-9]{64}$/);
-  assert.equal(digest, await digestBeaconApiKey({}, secret, TEST_PEPPER));
-  assert.notEqual(digest, await digestBeaconApiKey({}, secret, `${TEST_PEPPER}-other`));
+  assert.equal(digest, await digestAkentrosApiKey({}, secret, TEST_PEPPER));
+  assert.notEqual(digest, await digestAkentrosApiKey({}, secret, `${TEST_PEPPER}-other`));
 });
 
 test("key options are strict, bounded, and model-aware", () => {
   const expiresAt = new Date(Date.now() + 2 * 60 * 60_000).toISOString();
-  const clean = normalizeBeaconKeyOptions(
+  const clean = normalizeAkentrosKeyOptions(
     {
       name: " Production ",
       environment: "live",
-      model_allowlist: ["beacon/model-a", "beacon/model-a"],
+      model_allowlist: ["akentros/model-a", "akentros/model-a"],
       rpm_limit: 120,
       max_in_flight: 8,
       spend_limit_usd: "500.00",
       expires_at: expiresAt,
     },
-    ["beacon/model-a"],
+    ["akentros/model-a"],
   );
 
   assert.deepEqual(clean, {
     name: "Production",
     environment: "live",
-    modelAllowlist: ["beacon/model-a"],
+    modelAllowlist: ["akentros/model-a"],
     rpmLimit: 120,
     maxInFlight: 8,
     spendLimitUsdMicros: 500000000,
     expiresAt,
   });
-  assert.throws(() => normalizeBeaconKeyOptions({ name: "" }), /1 to 80/);
-  assert.throws(() => normalizeBeaconKeyOptions({ name: "bad", rpm_limit: 1.5 }), /rpm_limit/);
+  assert.throws(() => normalizeAkentrosKeyOptions({ name: "" }), /1 to 80/);
+  assert.throws(() => normalizeAkentrosKeyOptions({ name: "bad", rpm_limit: 1.5 }), /rpm_limit/);
   assert.throws(
-    () => normalizeBeaconKeyOptions({ name: "bad", model_allowlist: ["beacon/unknown"] }, ["beacon/model-a"]),
+    () => normalizeAkentrosKeyOptions({ name: "bad", model_allowlist: ["akentros/unknown"] }, ["akentros/model-a"]),
     /Unknown or disabled/,
   );
-  assert.throws(() => normalizeBeaconKeyOptions({ name: "bad", extra: true }), /Unsupported/);
+  assert.throws(() => normalizeAkentrosKeyOptions({ name: "bad", extra: true }), /Unsupported/);
   assert.equal(
-    normalizeBeaconKeyOptions({ name: "Zero budget", spend_limit_usd: "0.00" }).spendLimitUsdMicros,
+    normalizeAkentrosKeyOptions({ name: "Zero budget", spend_limit_usd: "0.00" }).spendLimitUsdMicros,
     0,
   );
   assert.throws(
     () =>
-      normalizeBeaconKeyOptions({
+      normalizeAkentrosKeyOptions({
         name: "Too soon",
         expires_at: new Date(Date.now() + 30 * 60_000).toISOString(),
       }),
@@ -73,17 +73,17 @@ test("key options are strict, bounded, and model-aware", () => {
 });
 
 test("key IDs preserve PostgreSQL BIGINT precision", () => {
-  assert.equal(parseBeaconKeyId("1"), "1");
-  assert.equal(parseBeaconKeyId("9223372036854775807"), "9223372036854775807");
-  assert.equal(parseBeaconKeyId("9223372036854775808"), null);
-  assert.equal(parseBeaconKeyId("01"), null);
-  assert.equal(parseBeaconKeyId("1.5"), null);
+  assert.equal(parseAkentrosKeyId("1"), "1");
+  assert.equal(parseAkentrosKeyId("9223372036854775807"), "9223372036854775807");
+  assert.equal(parseAkentrosKeyId("9223372036854775808"), null);
+  assert.equal(parseAkentrosKeyId("01"), null);
+  assert.equal(parseAkentrosKeyId("1.5"), null);
 });
 
 test("developer metadata never serializes a full secret", () => {
-  const secret = generateBeaconApiKey();
-  const mask = maskBeaconApiKey(secret);
-  const metadata: any = serializeBeaconApiKey({
+  const secret = generateAkentrosApiKey();
+  const mask = maskAkentrosApiKey(secret);
+  const metadata: any = serializeAkentrosApiKey({
     id: "9007199254740993",
     name: "CI",
     environment: "test",
@@ -111,23 +111,23 @@ test("developer metadata never serializes a full secret", () => {
   assert.equal("secret" in metadata, false);
 });
 
-test("service restriction aliases cover parent and canonical Beacon links", () => {
+test("service restriction aliases cover parent and canonical Akentros links", () => {
   assert.equal(
-    isBeaconServiceRestricted({
+    isAkentrosServiceRestricted({
       is_flagged: true,
       restricted_services: '["/Developer"]',
     }),
     true,
   );
   assert.equal(
-    isBeaconServiceRestricted({
+    isAkentrosServiceRestricted({
       is_flagged: true,
       restricted_services: ["/Developer/ai-api"],
     }),
     true,
   );
   assert.equal(
-    isBeaconServiceRestricted({
+    isAkentrosServiceRestricted({
       is_flagged: false,
       restricted_services: ["/Developer/ai-api"],
     }),
