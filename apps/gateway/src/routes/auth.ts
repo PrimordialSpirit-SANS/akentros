@@ -110,8 +110,33 @@ const authLimiter = createRateLimit({
   keyPrefix: "beacon-auth",
   windowMs: 15 * 60 * 1000,
   max: 60,
-  keyGenerator: (c) => String(c.req.header("cf-connecting-ip") || "local"),
+  keyGenerator: beaconAuthRateLimitIdentity,
 });
+
+// auth 限流(登入/註冊/登出)的身份決定順序:
+// 1. BEACON_TRUST_PROXY=true:明確宣告信任反向代理,以 cf-connecting-ip 標頭
+//    為準。僅當 gateway 前方有會「覆寫」此標頭的受信賴代理(Cloudflare 等)
+//    才應開啟。
+// 2. 連線來源位址:Node 自架部署由 nodeServer 從 socket 注入
+//    BEACON_REMOTE_ADDR,不可偽造,是未開啟信任代理時的預設身份。若直接
+//    讀請求標頭,Node/http 不會過濾 cf-connecting-ip,攻擊者每個請求帶一個
+//    不同的假 IP 即可完全繞過限流(無限暴力嘗試密碼、洗註冊附贈點數)。
+// 3. Workers/DO 部署:流量一律經 Cloudflare 代理,標頭由其附加、用戶端
+//    帶入的同名標頭會被覆蓋,且 runtime 內拿不到 socket 位址 → 以標頭為準。
+// 4. 都拿不到(本地 IPC、Unix socket)併入 "local" 共享桶。
+export function beaconAuthRateLimitIdentity(c: BeaconContext): string {
+  const forwarded = String(c.req.header("cf-connecting-ip") || "").trim();
+  if (
+    String(c.env?.BEACON_TRUST_PROXY || "")
+      .trim()
+      .toLowerCase() === "true"
+  ) {
+    return forwarded || "local";
+  }
+  const remote = String((c.env as Record<string, unknown>)?.BEACON_REMOTE_ADDR || "").trim();
+  if (remote) return remote;
+  return forwarded || "local";
+}
 
 function isSecureRequest(c: BeaconContext): boolean {
   try {
@@ -173,6 +198,13 @@ function signupBonusUsdMicros(env: BeaconRuntimeEnv): string {
   }
 }
 
+function isUniqueEmailViolation(error: unknown): boolean {
+  // 訊息比對覆蓋 node:sqlite 與 Workers storage.sql 的錯誤形狀
+  // ("UNIQUE constraint failed: users.email")。
+  const message = String((error as Error | undefined)?.message || "");
+  return message.includes("UNIQUE constraint failed") && message.includes("users.email");
+}
+
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 authRoutes.use("*", authLimiter);
@@ -210,12 +242,23 @@ authRoutes.post("/register", async (c: BeaconContext) => {
   }
 
   const passwordHash = await hashPassword(password, c.env);
-  const user = await createUser(c.env, {
-    email,
-    username,
-    passwordHash,
-    balanceUsdMicros: signupBonusUsdMicros(c.env),
-  });
+  let user: BeaconAccount;
+  try {
+    user = await createUser(c.env, {
+      email,
+      username,
+      passwordHash,
+      balanceUsdMicros: signupBonusUsdMicros(c.env),
+    });
+  } catch (error) {
+    // 併發 race:兩個同信箱註冊都通過 findUserByEmail 檢查後,第二個 INSERT
+    // 撞 UNIQUE(users.email) 約束。資料未損毀,語意仍是 email_taken → 409,
+    // 不應落到 onError 變成 500。
+    if (isUniqueEmailViolation(error)) {
+      return c.json({ error: "This email is already registered.", code: "email_taken" }, 409);
+    }
+    throw error;
+  }
   await issueSession(c, c.env, user.id);
   return c.json({ user: publicUser(user) }, 201);
 });

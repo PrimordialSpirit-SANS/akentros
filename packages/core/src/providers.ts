@@ -307,17 +307,26 @@ function anthropicRequestBody(body: any, route: any, stream: boolean) {
             : { type: "object", properties: {} },
       }))
     : undefined;
-  const toolChoice =
-    !tools ||
-    source.tool_choice === undefined ||
-    source.tool_choice === "auto" ||
-    source.tool_choice === "none"
+  // OpenAI tool_choice → Anthropic Messages API 的映射:
+  // - "auto" → 省略(Anthropic 預設即 auto)
+  // - "none" → {"type":"none"}:用戶明確要求本次不得呼叫工具。舊版把
+  //   "none" 折成 undefined(= auto),上游仍可能呼叫工具,違反請求語意;
+  //   Anthropic Messages API 已支援 {"type":"none"}(官方文件:「none
+  //   prevents Claude from using any tools」)。tools 照送不省略——交談
+  //   歷史含 tool_use/tool_result 區塊時,tools 參數必須存在。
+  // - "required" → {"type":"any"}
+  // - 指定函式 → {"type":"tool","name":…}
+  const toolChoice = !tools
+    ? undefined
+    : source.tool_choice === undefined || source.tool_choice === "auto"
       ? undefined
-      : source.tool_choice === "required"
-        ? { type: "any" }
-        : source.tool_choice?.type === "function"
-          ? { type: "tool", name: String(source.tool_choice.function?.name || "") }
-          : undefined;
+      : source.tool_choice === "none"
+        ? { type: "none" }
+        : source.tool_choice === "required"
+          ? { type: "any" }
+          : source.tool_choice?.type === "function"
+            ? { type: "tool", name: String(source.tool_choice.function?.name || "") }
+            : undefined;
   return {
     model: route.upstream_model,
     ...(systemParts.length > 0 ? { system: systemParts.join("\n\n") } : {}),

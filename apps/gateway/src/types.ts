@@ -13,6 +13,7 @@ export interface BeaconRuntimeEnv {
   BEACON_ADMIN_STARTING_CREDITS_USD?: string;
   BEACON_PBKDF2_ITERATIONS?: string;
   BEACON_PUBLIC_ORIGINS?: string;
+  BEACON_TRUST_PROXY?: string;
   ADMIN_EMAIL?: string;
   ADMIN_PASSWORD?: string;
   ADMIN_USERNAME?: string;
