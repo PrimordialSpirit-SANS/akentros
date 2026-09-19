@@ -1,7 +1,11 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
 import { AkentrosIcon } from "../components/AkentrosIcon";
-import { AkentrosAuthError, loginAkentrosAccount, registerAkentrosAccount } from "../lib/akentros/api/akentrosAuthApi";
+import {
+  AkentrosAuthError,
+  loginAkentrosAccount,
+  registerAkentrosAccount,
+} from "../lib/akentros/api/akentrosAuthApi";
 import type { AkentrosConsoleUser } from "../lib/akentros/types";
 import { isAkentrosDemoMode } from "../services/demoApi";
 

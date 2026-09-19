@@ -1,6 +1,6 @@
 import { assertAkentrosSchemaReady } from "@akentros/core/schemaReadiness";
 import type { AkentrosRuntimeEnv } from "../types.ts";
-import { dbQuery } from "./db.ts";
+import { createAkentrosQuery } from "./db.ts";
 
 const schemaPromises = new Map();
 
@@ -13,7 +13,9 @@ export function ensureAiSchema(env: AkentrosRuntimeEnv) {
   if (schemaPromises.has(key)) return schemaPromises.get(key);
 
   const promise = (async () => {
-    await assertAkentrosSchemaReady((sql: any, params: any[] = []) => dbQuery(env, sql, params));
+    // createAkentrosQuery 提供 dialect 標註:就緒檢查依此選擇 SQLite/PostgreSQL
+    // 的 catalog 語法(裸函式包裝會被誤判為 SQLite)。
+    await assertAkentrosSchemaReady(createAkentrosQuery(env));
   })().catch((error: any) => {
     schemaPromises.delete(key);
     throw error;

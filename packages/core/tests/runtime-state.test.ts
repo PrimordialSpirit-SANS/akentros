@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { AKENTROS_API_LIMIT_SQL, createAkentrosApiLimitStore } from "../src/apiLimits.ts";
 import { createAkentrosInferenceRuntime, prepareAkentrosChatRequest } from "../src/inference.ts";
-import { AKENTROS_PROVIDER_ATTEMPT_SQL, createAkentrosProviderAttemptStore } from "../src/providerAttempts.ts";
+import {
+  AKENTROS_PROVIDER_ATTEMPT_SQL,
+  createAkentrosProviderAttemptStore,
+} from "../src/providerAttempts.ts";
 import {
   AKENTROS_PROVIDER_POOL_SQL,
   claimConfiguredAkentrosProviderCredential,
@@ -83,7 +86,10 @@ test("API admission RPM limit blocks beyond the configured rate", async () => {
 test("provider pool is lease-based, weighted, capacity bounded, and secret-free", async () => {
   assert.match(AKENTROS_PROVIDER_POOL_SQL.candidateCredentials, /active_leases/);
   assert.match(AKENTROS_PROVIDER_POOL_SQL.candidateCredentials, /< credentials\.max_in_flight/);
-  assert.match(AKENTROS_PROVIDER_POOL_SQL.candidateCredentials, /NOT IN \(SELECT value FROM json_each\(\?\)\)/);
+  assert.match(
+    AKENTROS_PROVIDER_POOL_SQL.candidateCredentials,
+    /NOT IN \(SELECT value FROM json_each\(\?\)\)/,
+  );
   assert.match(
     AKENTROS_PROVIDER_POOL_SQL.candidateCredentials,
     /selection_count \* 1\.0 \/ MAX\(credentials\.weight, 1\)/,

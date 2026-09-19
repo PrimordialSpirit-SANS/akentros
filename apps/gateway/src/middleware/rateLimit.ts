@@ -67,8 +67,14 @@ function windowStartIso(now: number, windowMs: number): string {
   return new Date(Math.floor(now / windowMs) * windowMs).toISOString();
 }
 
-function databaseConfigured(env: AkentrosRuntimeEnv): boolean {
-  return Boolean(String(env?.DATABASE_URL || "").trim());
+// 一律優先嘗試 DB 計數(Node 的 node:sqlite、Workers 的 DO storage.sql、
+// 自架可選的 PostgreSQL adapter 皆然):資料庫才是跨請求全域的計數權威。
+// 資料庫無法使用(adapter 未安裝、連線失敗)時降級為 in-isolate 記憶體視窗,
+// 並記錄 warn——過去以「有無設定 DATABASE_URL」決定走哪條路,導致預設
+// AKENTROS_DB_PATH 部署與 Workers 部署靜默落在記憶體模式(每 isolate 各自
+// 計數、隨驅逐重置),與文件宣稱的「SQLite 固定窗口計數(全域)」不符。
+function limiterStoreKey(env: AkentrosRuntimeEnv): string {
+  return String(env?.DATABASE_URL || env?.AKENTROS_DB_PATH || "default").trim() || "default";
 }
 
 function identityKey(prefix: string, identity: string): string {
@@ -99,42 +105,36 @@ export function createRateLimit(options: {
     const key = identityKey(options.keyPrefix, identity);
     const now = Date.now();
 
-    if (databaseConfigured(c.env)) {
-      try {
-        // limiter 在模組載入期建構,env 要等請求才有;以資料庫 URL 為鍵快取 store。
-        const dbUrl = String(c.env?.DATABASE_URL).trim();
-        let dbStore = dbStores.get(dbUrl);
-        if (!dbStore) {
-          dbStore = createDbWindowStore((sql: string, params: any[] = []) => dbQuery(c.env, sql, params));
-          dbStores.set(dbUrl, dbStore);
-        }
-        const start = windowStartIso(now, windowMs);
-        const hitCount = await dbStore.increment(
-          key,
-          start,
-          new Date(now - 24 * 60 * 60 * 1000).toISOString(),
-        );
-        if (hitCount > max) {
-          c.header(
-            "Retry-After",
-            String(Math.max(1, Math.ceil((Math.floor(now / windowMs) * windowMs + windowMs - now) / 1000))),
-          );
-          return c.json(
-            {
-              error: "Too many requests. Please try again later.",
-              code: "rate_limit_exceeded",
-            },
-            429,
-          );
-        }
-        await next();
-        return;
-      } catch (error: any) {
-        logAkentrosEvent("warn", "rate_limit_db_unavailable_fallback_memory", {
-          errorCode: error?.code || error?.name || "unknown",
-        });
-        // 落到下面的記憶體降級路徑。
+    try {
+      // limiter 在模組載入期建構,env 要等請求才有;以資料庫識別為鍵快取 store。
+      const storeKey = limiterStoreKey(c.env);
+      let dbStore = dbStores.get(storeKey);
+      if (!dbStore) {
+        dbStore = createDbWindowStore((sql: string, params: any[] = []) => dbQuery(c.env, sql, params));
+        dbStores.set(storeKey, dbStore);
       }
+      const start = windowStartIso(now, windowMs);
+      const hitCount = await dbStore.increment(key, start, new Date(now - 24 * 60 * 60 * 1000).toISOString());
+      if (hitCount > max) {
+        c.header(
+          "Retry-After",
+          String(Math.max(1, Math.ceil((Math.floor(now / windowMs) * windowMs + windowMs - now) / 1000))),
+        );
+        return c.json(
+          {
+            error: "Too many requests. Please try again later.",
+            code: "rate_limit_exceeded",
+          },
+          429,
+        );
+      }
+      await next();
+      return;
+    } catch (error: any) {
+      logAkentrosEvent("warn", "rate_limit_db_unavailable_fallback_memory", {
+        errorCode: error?.code || error?.name || "unknown",
+      });
+      // 落到下面的記憶體降級路徑。
     }
 
     let bucket = memoryBuckets.get(key);

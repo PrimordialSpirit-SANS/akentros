@@ -7,18 +7,22 @@ import type { AkentrosRuntimeEnv } from "../types.ts";
 
 import { parseUsdToMicros } from "@akentros/core/pricing";
 import { migrateAkentrosSchema } from "@akentros/core/schemaMigration";
-import { dbQuery } from "./db.ts";
+import { createAkentrosQuery } from "./db.ts";
 import { ensureLedgerSchema } from "./ledger.ts";
 import { ensureUsersSchema, hashPassword, upsertAdminUser } from "./users.ts";
 
 export async function ensureAkentrosSchemaReady(env: AkentrosRuntimeEnv): Promise<{ migrated: boolean }> {
   await ensureLedgerSchema(env);
-  const result = await migrateAkentrosSchema((sql: any, params: any[] = []) => dbQuery(env, sql, params));
+  // 以 createAkentrosQuery(env) 提供 dialect 標註:遷移 DDL 與就緒檢查依此
+  // 選擇 SQLite/PostgreSQL 的 catalog 語法(裸函式包裝會被誤判為 SQLite)。
+  const result = await migrateAkentrosSchema(createAkentrosQuery(env));
   await ensureUsersSchema(env);
   return { migrated: result.migrated };
 }
 
-export async function seedAkentrosAdminFromEnv(env: AkentrosRuntimeEnv): Promise<{ created: boolean } | null> {
+export async function seedAkentrosAdminFromEnv(
+  env: AkentrosRuntimeEnv,
+): Promise<{ created: boolean } | null> {
   const adminEmail = env?.ADMIN_EMAIL?.trim();
   const adminPassword = env?.ADMIN_PASSWORD;
   if (!adminEmail || !adminPassword) return null;

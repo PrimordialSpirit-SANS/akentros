@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { authenticateAkentrosApiKey, createAkentrosApiKey, digestAkentrosApiKey } from "../src/utils/aiApiKeys.ts";
+import {
+  authenticateAkentrosApiKey,
+  createAkentrosApiKey,
+  digestAkentrosApiKey,
+} from "../src/utils/aiApiKeys.ts";
 import { ensureAkentrosSchemaReady } from "../src/utils/bootstrap.ts";
 import { dbGet, dbQuery, installNodeAkentrosDbAdapter } from "../src/utils/db.ts";
 

@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { loadAkentrosBrandManifest, loadAkentrosModels, loadAkentrosProviderOfferings } from "./loadAkentrosCatalog";
+import {
+  loadAkentrosBrandManifest,
+  loadAkentrosModels,
+  loadAkentrosProviderOfferings,
+} from "./loadAkentrosCatalog";
 
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {

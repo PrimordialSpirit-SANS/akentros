@@ -1,5 +1,10 @@
 import { apiFetch } from "../../../services/api";
-import type { AkentrosChatMessage, AkentrosChatUsage, AkentrosPublicErrorCode, AkentrosStreamChunk } from "../types";
+import type {
+  AkentrosChatMessage,
+  AkentrosChatUsage,
+  AkentrosPublicErrorCode,
+  AkentrosStreamChunk,
+} from "../types";
 import { getAkentrosAccountChatCompletionsPath, getAkentrosChatCompletionsUrl } from "./akentrosDeveloperApi";
 import {
   hasAkentrosErrorEnvelope,

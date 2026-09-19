@@ -1,6 +1,7 @@
 import { PROVIDER_POOLS, resolveProviderCredential } from "./providers.ts";
 import type { AkentrosQuery } from "./query.ts";
 import { akentrosQueryRows as rows } from "./query.ts";
+import { sqlDialect } from "./sqlDialect.ts";
 
 /** pool store 的 claim 在設定解析前的租約形狀(normalizeClaim 輸出)。 */
 export interface AkentrosCredentialLease {
@@ -65,8 +66,10 @@ function normalizeClaim(row: any): AkentrosCredentialLease | null {
 // SQLite 方言:排他選取以「交易 + 單連線序列化」取代 PG 的
 // FOR UPDATE SKIP LOCKED;時間與排除清單由呼叫端綁定
 // (json_each 取代 PG 陣列參數)。
-export const AKENTROS_PROVIDER_POOL_SQL = Object.freeze({
-  syncCredential: `
+function providerPoolSql(query: { dialect?: "postgres" | "sqlite" } = {}) {
+  const dialect = sqlDialect(query);
+  return Object.freeze({
+    syncCredential: `
     INSERT INTO ai_provider_credentials (
       credential_id, provider, pool_id, enabled, weight, max_in_flight,
       state, updated_at
@@ -81,13 +84,13 @@ export const AKENTROS_PROVIDER_POOL_SQL = Object.freeze({
       updated_at = EXCLUDED.updated_at
     RETURNING credential_id
   `,
-  disableMissingCredentials: `
+    disableMissingCredentials: `
     UPDATE ai_provider_credentials
     SET enabled = 0, updated_at = ?
-    WHERE credential_id NOT IN (SELECT value FROM json_each(?))
+    WHERE credential_id NOT IN (${dialect.jsonValues})
     RETURNING credential_id
   `,
-  candidateCredentials: `
+    candidateCredentials: `
     SELECT credentials.*,
            (
              SELECT COUNT(*)
@@ -98,8 +101,8 @@ export const AKENTROS_PROVIDER_POOL_SQL = Object.freeze({
            ) AS active_leases
     FROM ai_provider_credentials AS credentials
     WHERE credentials.pool_id = ?
-      AND credentials.credential_id NOT IN (SELECT value FROM json_each(?))
-      AND credentials.enabled = TRUE
+      AND credentials.credential_id NOT IN (${dialect.jsonValues})
+      AND credentials.enabled = 1
       AND credentials.state IN ('healthy', 'degraded', 'cooldown')
       AND (credentials.cooldown_until IS NULL OR credentials.cooldown_until <= ?)
       AND (
@@ -110,12 +113,12 @@ export const AKENTROS_PROVIDER_POOL_SQL = Object.freeze({
           AND leases.expires_at > ?
       ) < credentials.max_in_flight
     ORDER BY
-      credentials.selection_count * 1.0 / MAX(credentials.weight, 1),
+      credentials.selection_count * 1.0 / ${dialect.max}(credentials.weight, 1),
       credentials.last_selected_at,
       credentials.credential_id
     LIMIT 1
   `,
-  markClaimed: `
+    markClaimed: `
     UPDATE ai_provider_credentials
     SET in_flight = ?,
         selection_count = selection_count + 1,
@@ -124,25 +127,25 @@ export const AKENTROS_PROVIDER_POOL_SQL = Object.freeze({
         updated_at = ?
     WHERE credential_id = ?
   `,
-  insertLease: `
+    insertLease: `
     INSERT INTO ai_provider_credential_leases (
       lease_id, request_id, credential_id, expires_at
     )
     VALUES (?, ?, ?, ?)
     RETURNING lease_id, request_id, credential_id, expires_at
   `,
-  markReleased: `
+    markReleased: `
     UPDATE ai_provider_credential_leases
     SET released_at = ?
     WHERE lease_id = ? AND released_at IS NULL
     RETURNING credential_id
   `,
-  credentialState: `
+    credentialState: `
     SELECT in_flight, consecutive_failures, ewma_latency_ms, last_success_at, last_failure_at
     FROM ai_provider_credentials
     WHERE credential_id = ?
   `,
-  applyRelease: `
+    applyRelease: `
     UPDATE ai_provider_credentials
     SET in_flight = ?,
         successful_requests = successful_requests + ?,
@@ -159,15 +162,18 @@ export const AKENTROS_PROVIDER_POOL_SQL = Object.freeze({
     WHERE credential_id = ?
     RETURNING credential_id, state, consecutive_failures, cooldown_until
   `,
-});
+  });
+}
+export const AKENTROS_PROVIDER_POOL_SQL = providerPoolSql();
 
 export async function syncAkentrosProviderCredentials(query: AkentrosQuery, config: any = PROVIDER_POOLS) {
+  const sql = providerPoolSql(query);
   if (typeof query !== "function") throw new TypeError("A database query function is required.");
   const credentialIds: string[] = [];
   for (const [poolId, pool] of Object.entries(config.pools || {}) as Array<[string, any]>) {
     for (const credential of pool.credentials || []) {
       credentialIds.push(credential.credential_id);
-      await query(AKENTROS_PROVIDER_POOL_SQL.syncCredential, [
+      await query(sql.syncCredential, [
         credential.credential_id,
         pool.provider,
         poolId,
@@ -179,10 +185,7 @@ export async function syncAkentrosProviderCredentials(query: AkentrosQuery, conf
     }
   }
   if (credentialIds.length) {
-    await query(AKENTROS_PROVIDER_POOL_SQL.disableMissingCredentials, [
-      new Date().toISOString(),
-      JSON.stringify(credentialIds),
-    ]);
+    await query(sql.disableMissingCredentials, [new Date().toISOString(), JSON.stringify(credentialIds)]);
   }
   return { credentialIds };
 }
@@ -196,6 +199,8 @@ async function withTransaction<T>(query: AkentrosQuery, fn: () => Promise<T>): P
 }
 
 export function createAkentrosProviderPoolStore(query: AkentrosQuery) {
+  const sql = providerPoolSql(query);
+  const dialect = sqlDialect(query);
   if (typeof query !== "function") throw new TypeError("A database query function is required.");
   return Object.freeze({
     sync: (config: any) => syncAkentrosProviderCredentials(query, config),
@@ -222,7 +227,11 @@ export function createAkentrosProviderPoolStore(query: AkentrosQuery) {
       const excludedJson = JSON.stringify(normalizedExcludedCredentialIds);
 
       return withTransaction(query, async () => {
-        const candidates = await query(AKENTROS_PROVIDER_POOL_SQL.candidateCredentials, [
+        // advisory lock:PG 的 READ COMMITTED 下,候選列讀取與租約寫入之間
+        // 的「讀—判—寫」必須以每池 advisory 鎖序列化,併發 claim 才不會超過
+        // credential 的 max_in_flight(SQLite 由交易起點的獨佔寫鎖保證)。
+        if (dialect.claimLock) await query(dialect.claimLock, [normalizedPool]);
+        const candidates = await query(sql.candidateCredentials, [
           now,
           normalizedPool,
           excludedJson,
@@ -232,7 +241,7 @@ export function createAkentrosProviderPoolStore(query: AkentrosQuery) {
         const candidate: any = rows(candidates)[0];
         if (!candidate) return null;
 
-        await query(AKENTROS_PROVIDER_POOL_SQL.markClaimed, [
+        await query(sql.markClaimed, [
           Number(candidate.active_leases) + 1,
           now,
           expiresAt,
@@ -240,7 +249,7 @@ export function createAkentrosProviderPoolStore(query: AkentrosQuery) {
           candidate.credential_id,
         ]);
 
-        const lease = await query(AKENTROS_PROVIDER_POOL_SQL.insertLease, [
+        const lease = await query(sql.insertLease, [
           leaseId,
           normalizedRequest,
           candidate.credential_id,
@@ -295,12 +304,12 @@ export function createAkentrosProviderPoolStore(query: AkentrosQuery) {
 
       return withTransaction(query, async () => {
         const now = new Date().toISOString();
-        const released = await query(AKENTROS_PROVIDER_POOL_SQL.markReleased, [now, normalizedLease]);
+        const released = await query(sql.markReleased, [now, normalizedLease]);
         const releasedRow: any = rows(released)[0];
         if (!releasedRow) return null;
         const credentialId = String(releasedRow.credential_id);
 
-        const stateRows = await query(AKENTROS_PROVIDER_POOL_SQL.credentialState, [credentialId]);
+        const stateRows = await query(sql.credentialState, [credentialId]);
         const state: any = rows(stateRows)[0];
         if (!state) return null;
 
@@ -315,7 +324,7 @@ export function createAkentrosProviderPoolStore(query: AkentrosQuery) {
             : Number(state.ewma_latency_ms);
         const ewma = latency === null ? oldEwma : oldEwma === null ? latency : oldEwma * 0.8 + latency * 0.2;
 
-        const applied = await query(AKENTROS_PROVIDER_POOL_SQL.applyRelease, [
+        const applied = await query(sql.applyRelease, [
           Math.max(Number(state.in_flight || 0) - 1, 0),
           ok ? 1 : 0,
           ok ? 0 : 1,
