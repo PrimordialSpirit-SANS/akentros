@@ -5,7 +5,7 @@
 ```bash
 cp apps/gateway/.dev.vars.example apps/gateway/.dev.vars   # fill in secrets
 npm install
-npm run migrate                 # schema v2 + admin account
+npm run migrate                 # schema v3 + admin account
 npm run dev:gateway             # http://localhost:8787
 npm run dev:console             # http://localhost:5173
 ```
@@ -24,13 +24,13 @@ See [Quick start](#快速開始) below, [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)
 
 ## 功能特性
 
-- **OpenAI 相容 API**:`GET /api/ai/v1/models`、`POST /api/ai/v1/chat/completions`(支援 SSE 串流、`Idempotency-Key` 冪等),任何 OpenAI SDK 指向 `baseURL` 即可使用。**冪等語意差異**:OpenAI 對已完成的冪等鍵會「重放原始回應」,Akentros 因不落地 prompt/completion 而無法重放——已完成的鍵重送回 `409 idempotent_request_replayed`(附原始 `X-Request-Id`)、進行中的鍵回 `409 idempotent_request_in_progress`;重度依賴冪等重放的客戶端需留意此差異(見 `docs/openapi.yaml` 的 `Idempotency-Key` 參數說明)。
+- **OpenAI 相容 API**:`GET /api/ai/v1/models`、`POST /api/ai/v1/chat/completions`(支援 SSE 串流、`Idempotency-Key` 冪等)、`POST /api/ai/v1/embeddings`(文字向量,僅計輸入 token),任何 OpenAI SDK 指向 `baseURL` 即可使用。**冪等語意**:OpenAI 對已完成的冪等鍵會「重放原始回應」;Akentros 預設不落地 prompt/completion,已完成鍵重送回 `409 idempotent_request_replayed`(附原始 `X-Request-Id`)。需要 OpenAI 式重放的場景,可在金鑰上 opt-in(`idempotency_replay_ttl_seconds`,最長 7 天):成功回應(JSON 與 SSE)落地該時限,完成鍵重送且請求體一致時直接重放(`X-Akentros-Idempotent-Replay: true`),不再執行、不再計費;進行中鍵回 `409 idempotent_request_in_progress`、同鍵不同請求體回 `409 idempotency_conflict`(見 `docs/openapi.yaml` 的 `Idempotency-Key` 參數說明)。
 - **美元計費**:內部以微美元整數結算(無浮點誤差),請求前「預留」消費上限、完成後依實際 usage 結算、差額自動退回;全流程冪等、可重跑、可對帳。
 - **多供應商池**:37 條 credential 設定(openrouter、cloudflare-workers-ai、qwencloud、openai、anthropic、groq…),加權輪詢、健康冷卻、in-flight lease、自動 fallback;secret 只存環境變數名稱,資料庫僅存 opaque credential ID。
 - **API 金鑰管理**:`sk-akentros-live_/sk-akentros-test_` 金鑰、只顯示一次、pepper-HMAC digest 落庫;可設定過期時間、模型白名單、RPM、最大併發與美元消費上限。金鑰級 RPM/併發由資料庫交易內原子計數強制;登入與金鑰管理的 IP 限流同樣以 SQLite 固定窗口計數(單程序全域生效),資料庫不可用時降級為 in-process 記憶體視窗。
 - **內建帳號系統**:註冊/登入(JWT cookie + CSRF 雙提交)、migrate 時可種子管理員、新戶送點、可關閉公開註冊。
 - **開發者控制台**:總覽、金鑰、串流測試(逐字渲染、usage 統計)、模型目錄(含免費額度)、請求紀錄與單筆詳情;提供 `?demo=1` 離線示範模式。
-- **維運探針與結構化日誌**:`GET /healthz` 回報程序與資料庫狀態(200 ok / 503 degraded),供負載平衡與監控探測;內部日誌以單行 JSON 輸出,可直接交由 Cloudflare observability、journald 等採集。
+- **維運探針與結構化日誌**:`GET /healthz` 回報程序與資料庫狀態(200 ok / 503 degraded),供負載平衡與監控探測;Node 自架拓撲另提供 `GET /metrics`(Prometheus 文字格式:請求數、延遲、token 用量、消費金額,`AKENTROS_METRICS_ENABLED=false` 可關閉);內部日誌以單行 JSON 輸出,可直接交由 Cloudflare observability、journald 等採集。
 - **契約測試護欄**:openapi.yaml、前後端 catalog、路由與安全不變式都有測試釘死,漂移即擋建置。Biome lint/format 與 `npm audit`(high 以上)同樣在 CI 強制。
 
 ## 架構
@@ -78,7 +78,7 @@ cp apps/gateway/.dev.vars.example apps/gateway/.dev.vars
 #   填入 ADMIN_EMAIL / ADMIN_PASSWORD(管理員種子)
 #   填入至少一個供應商金鑰(例如 OPENROUTER_API_KEY_1)
 
-# 2. 安裝依賴並初始化資料庫(schema v2 + 帳號表 + 管理員)
+# 2. 安裝依賴並初始化資料庫(schema v3 + 帳號表 + 管理員)
 npm install
 npm run migrate
 
@@ -143,6 +143,7 @@ npx wrangler deploy          # secrets 以 wrangler secret put 設定
 | 環境變數 | 必填 | 說明 |
 | --- | --- | --- |
 | `AKENTROS_DB_PATH` | 建議 | SQLite 資料庫檔案路徑(預設 `./akentros.db`,相對 `apps/gateway/`;相對路徑一律以此目錄為基準,不受啟動目錄影響) |
+| `DATABASE_URL` | 選配 | 設為 `postgres://…`(或 `postgresql://…`)時,Node 自架部署改用 PostgreSQL(`npm run migrate` 同樣自動切換);未設或非 PG scheme 時走 SQLite。限流與 schema 檢查一律優先使用已安裝的資料庫 adapter,連線失敗才降級 |
 | `JWT_SECRET` | ✅ | 會話 cookie 簽名金鑰(≥32 bytes) |
 | `AKENTROS_API_KEY_PEPPER` | ✅ | API 金鑰 HMAC pepper(≥32 bytes) |
 | `AKENTROS_ENABLED` | 建議 | fail-closed 開關;僅 `true` 時啟用 `/api/ai/*` |

@@ -8,14 +8,18 @@ import {
   reconcileStaleAkentrosReservations,
   resolveQuarantinedAkentrosReservations,
 } from "./aiBilling.ts";
+import { cleanupAkentrosIdempotentReplays } from "./aiIdempotency.ts";
 
 export async function runAkentrosMaintenance(env: AkentrosRuntimeEnv): Promise<{
   staleReservations: number;
   quarantinedReservations: number;
+  expiredReplays: number;
 }> {
   const limit = Number(env?.AKENTROS_RECONCILE_LIMIT) || 50;
   await cleanupAkentrosRateLimitBuckets(env);
   const stale = await reconcileStaleAkentrosReservations(env, { limit });
   const quarantined = await resolveQuarantinedAkentrosReservations(env, { limit });
-  return { staleReservations: stale.length, quarantinedReservations: quarantined.length };
+  // 過期重放列的刪除失敗不應阻斷對帳:清理是漸進的,下個週期會再試。
+  const expiredReplays = await cleanupAkentrosIdempotentReplays(env).catch(() => 0);
+  return { staleReservations: stale.length, quarantinedReservations: quarantined.length, expiredReplays };
 }

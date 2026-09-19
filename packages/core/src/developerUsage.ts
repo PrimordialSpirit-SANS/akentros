@@ -9,6 +9,8 @@ const REQUEST_STATUSES = new Set([
   "rejected",
   "refunded",
   "needs_reconciliation",
+  // 冪等重放命中:不執行、不計費,僅為管理面可見性落一列輕量紀錄。
+  "replayed",
 ]);
 const REQUEST_ID = /^req_[A-Za-z0-9_-]{8,76}$/;
 const PUBLIC_ERROR_CODES = new Set([
@@ -99,6 +101,7 @@ function normalizeLog(row: any) {
     latency_ms: row.total_latency_ms == null ? null : Number(row.total_latency_ms),
     first_token_latency_ms: row.first_token_ms == null ? null : Number(row.first_token_ms),
     error_code: publicErrorCode(row.error_code),
+    replay_of_request_id: row.replay_of_request_id == null ? null : String(row.replay_of_request_id),
   };
 }
 

@@ -36,7 +36,7 @@ test("Akentros OpenAPI document parses and resolves every local reference", () =
 });
 
 test("inference and developer surfaces keep separate authentication contracts", () => {
-  for (const path of ["/api/ai/v1/models", "/api/ai/v1/chat/completions"]) {
+  for (const path of ["/api/ai/v1/models", "/api/ai/v1/chat/completions", "/api/ai/v1/embeddings"]) {
     const operation: any = Object.values(specification.paths[path])[0];
     assert.deepEqual(operation.security, [{ AkentrosKey: [] }]);
   }

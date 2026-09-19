@@ -1,4 +1,4 @@
-export const AKENTROS_SCHEMA_VERSION = 2;
+export const AKENTROS_SCHEMA_VERSION = 3;
 
 function freezeRecord(record: Record<string, string[]>) {
   return Object.freeze(
@@ -22,6 +22,7 @@ export const REQUIRED_AKENTROS_COLUMNS = freezeRecord({
     "spend_limit_usd_micros",
     "spend_used_usd_micros",
     "spend_reserved_usd_micros",
+    "idempotency_replay_ttl_seconds",
     "is_active",
     "expires_at",
     "last_used_at",
@@ -56,6 +57,7 @@ export const REQUIRED_AKENTROS_COLUMNS = freezeRecord({
     "error_code",
     "http_status",
     "upstream_request_id",
+    "replay_of_request_id",
     "first_token_ms",
     "total_latency_ms",
     "dispatched_at",
@@ -128,6 +130,19 @@ export const REQUIRED_AKENTROS_COLUMNS = freezeRecord({
   ],
   ai_rate_limit_buckets: ["api_key_id", "window_start", "request_count"],
   ai_api_inflight_leases: ["request_id", "api_key_id", "expires_at", "released_at", "created_at"],
+  ai_idempotency_replays: [
+    "request_id",
+    "api_key_id",
+    "idempotency_key",
+    "request_fingerprint",
+    "endpoint",
+    "response_status",
+    "content_type",
+    "response_payload",
+    "payload_bytes",
+    "expires_at",
+    "created_at",
+  ],
 });
 
 export const REQUIRED_AKENTROS_INDEXES = Object.freeze([
@@ -142,6 +157,8 @@ export const REQUIRED_AKENTROS_INDEXES = Object.freeze([
   "idx_ai_billing_request_id",
   "idx_ai_billing_state_expiry",
   "idx_ai_api_inflight_active",
+  "idx_ai_idempotency_replays_key",
+  "idx_ai_idempotency_replays_expiry",
   "idx_ledger_entries_akentros_ai_reservation",
   "idx_ledger_entries_akentros_ai_refund",
 ]);
@@ -150,14 +167,44 @@ function rows(result: any): any[] {
   return Array.isArray(result?.rows) ? result.rows : [];
 }
 
-// SQLite 版就緒檢查:sqlite_master / pragma_table_info 取代 PG 的
-// to_regclass / information_schema / pg_indexes。
-export async function isAkentrosSchemaReady(query: any) {
-  const migrationTable = await query(`
+// 就緒檢查的方言分支:SQLite 以 sqlite_master / pragma_table_info 檢視
+// catalog;PostgreSQL 以 information_schema / pg_indexes。兩者回傳的欄位名
+// 一致(name / column_name 統一別名為 name),檢查邏輯共用。
+function catalogSql(dialect: "postgres" | "sqlite") {
+  if (dialect === "postgres") {
+    return {
+      migrationTableExists: `
+    SELECT to_regclass(?) AS name
+  `,
+      tableColumns: `
+    SELECT column_name AS name FROM information_schema.columns
+    WHERE table_name = ?
+  `,
+      indexNames: (placeholders: string) => `
+    SELECT indexname AS name FROM pg_indexes WHERE indexname IN (${placeholders})
+  `,
+    };
+  }
+  return {
+    migrationTableExists: `
     SELECT name FROM sqlite_master
-    WHERE type = 'table' AND name = 'akentros_ai_schema_migrations'
-  `);
-  if (!rows(migrationTable).length) return false;
+    WHERE type = 'table' AND name = ?
+  `,
+    tableColumns: `
+    SELECT name FROM pragma_table_info(?)
+  `,
+    indexNames: (placeholders: string) => `
+    SELECT name FROM sqlite_master WHERE type = 'index' AND name IN (${placeholders})
+  `,
+  };
+}
+
+export async function isAkentrosSchemaReady(query: any) {
+  const dialect: "postgres" | "sqlite" = query?.dialect === "postgres" ? "postgres" : "sqlite";
+  const catalog = catalogSql(dialect);
+
+  const migrationTable = await query(catalog.migrationTableExists, ["akentros_ai_schema_migrations"]);
+  if (!rows(migrationTable)[0]?.name) return false;
 
   const versionResult = await query(`
     SELECT COALESCE(MAX(version), 0) AS version
@@ -166,7 +213,7 @@ export async function isAkentrosSchemaReady(query: any) {
   if (Number(rows(versionResult)[0]?.version || 0) < AKENTROS_SCHEMA_VERSION) return false;
 
   for (const [table, columns] of Object.entries(REQUIRED_AKENTROS_COLUMNS)) {
-    const columnsResult = await query(`SELECT name FROM pragma_table_info(?)`, [table]);
+    const columnsResult = await query(catalog.tableColumns, [table]);
     const existing = new Set(rows(columnsResult).map((row: any) => String(row.name)));
     for (const column of columns) {
       if (!existing.has(column)) return false;
@@ -174,10 +221,7 @@ export async function isAkentrosSchemaReady(query: any) {
   }
 
   const indexPlaceholders = REQUIRED_AKENTROS_INDEXES.map(() => "?").join(", ");
-  const indexesResult = await query(
-    `SELECT name FROM sqlite_master WHERE type = 'index' AND name IN (${indexPlaceholders})`,
-    [...REQUIRED_AKENTROS_INDEXES],
-  );
+  const indexesResult = await query(catalog.indexNames(indexPlaceholders), [...REQUIRED_AKENTROS_INDEXES]);
   const existingIndexes = new Set(rows(indexesResult).map((row: any) => String(row.name)));
   return REQUIRED_AKENTROS_INDEXES.every((index) => existingIndexes.has(index));
 }

@@ -7,6 +7,10 @@
 # 也可用 sqlite:// 前綴,例如 sqlite://./data/akentros.db
 AKENTROS_DB_PATH=./akentros.db
 
+# 資料庫(Node):改用 PostgreSQL 時,把 DATABASE_URL 設為 postgres:// 連線字串
+# (AKENTROS_DB_PATH 即不生效;migrate 與 server 會自動切換到 PG adapter)。
+# DATABASE_URL=postgres://user:password@localhost:5432/akentros
+
 # 以下兩個密鑰請使用獨立、密碼學隨機的值(建議 openssl rand -hex 32)。
 # JWT_SECRET:登入會話 cookie(akentros_token)的簽名金鑰。
 JWT_SECRET=
@@ -36,6 +40,10 @@ AKENTROS_PBKDF2_ITERATIONS=
 
 # Akentros 入口開關(fail-closed):設為 true 才會啟用 /api/ai/* 路由。
 AKENTROS_ENABLED=true
+
+# /metrics(Prometheus 文字格式)僅存在於 Node 自架拓撲;設為 false 可關閉。
+# Workers 部署沒有此端點(觀測走 Cloudflare observability)。
+AKENTROS_METRICS_ENABLED=
 
 # CORS:控制台與其他允許帶 cookie 的來源(逗號分隔)
 FRONTEND_ORIGINS="http://localhost:5173,http://localhost:4173"

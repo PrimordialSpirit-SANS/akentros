@@ -29,6 +29,7 @@ interface AkentrosApiKeyAuthRow {
   max_in_flight: number | string;
   spend_limit_usd_micros: number | null;
   spend_used_usd_micros: number | string;
+  idempotency_replay_ttl_seconds: number | string;
   expires_at: string | null;
   username: string;
   role: string;
@@ -58,11 +59,11 @@ export async function listAkentrosApiKeys(env: AkentrosRuntimeEnv, userId: strin
     `
     SELECT id, name, environment, key_prefix, key_suffix, scopes, model_allowlist,
            rpm_limit, max_in_flight, spend_limit_usd_micros, spend_used_usd_micros,
-           is_active, expires_at,
+           idempotency_replay_ttl_seconds, is_active, expires_at,
            last_used_at, rotated_at, revoked_at, created_at
     FROM ai_api_keys
     WHERE user_id = ?
-      AND is_active = TRUE
+      AND is_active = 1
       AND revoked_at IS NULL
       AND environment <> 'session'
     ORDER BY created_at DESC, id DESC
@@ -113,9 +114,9 @@ export async function ensureAkentrosSessionCredential(
       is_active, expires_at, last_used_at
     )
     VALUES (?, 'Akentros account session', 'session', 'akentros-account', 'session', ?,
-            ?, '[]', 60, 4, NULL, TRUE, NULL, ?)
+            ?, '[]', 60, 4, NULL, 1, NULL, ?)
     ON CONFLICT (key_digest) DO UPDATE
-    SET is_active = TRUE,
+    SET is_active = 1,
         revoked_at = NULL,
         last_used_at = CASE
           WHEN ai_api_keys.last_used_at IS NULL
@@ -154,6 +155,7 @@ export async function ensureAkentrosSessionCredential(
     max_in_flight: Number(row.max_in_flight),
     spend_limit_usd_micros: row.spend_limit_usd_micros == null ? null : Number(row.spend_limit_usd_micros),
     spend_used_usd_micros: Number(row.spend_used_usd_micros || 0),
+    idempotency_replay_ttl_seconds: Number(row.idempotency_replay_ttl_seconds || 0),
     user: {
       id: row.user_id,
       username: user.username,
@@ -186,7 +188,7 @@ export async function createAkentrosApiKey(
       SELECT COUNT(*) AS active_count
       FROM ai_api_keys
       WHERE user_id = ?
-        AND is_active = TRUE
+        AND is_active = 1
         AND revoked_at IS NULL
         AND environment <> 'session'
         AND (expires_at IS NULL OR expires_at > ?)
@@ -200,12 +202,13 @@ export async function createAkentrosApiKey(
       `
       INSERT INTO ai_api_keys (
         user_id, name, environment, key_prefix, key_suffix, key_digest,
-        scopes, model_allowlist, rpm_limit, max_in_flight, spend_limit_usd_micros, expires_at
+        scopes, model_allowlist, rpm_limit, max_in_flight, spend_limit_usd_micros, expires_at,
+        idempotency_replay_ttl_seconds
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       RETURNING id, name, environment, key_prefix, key_suffix, scopes, model_allowlist,
                 rpm_limit, max_in_flight, spend_limit_usd_micros, spend_used_usd_micros,
-                is_active, expires_at,
+                idempotency_replay_ttl_seconds, is_active, expires_at,
                 last_used_at, rotated_at, revoked_at, created_at
     `,
       [
@@ -221,6 +224,7 @@ export async function createAkentrosApiKey(
         clean.maxInFlight,
         clean.spendLimitUsdMicros,
         clean.expiresAt,
+        clean.idempotencyReplayTtlSeconds,
       ],
     );
   });
@@ -244,7 +248,7 @@ export async function rotateAkentrosApiKey(
     env,
     `SELECT id, environment
      FROM ai_api_keys
-     WHERE id = ? AND user_id = ? AND is_active = TRUE AND environment <> 'session'`,
+     WHERE id = ? AND user_id = ? AND is_active = 1 AND environment <> 'session'`,
     [keyId, userId],
   );
   if (!existing) return null;
@@ -258,10 +262,10 @@ export async function rotateAkentrosApiKey(
     UPDATE ai_api_keys
     SET key_prefix = ?, key_suffix = ?, key_digest = ?, rotated_at = ?,
         last_used_at = NULL, updated_at = ?
-    WHERE id = ? AND user_id = ? AND is_active = TRUE AND environment <> 'session'
+    WHERE id = ? AND user_id = ? AND is_active = 1 AND environment <> 'session'
     RETURNING id, name, environment, key_prefix, key_suffix, scopes, model_allowlist,
               rpm_limit, max_in_flight, spend_limit_usd_micros, spend_used_usd_micros,
-              is_active, expires_at,
+              idempotency_replay_ttl_seconds, is_active, expires_at,
               last_used_at, rotated_at, revoked_at, created_at
   `,
     [mask.key_prefix, mask.key_suffix, digest, nowIso(), nowIso(), keyId, userId],
@@ -279,7 +283,7 @@ export async function revokeAkentrosApiKey(
     env,
     `
     UPDATE ai_api_keys
-    SET is_active = FALSE, revoked_at = COALESCE(revoked_at, ?), updated_at = ?
+    SET is_active = 0, revoked_at = COALESCE(revoked_at, ?), updated_at = ?
     WHERE id = ? AND user_id = ? AND environment <> 'session'
     RETURNING id
   `,
@@ -301,13 +305,14 @@ export async function authenticateAkentrosApiKey(
     SELECT keys.id, keys.user_id, keys.name, keys.key_prefix, keys.key_suffix,
            keys.scopes, keys.model_allowlist, keys.rpm_limit, keys.max_in_flight,
            keys.spend_limit_usd_micros, keys.spend_used_usd_micros, keys.expires_at,
+           keys.idempotency_replay_ttl_seconds,
            users.username, users.role, users.is_banned, users.is_flagged,
            users.restricted_services, users.balance_usd_micros
     FROM ai_api_keys AS keys
     JOIN users ON users.id = keys.user_id
     WHERE keys.key_digest = ?
       AND keys.environment <> 'session'
-      AND keys.is_active = TRUE
+      AND keys.is_active = 1
       AND keys.revoked_at IS NULL
       AND (keys.expires_at IS NULL OR keys.expires_at > ?)
     LIMIT 1
@@ -343,6 +348,7 @@ export async function authenticateAkentrosApiKey(
     max_in_flight: Number(row.max_in_flight),
     spend_limit_usd_micros: row.spend_limit_usd_micros == null ? null : Number(row.spend_limit_usd_micros),
     spend_used_usd_micros: Number(row.spend_used_usd_micros || 0),
+    idempotency_replay_ttl_seconds: Number(row.idempotency_replay_ttl_seconds || 0),
     user: {
       id: String(row.user_id),
       username: row.username,

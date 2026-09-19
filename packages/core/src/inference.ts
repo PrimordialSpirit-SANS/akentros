@@ -50,6 +50,7 @@ const PUBLIC_AKENTROS_ERROR_CODES = new Set([
   "model_not_found",
   "model_not_allowed",
   "context_length_exceeded",
+  "request_too_large",
   "spend_limit_exceeded",
   "insufficient_balance",
   "free_quota_exceeded",
@@ -63,6 +64,12 @@ const PUBLIC_AKENTROS_ERROR_CODES = new Set([
   "service_unavailable",
 ]);
 const MAX_PROVIDER_ATTEMPTS = 8;
+// messages[].tool_calls[].function.arguments 是任意長度的 JSON 字串;HTTP 層
+// 已有 32MB 請求體上限,此處再加欄位級上限作縱深防禦,避免合法請求體內塞入
+// 超大字串拖累指紋計算與上游轉發。
+const MAX_TOOL_CALL_ARGUMENTS_CHARS = 256 * 1024;
+// tools[].function.parameters 為任意 JSON Schema;序列化長度上限同上。
+const MAX_TOOL_PARAMETERS_JSON_CHARS = 64 * 1024;
 
 function requestId() {
   return `req_${globalThis.crypto.randomUUID().replaceAll("-", "")}`;
@@ -158,6 +165,12 @@ function validateFunctionCall(
     throw invalidRequest(`${label}.name must be a valid function name.`, `${label}.name`);
   if (typeof value.arguments !== "string")
     throw invalidRequest(`${label}.arguments must be a JSON string.`, `${label}.arguments`);
+  if (value.arguments.length > MAX_TOOL_CALL_ARGUMENTS_CHARS)
+    throw invalidRequest(
+      `${label}.arguments exceeds the supported length.`,
+      `${label}.arguments`,
+      "request_too_large",
+    );
   return { name: value.name, arguments: value.arguments };
 }
 
@@ -228,6 +241,12 @@ function validateTools(value: unknown): any[] {
       );
     if (!isObject(fn.parameters))
       throw invalidRequest("Tool parameters must be a JSON Schema object.", `${label}.function.parameters`);
+    if (JSON.stringify(fn.parameters).length > MAX_TOOL_PARAMETERS_JSON_CHARS)
+      throw invalidRequest(
+        "Tool parameters exceed the supported size.",
+        `${label}.function.parameters`,
+        "request_too_large",
+      );
     return {
       type: "function",
       function: {
@@ -269,6 +288,151 @@ function replayError(reserved: { status?: string; requestId: string }) {
   );
   error.requestId = reserved.requestId;
   return error;
+}
+
+function normalizePublicIdempotencyKey(idempotencyKey: string | null | undefined) {
+  if (idempotencyKey === null || idempotencyKey === undefined || idempotencyKey === "") return null;
+  const normalized = String(idempotencyKey);
+  if (!IDEMPOTENCY_KEY.test(normalized)) {
+    throw invalidRequest("Idempotency-Key must contain 1-200 visible ASCII characters.", "Idempotency-Key");
+  }
+  return normalized;
+}
+
+// 公開 embeddings 請求的驗證與保留單準備。與 chat 同一套模型解析、白名單、
+// spend limit 與計費狀態機;差異:無串流、無輸出 token(保留額以輸出 0 計算),
+// usage 僅含 prompt_tokens/total_tokens。
+const PUBLIC_EMBEDDINGS_FIELDS = new Set(["model", "input", "dimensions", "encoding_format"]);
+const MAX_EMBEDDINGS_ITEMS = 2048;
+const MAX_EMBEDDINGS_ITEM_CHARS = 100_000;
+const MAX_EMBEDDINGS_DIMENSIONS = 3072;
+
+function validateEmbeddingsInput(value: unknown): string[] {
+  const items = typeof value === "string" ? [value] : value;
+  if (!Array.isArray(items) || items.length < 1 || items.length > MAX_EMBEDDINGS_ITEMS) {
+    throw invalidRequest("input must be a string or an array of 1-2048 strings.", "input");
+  }
+  return items.map((item: unknown, index: number) => {
+    if (typeof item !== "string" || item.length === 0) {
+      throw invalidRequest("input items must be non-empty strings.", `input.${index}`);
+    }
+    if (item.length > MAX_EMBEDDINGS_ITEM_CHARS) {
+      throw invalidRequest("An input item exceeds the supported text length.", `input.${index}`);
+    }
+    return item;
+  });
+}
+
+export async function prepareAkentrosEmbeddingsRequest({
+  body,
+  aiKey,
+  idempotencyKey = null,
+}: {
+  body: any;
+  aiKey: any;
+  idempotencyKey?: string | null;
+}) {
+  if (!isObject(body)) throw invalidRequest("The request body must be a JSON object.");
+  const unsupportedField = Object.keys(body).find((field) => !PUBLIC_EMBEDDINGS_FIELDS.has(field));
+  if (unsupportedField) {
+    throw invalidRequest(
+      `The parameter '${unsupportedField}' is not supported by Akentros.`,
+      unsupportedField,
+      "unsupported_parameter",
+    );
+  }
+  const modelId = typeof body.model === "string" ? body.model.trim() : "";
+  let model: ReturnType<typeof requireModelPricing>;
+  try {
+    model = requireModelPricing(modelId);
+  } catch {
+    throw new AkentrosError(`The model '${modelId || "unknown"}' does not exist or is disabled.`, {
+      status: 404,
+      type: "invalid_request_error",
+      code: "model_not_found",
+      param: "model",
+    });
+  }
+  if (
+    Array.isArray(aiKey?.model_allowlist) &&
+    aiKey.model_allowlist.length > 0 &&
+    !aiKey.model_allowlist.includes(modelId)
+  ) {
+    throw new AkentrosError("The API key does not allow this model.", {
+      status: 403,
+      type: "permission_error",
+      code: "model_not_allowed",
+      param: "model",
+    });
+  }
+  if (model.capabilities.embeddings !== true) {
+    throw invalidRequest(
+      "This Akentros model does not support the embeddings API.",
+      "model",
+      "unsupported_feature",
+    );
+  }
+  const input = validateEmbeddingsInput(body.input);
+  const dimensions =
+    body.dimensions === undefined
+      ? undefined
+      : integer(body.dimensions, "dimensions", { minimum: 1, maximum: MAX_EMBEDDINGS_DIMENSIONS });
+  const encodingFormat = body.encoding_format === undefined ? "float" : body.encoding_format;
+  if (encodingFormat !== "float" && encodingFormat !== "base64") {
+    throw invalidRequest("encoding_format must be either float or base64.", "encoding_format");
+  }
+  const normalizedIdempotencyKey = normalizePublicIdempotencyKey(idempotencyKey);
+
+  const upstreamBody = {
+    model: modelId,
+    input,
+    ...(dimensions !== undefined ? { dimensions } : {}),
+    ...(body.encoding_format !== undefined ? { encoding_format: encodingFormat } : {}),
+  };
+  const estimatedInputTokens = estimateInputTokens({ input });
+  const reservedCostMicros = calculateReservationCostMicros(model, estimatedInputTokens, 0);
+  if (
+    aiKey?.spend_limit_usd_micros !== null &&
+    aiKey?.spend_limit_usd_micros !== undefined &&
+    reservedCostMicros > Number(aiKey.spend_limit_usd_micros)
+  ) {
+    throw new AkentrosError("The request exceeds this API key point limit.", {
+      status: 402,
+      type: "insufficient_funds_error",
+      code: "spend_limit_exceeded",
+    });
+  }
+  const id = requestId();
+  const snapshot = createBillingSnapshot(modelId);
+  const fingerprint = await createAkentrosRequestFingerprint({
+    endpoint: "embeddings",
+    body: upstreamBody,
+  });
+
+  return {
+    requestId: id,
+    created: Math.floor(Date.now() / 1000),
+    modelId,
+    model,
+    endpoint: "embeddings",
+    routes: listCandidateRoutes(model),
+    body: upstreamBody,
+    estimatedInputTokens,
+    reservation: {
+      requestId: id,
+      userId: String(aiKey.user.id),
+      apiKeyId: String(aiKey.id),
+      idempotencyKey: normalizedIdempotencyKey,
+      requestFingerprint: fingerprint,
+      endpoint: "embeddings",
+      stream: false,
+      publicModel: modelId,
+      pricingRevision: snapshot.pricing_revision,
+      pricingSnapshot: snapshot,
+      reservedCostMicros,
+      expiresAt: new Date(Date.now() + 5 * 60_000).toISOString(),
+    },
+  };
 }
 
 export function listPublicAkentrosModels(config = BACKEND_PRICING) {
@@ -325,6 +489,13 @@ export async function prepareAkentrosChatRequest({
       code: "model_not_allowed",
       param: "model",
     });
+  }
+  if (model.capabilities.chat_completions !== true) {
+    throw invalidRequest(
+      "This Akentros model does not support chat completions.",
+      "model",
+      "unsupported_feature",
+    );
   }
   if (body.response_format !== undefined) {
     throw invalidRequest(
@@ -396,13 +567,7 @@ export async function prepareAkentrosChatRequest({
   const stop = body.stop === undefined ? undefined : validateStop(body.stop);
   const streamOptions = validateStreamOptions(body.stream_options, stream);
   const chatTemplateKwargs = validateChatTemplateKwargs(body.chat_template_kwargs, modelId);
-  const normalizedIdempotencyKey =
-    idempotencyKey === null || idempotencyKey === undefined || idempotencyKey === ""
-      ? null
-      : String(idempotencyKey);
-  if (normalizedIdempotencyKey && !IDEMPOTENCY_KEY.test(normalizedIdempotencyKey)) {
-    throw invalidRequest("Idempotency-Key must contain 1-200 visible ASCII characters.", "Idempotency-Key");
-  }
+  const normalizedIdempotencyKey = normalizePublicIdempotencyKey(idempotencyKey);
 
   const upstreamBody = {
     model: modelId,
@@ -458,6 +623,7 @@ export async function prepareAkentrosChatRequest({
     created: Math.floor(Date.now() / 1000),
     modelId,
     model,
+    endpoint: "chat.completions",
     routes: listCandidateRoutes(model),
     body: upstreamBody,
     stream,
@@ -611,6 +777,32 @@ function publicCompletion(result: any, prepared: any) {
     model: prepared.modelId,
     choices: result.payload.choices.map(publicChoice),
     usage: publicUsage(result.payload.usage, result),
+  };
+}
+
+// 公開 embeddings 回應的 usage:僅 prompt_tokens/total_tokens(OpenAI embeddings
+// 慣例);provider 缺 usage 時以保留時的輸入估計回補,輸出恆為 0。
+function publicEmbeddingsUsage(usage: any, fallback: any = {}) {
+  const normalized = normalizeProviderUsage(usage);
+  if (normalized) {
+    return { prompt_tokens: normalized.prompt_tokens, total_tokens: normalized.total_tokens };
+  }
+  const promptTokens = tokenCount(usage?.prompt_tokens, tokenCount(fallback.inputTokens));
+  return { prompt_tokens: promptTokens, total_tokens: tokenCount(usage?.total_tokens, promptTokens) };
+}
+
+function publicEmbeddings(result: any, prepared: any) {
+  const data = Array.isArray(result.payload.data) ? result.payload.data : [];
+  return {
+    object: "list",
+    data: data.map((item: any, index: number) => ({
+      object: "embedding",
+      index:
+        Number.isSafeInteger(Number(item?.index)) && Number(item.index) >= 0 ? Number(item.index) : index,
+      embedding: item?.embedding,
+    })),
+    model: prepared.modelId,
+    usage: publicEmbeddingsUsage(result.payload.usage, result),
   };
 }
 
@@ -779,6 +971,7 @@ export function createAkentrosInferenceRuntime({
             pool: claim.pool,
             credential: claim,
             body: prepared.body,
+            endpoint: prepared.endpoint,
             fetchImpl,
             signal,
             cloudflareAiBinding,
@@ -876,11 +1069,12 @@ export function createAkentrosInferenceRuntime({
       if (invocation.result.usageSource !== "provider") {
         // 成功回應但缺合法 usage(如 Cloudflare legacy shape 一律 estimated):
         // 以保守估計結算,不再標記待核對(隔離一小時後全額退款)。
+        // embeddings 無輸出 token,缺 usage 時僅按輸入估計結算。
         const inputTokens = Number(prepared.estimatedInputTokens) || 0;
-        const outputTokens = cappedEstimatedOutputTokens(
-          prepared,
-          completionPayloadOutputChars(invocation.result.payload),
-        );
+        const outputTokens =
+          prepared.endpoint === "embeddings"
+            ? 0
+            : cappedEstimatedOutputTokens(prepared, completionPayloadOutputChars(invocation.result.payload));
         try {
           await billing.settle({
             requestId: prepared.requestId,
@@ -927,10 +1121,14 @@ export function createAkentrosInferenceRuntime({
           throw error;
         }
       }
+      const body: any =
+        prepared.endpoint === "embeddings"
+          ? publicEmbeddings(invocation.result, prepared)
+          : publicCompletion(invocation.result, prepared);
       return {
         requestId: prepared.requestId,
         pricingRevision: BACKEND_PRICING.revision,
-        body: publicCompletion(invocation.result, prepared),
+        body,
       };
     },
 

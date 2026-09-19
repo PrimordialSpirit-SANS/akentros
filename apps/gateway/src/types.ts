@@ -54,6 +54,7 @@ export interface AkentrosAuthenticatedKey {
   max_in_flight: number;
   spend_limit_usd_micros: number | null;
   spend_used_usd_micros: number;
+  idempotency_replay_ttl_seconds: number;
   user: AkentrosKeyUser;
 }
 

@@ -56,6 +56,8 @@ test("canonical pricing exposes only enabled public models", () => {
       "akentros/qwen-3.8-max",
       QWEN_38_FLASH,
       QWEN_38_27B,
+      "akentros/text-embedding-3-small",
+      "akentros/text-embedding-3-large",
     ],
   );
   assert.equal(getModelPricing(GPT_6_ASTRA), BACKEND_PRICING.models[GPT_6_ASTRA]);

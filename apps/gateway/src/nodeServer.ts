@@ -9,9 +9,10 @@ import { serve } from "@hono/node-server";
 import dotenv from "dotenv";
 import { createApp } from "./app.ts";
 import type { AkentrosRuntimeEnv } from "./types.ts";
-import { installNodeAkentrosDbAdapter } from "./utils/db.ts";
+import { dbQuery, installNodeAkentrosDbAdapter } from "./utils/db.ts";
 import { logAkentrosEvent } from "./utils/logger.ts";
 import { runAkentrosMaintenance } from "./utils/maintenance.ts";
+import { akentrosMetricsHandler } from "./utils/metrics.ts";
 
 // .dev.vars 相對於此檔;dotenv/config 預設只讀 .env,這裡補載 .dev.vars。
 dotenv.config({
@@ -47,6 +48,26 @@ function socketRemoteAddress(incoming: unknown): string {
 // Hono app 只建一次:每個請求重建整個 app(路由註冊、中介層組裝)只是
 // 配置與 GC 的浪費。env 為 process.env 的活引用,設定仍即時生效。
 const app = createApp(env);
+
+// /metrics 是 Node 拓撲限定的維運端點(Prometheus 文字格式):程序內計數器
+// 對 Workers 隔離區沒有意義,那邊的觀測走 Cloudflare observability。
+// AKENTROS_METRICS_ENABLED=false 可關閉;與 /healthz 相同,不在
+// AKENTROS_ENABLED fail-closed 閘門管轄範圍。
+if (
+  String(env.AKENTROS_METRICS_ENABLED ?? "true")
+    .trim()
+    .toLowerCase() !== "false"
+) {
+  app.get(
+    "/metrics",
+    akentrosMetricsHandler(() =>
+      dbQuery(env, "SELECT 1 AS ok").then(
+        () => true,
+        () => false,
+      ),
+    ),
+  );
+}
 
 const server = serve(
   {

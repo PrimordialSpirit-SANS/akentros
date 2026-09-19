@@ -69,7 +69,7 @@ test("Hono key lifecycle and public authentication enforce the shared contract",
   const route = read("apps/gateway/src/routes/aiDeveloper.ts");
   const keys = read("apps/gateway/src/utils/aiApiKeys.ts");
   const auth = read("apps/gateway/src/middleware/aiAuth.ts");
-  assert.match(keys, /AND is_active = TRUE/);
+  assert.match(keys, /AND is_active = 1/);
   assert.match(keys, /AND revoked_at IS NULL/);
   assert.match(keys, /revoked_at = COALESCE\(revoked_at, \?\)/);
   assert.match(route, /revoke[\s\S]*204/);
@@ -124,6 +124,10 @@ test("Cloudflare Workers deployment pins the Durable Object topology", () => {
 });
 test("Hono exposes the public Akentros inference routes", () => {
   const worker = read("apps/gateway/src/routes/aiPublic.ts");
-  assert.deepEqual(collectRoutes(worker, "aiPublicRoutes"), ["GET /models", "POST /chat/completions"]);
+  assert.deepEqual(collectRoutes(worker, "aiPublicRoutes"), [
+    "GET /models",
+    "POST /chat/completions",
+    "POST /embeddings",
+  ]);
   assert.match(read("apps/gateway/src/app.ts"), /app\.route\(['"]\/api\/ai\/v1['"],\s*aiPublicRoutes\)/);
 });

@@ -16,6 +16,8 @@ const STATUS_LABELS: Record<string, { label: string; className: string }> = {
   refunded: { label: "已退款", className: "badge badge-info" },
   dispatched: { label: "處理中", className: "badge" },
   needs_reconciliation: { label: "待核對", className: "badge badge-warn" },
+  // 冪等重放命中:不執行、不計費,僅重放已落地的回應。
+  replayed: { label: "重放", className: "badge badge-info" },
 };
 
 function statusBadge(status: string) {
@@ -80,6 +82,7 @@ export function LogsPage() {
         ["扣除金額", formatUsd(detail.charged_usd)],
         ["總延遲", formatLatency(detail.latency_ms)],
         ["錯誤代碼", detail.error_code || "—"],
+        ...(detail.replay_of_request_id ? [["重放自", detail.replay_of_request_id] as [string, string]] : []),
       ]
     : [];
 
@@ -101,6 +104,7 @@ export function LogsPage() {
             <option value="refunded">已退款</option>
             <option value="rejected">拒絕</option>
             <option value="needs_reconciliation">待核對</option>
+            <option value="replayed">重放</option>
           </select>
         }
       />

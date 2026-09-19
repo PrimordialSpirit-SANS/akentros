@@ -6,6 +6,137 @@ versioning follows [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **OpenAI-compatible embeddings endpoint.** `POST /api/ai/v1/embeddings`
+  serves text embeddings for models whose pricing capabilities declare
+  `embeddings` (new catalog entries `akentros/text-embedding-3-small` at
+  $0.02/M input tokens and `akentros/text-embedding-3-large` at $0.13/M,
+  routed through the openai pool). The endpoint reuses the chat pipeline
+  verbatim — key auth, model allowlist, RPM/in-flight admission, the
+  reserve→settle→refund ledger, provider attempt auditing and
+  `Idempotency-Key` — with input-only billing: reservations are computed with
+  zero output tokens, provider usage carries `prompt_tokens`/`total_tokens`
+  only, and the minimum charge still applies. Requests accept a string or up
+  to 2048 strings plus optional `dimensions`/`encoding_format`; chat models
+  reject the embeddings endpoint and embedding models reject
+  chat/completions. New API keys are granted the `embeddings` scope by
+  default; existing keys with `chat:completions` keep working on the endpoint
+  (backward-compatible scope check). Pricing revision `2026-09-19.1` also
+  syncs the console's static model/provider catalogs.
+- **Opt-in idempotent replay (OpenAI-compatible semantics).** API keys can now
+  enable `idempotency_replay_ttl_seconds` (0-604800 seconds, default 0) at
+  creation time. With a window greater than zero, successful responses — both
+  JSON and full SSE frame sequences — are stored in the new
+  `ai_idempotency_replays` table (schema v3) keyed by
+  `(api_key_id, idempotency_key)`, and retrying a completed key with an
+  identical request body replays the stored response (`200` +
+  `X-Akentros-Idempotent-Replay: true`) without a second execution, a second
+  charge, or RPM/in-flight admission. A body mismatch under the same key
+  returns `409 idempotency_conflict`, matching the reservation fingerprint
+  check. Keys without the opt-in keep the default no-storage stance
+  (`409 idempotent_request_replayed`), so prompts/completions are still never
+  persisted unless a deployment explicitly chooses it per key. Replays are
+  capped at 2 MB (larger responses skip storage silently), expired rows are
+  purged by the maintenance loop (`expiredReplays` counter), and replay
+  responses are served before admission so they cannot consume rate limit
+  budget. Every replay hit also writes a lightweight `status='replayed'`
+  request-log row (zero tokens, zero cost, `replay_of_request_id` pointing at
+  the original request) so replays stay visible in the developer console and
+  usage API; the console key form gained a matching 冪等重放 field and the
+  request log a 重放 status label/filter. Requires `npm run migrate`
+  (schema v3).
+- **Prometheus metrics on the Node deployment.** `GET /metrics` (Node
+  self-hosted topology only; not mounted on Workers, where in-process
+  counters would be meaningless) exposes request counters by endpoint and
+  HTTP status, request duration sums/counts, settled token usage by
+  direction, settled spend in micro-USD, plus `akentros_up`,
+  `akentros_process_uptime_seconds` and a live `akentros_db_up` probe. Set
+  `AKENTROS_METRICS_ENABLED=false` to opt out. The metrics module uses no
+  Node-specific APIs and no dependencies; Workers imports remain inert.
+
+### Fixed
+
+- **Refund ledger entries recorded a shifted running balance.** The settle
+  and refund paths computed the refund entry's `balance_before` as
+  `read_balance − refunded` and wrote `balance_after` as the pre-update read,
+  so every refund entry understated both columns by exactly the refund amount
+  and the ledger chain diverged permanently from `users.balance` (a reserve of
+  8 µUSD settled at 3 with a 5 µUSD refund recorded `999987 → 999992` while
+  the real balance was `999997`). The ledger is the reconciliation surface, so
+  every audit query would have disagreed with the account table by one refund
+  per request. Both entries now record `before = read_value`,
+  `after = read_value + refunded` (BigInt-exact), with a regression test pinning
+  the full chain against the live `users.balance`.
+- **The zero-cost settle guard was dead code.** The settle UPDATE's
+  `AND (? > 0 OR reserved_usd_micros = 0)` guard bound `actualCostMicros` as a
+  decimal TEXT string; SQLite's cross-type ordering places TEXT above INTEGER,
+  so the guard compared true on every request and a non-zero reservation with
+  a reported cost of 0 settled successfully (full silent refund) instead of
+  being rejected as a data anomaly. The parameter is now `CAST` to BIGINT like
+  its sibling in the same statement (the very trap the clamp was already
+  casting around), turning the guard live; a zero-reservation request keeps
+  its dedicated reserved-zero path, and a regression test pins
+  `actual = 0 ∧ reserved > 0 ⇒ 409 invalid_billing_state` with the reservation
+  left intact for reconciliation.
+- **Unauthenticated and authenticated request bodies were buffered without
+  any size limit.** `c.req.json()` on `/api/auth/*` (rate-limited to 60/15 min
+  per IP but otherwise anonymous) and `/api/ai/v1/chat/completions` buffered
+  the entire body into memory before any validation, and the developer
+  console's `readJsonObject` read the full text before checking its 16 KB cap;
+  with key-level RPM up to 6,000/min a valid key could amplify memory pressure
+  arbitrarily. All three entry points now read bodies through a shared capped
+  reader (Content-Length pre-check plus per-chunk hard cap: 32 MB on the
+  public inference surface, 16 KB on auth and developer endpoints), the
+  oversized public error is returned as a documented `413
+  request_too_large`, and defense-in-depth caps were added inside request
+  validation (`tool_calls[].function.arguments` ≤ 256 K chars,
+  `tools[].function.parameters` ≤ 64 K serialized chars). Contract test
+  updated to the dialect-neutral `is_active = 1` pin.
+- **The developer console font stack referenced a font that does not exist.**
+  The rebrand renamed `"Noto Sans TC"` to `"Noto Akentros TC"` and the generic
+  `sans-serif` fallback to an invalid `akentros-serif`, so every client fell
+  through to arbitrary system fonts. The real font names are restored.
+- **Hono apps were rebuilt per request on the Durable Object path.** The
+  earlier fix hoisted `createApp(env)` out of the per-request fetch on Node;
+  the DO entry point still rebuilt the app (route registration, middleware
+  assembly) on every request. The DO now builds its app once in the
+  constructor.
+- **The IP rate limiter's database path never activated on default
+  deployments.** The middleware gated the database counter on
+  `DATABASE_URL` being set, but the documented Node setup configures
+  `AKENTROS_DB_PATH` (no `DATABASE_URL`), and Workers deployments never set it
+  — so the documented "SQLite fixed-window limiter (global)" silently ran
+  per-isolate in memory and reset on eviction. The limiter now always tries
+  the installed adapter (node:sqlite, DO storage.sql, or PostgreSQL) and only
+  falls back to the in-memory window when the database is unavailable, with
+  the same fail-open behavior and warn log as before.
+
+### Added
+
+- **PostgreSQL is now a supported Node self-hosting database alongside
+  SQLite.** The core stores were already dialect-aware; this release
+  completes the port: versioned migrations and readiness checks carry a
+  `postgres` dialect (BIGINT identity primary keys, `to_char(now() AT TIME
+  ZONE 'UTC', …)` timestamp defaults, `information_schema`/`pg_indexes`
+  catalog checks), timestamps remain UTC ISO-8601 TEXT strings so every
+  string-comparison invariant is unchanged, and booleans stay INTEGER 1/0. A
+  new `db.pg.ts` adapter (pg Pool, `?` → `$n` placeholder conversion,
+  ALS-bound transactions) is installed automatically when `DATABASE_URL` is a
+  `postgres://` URL. Money paths add the serialization SQLite got for free
+  from its single-writer lock: `FOR UPDATE` row locks on the balance/spend
+  rows read by reserve/settle/refund, and per-entity `pg_advisory_xact_lock`
+  serialization for provider-pool claims and key RPM/in-flight admission.
+  Six end-to-end tests on an embedded PostgreSQL (pglite) pin migration
+  idempotency, the billing ledger chain, the zero-cost guard, idempotency
+  replay, provider pool claim/release with health backoff, and admission
+  control.
+- react-router-dom was upgraded to ^7.18.4, clearing the two React Router
+  moderate advisories (open redirect via backslash in `Link`/`useNavigate`
+  and SSR `deserializeErrors()` constructor injection). The remaining two
+  `@vitest/mocker` moderates are dev-only (no production surface) and await
+  the vitest 5 major.
+
 ### Fixed
 
 - **Settlement did not cap the charge at the reserved amount.** The `settle`

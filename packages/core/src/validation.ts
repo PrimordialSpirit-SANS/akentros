@@ -167,7 +167,9 @@ export function validateBackendPricing(config: Record<string, any>) {
     push(errors, model.owned_by === "akentros", `${path}.owned_by`, "must equal akentros");
 
     const capabilityKeys = ["chat_completions", "streaming", "tools", "json_mode", "vision"];
-    if (hasExactKeys(errors, model.capabilities, `${path}.capabilities`, capabilityKeys)) {
+    // embeddings 是選填 capability:僅 embeddings 模型(如 text-embedding-3-*)
+    // 需要宣告;既有 chat 模型不加此鍵,避免整份定價文件的無謂改動。
+    if (hasExactKeys(errors, model.capabilities, `${path}.capabilities`, capabilityKeys, ["embeddings"])) {
       for (const key of capabilityKeys)
         push(
           errors,
@@ -175,6 +177,14 @@ export function validateBackendPricing(config: Record<string, any>) {
           `${path}.capabilities.${key}`,
           "must be boolean",
         );
+      if (model.capabilities.embeddings !== undefined) {
+        push(
+          errors,
+          typeof model.capabilities.embeddings === "boolean",
+          `${path}.capabilities.embeddings`,
+          "must be boolean",
+        );
+      }
     }
 
     const billingKeys = [

@@ -65,7 +65,7 @@ test("SQLite migrations define the canonical schema and the IP rate-limit window
   assert.equal(Object.isFrozen(AKENTROS_MIGRATIONS), true);
   assert.deepEqual(
     AKENTROS_MIGRATIONS.map(({ version }: any) => version),
-    [1, 2],
+    [1, 2, 3],
   );
   // v1:完整 canonical schema(SQLite 方言;時間戳以 strftime 對齊 ISO 格式)。
   assert.match(AKENTROS_MIGRATIONS[0].statements.join("\n"), /CREATE TABLE IF NOT EXISTS ai_requests/);
@@ -73,4 +73,11 @@ test("SQLite migrations define the canonical schema and the IP rate-limit window
   assert.match(AKENTROS_MIGRATIONS[0].statements.join("\n"), /idx_ai_requests_key_idempotency/);
   // v2:分散式 IP 限流視窗表。
   assert.match(AKENTROS_MIGRATIONS[1].statements[0], /akentros_ip_rate_limit_windows/);
+  // v3:冪等重放儲存(金鑰 TTL 欄位 + 回應落地表)。
+  assert.match(AKENTROS_MIGRATIONS[2].statements.join("\n"), /idempotency_replay_ttl_seconds/);
+  assert.match(
+    AKENTROS_MIGRATIONS[2].statements.join("\n"),
+    /CREATE TABLE IF NOT EXISTS ai_idempotency_replays/,
+  );
+  assert.match(AKENTROS_MIGRATIONS[2].statements.join("\n"), /idx_ai_idempotency_replays_key/);
 });

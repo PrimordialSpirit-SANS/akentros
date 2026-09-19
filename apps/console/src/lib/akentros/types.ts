@@ -43,7 +43,8 @@ export type AkentrosRequestStatus =
   | "partially_succeeded"
   | "rejected"
   | "refunded"
-  | "needs_reconciliation";
+  | "needs_reconciliation"
+  | "replayed";
 
 export type AkentrosPublicErrorCode =
   | "invalid_request"
@@ -132,12 +133,14 @@ export interface AkentrosApiKey {
   max_in_flight?: number;
   spend_limit_usd?: string | null;
   spend_used_usd: string;
+  idempotency_replay_ttl_seconds?: number;
 }
 
 export interface AkentrosKeyCreateOptions {
   name: string;
   expires_at?: string | null;
   spend_limit_usd?: string | null;
+  idempotency_replay_ttl_seconds?: number;
 }
 
 export interface AkentrosKeyMutationResult {
@@ -180,6 +183,7 @@ export interface AkentrosUsageLog {
   refunded_usd: string;
   latency_ms: number | null;
   error_code: AkentrosPublicErrorCode | null;
+  replay_of_request_id: string | null;
 }
 
 export interface AkentrosRequestDetail extends AkentrosUsageLog {

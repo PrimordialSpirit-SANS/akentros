@@ -96,7 +96,7 @@ function fakeBilling(overrides: any = {}) {
 test("public model list exposes only stable Akentros model metadata", () => {
   const list = listPublicAkentrosModels();
   assert.equal(list.object, "list");
-  assert.equal(list.data.length, 19);
+  assert.equal(list.data.length, 21);
   for (const model of list.data) {
     assert.match(model.id, /^akentros\//);
     assert.equal(model.object, "model");
