@@ -1,6 +1,9 @@
 import React from "react";
 import { CopyButton, PageHeader } from "../components/ui";
-import { getAkentrosChatCompletionsUrl, getAkentrosPublicApiRoot } from "../lib/akentros/api/akentrosDeveloperApi";
+import {
+  getAkentrosChatCompletionsUrl,
+  getAkentrosPublicApiRoot,
+} from "../lib/akentros/api/akentrosDeveloperApi";
 import { buildCodeExamples, type CodeLanguage } from "../lib/akentros/utils/buildCodeExamples";
 
 export function DocsPage() {

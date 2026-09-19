@@ -266,6 +266,72 @@ test("zero-point settle requests keep their reserved-zero path", async () => {
   assert.equal(result.reservationState, "settled");
 });
 
+test("settle ledger entries track the real balance across the refund", async () => {
+  // 帳本分錄的 balance_before/after 必須反映 users.balance 的真實變化:
+  // debit 1000000→999992、credit 999992→999997。退款分錄若把 before 記成
+  // 「讀值 − 退款」,整條 ledger 鏈會永久差一個退款量,對帳對不上。
+  const { query, user, apiKeyId } = await billingFixture();
+  const store = createAkentrosBillingStore(query);
+  const reserved = await store.reserve(reservation({ userId: user.id, apiKeyId }));
+  await store.markDispatched(reserved.requestId);
+  await store.settle({
+    requestId: reserved.requestId,
+    actualCostMicros: 3,
+    inputTokens: 4,
+    outputTokens: 2,
+    usageSource: "provider",
+    totalLatencyMs: 25,
+  });
+
+  const ledger = await query(
+    `SELECT direction, amount, balance_before, balance_after FROM ledger_entries ORDER BY id`,
+  );
+  assert.equal(ledger.rows.length, 2);
+  const [debit, credit] = ledger.rows;
+  assert.equal(
+    `${debit.direction} ${debit.amount} ${debit.balance_before} ${debit.balance_after}`,
+    "debit 8 1000000 999992",
+  );
+  assert.equal(
+    `${credit.direction} ${credit.amount} ${credit.balance_before} ${credit.balance_after}`,
+    "credit 5 999992 999997",
+  );
+
+  const userRow = await query(`SELECT balance_usd_micros FROM users WHERE id = ?`, [user.id]);
+  assert.equal(String(userRow.rows[0].balance_usd_micros), "999997");
+  assert.equal(String(credit.balance_after), String(userRow.rows[0].balance_usd_micros));
+});
+
+test("zero reported cost cannot settle a non-zero reservation", async () => {
+  // WHERE 的零成本守衛以 CAST 綁定比較:actual=0 且 reserved>0 的結算是
+  // 資料異常,必須以 invalid_billing_state 拒絕,而不是靜默全額退款。
+  // (守衛參數以 TEXT 綁定,未 CAST 時 TEXT 恆大於 0,守衛形同死碼。)
+  const { query, user, apiKeyId } = await billingFixture();
+  const store = createAkentrosBillingStore(query);
+  const reserved = await store.reserve(reservation({ userId: user.id, apiKeyId }));
+  await store.markDispatched(reserved.requestId);
+
+  await assert.rejects(
+    store.settle({
+      requestId: reserved.requestId,
+      actualCostMicros: 0,
+      inputTokens: 0,
+      outputTokens: 0,
+      usageSource: "provider",
+      totalLatencyMs: 5,
+    }),
+    (error: any) => error.status === 409 && error.code === "invalid_billing_state",
+  );
+
+  // 保留單維持原狀,點數仍在保留中(交由對帳流程處理)。
+  const stateRow = await query(`SELECT state FROM ai_billing_reservations WHERE request_id = ?`, [
+    reserved.requestId,
+  ]);
+  assert.equal(String(stateRow.rows[0].state), "reserved");
+  const userRow = await query(`SELECT balance_usd_micros FROM users WHERE id = ?`, [user.id]);
+  assert.equal(Number(userRow.rows[0].balance_usd_micros), user.balance_usd_micros - 8);
+});
+
 test("provider failure refunds the reservation before dispatch is refunded too", async () => {
   const { query, user, apiKeyId } = await billingFixture();
   const store = createAkentrosBillingStore(query);

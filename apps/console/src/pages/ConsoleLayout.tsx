@@ -133,7 +133,7 @@ export function ConsoleLayout() {
                   key={item.to}
                   to={item.to}
                   end={item.to === "/"}
-                  className={({ isActive }) => `nav-item${isActive ? " active" : ""}`}
+                  className={({ isActive }: { isActive: boolean }) => `nav-item${isActive ? " active" : ""}`}
                 >
                   <NavIcon name={item.icon} />
                   <span>{item.label}</span>

@@ -12,7 +12,10 @@ export type AkentrosQueryFn = (sql: string, params?: unknown[]) => Promise<Akent
 // 可選交易能力:SQLite adapter 會提供 transaction(fn)(BEGIN IMMEDIATE…
 // COMMIT,或 DO 的 ctx.storage.transaction);沒有提供時(部分測試替身)
 // store 退回逐語句執行,由呼叫端保證語義。
+// dialect 標註查詢所用的 SQL 方言(sqlDialect.ts 依此選取極值函式與 JSON
+// 展開語法);未標註視為 SQLite——Node/DO adapter 與測試替身皆不帶此欄位。
 export type AkentrosQuery = AkentrosQueryFn & {
+  dialect?: "postgres" | "sqlite";
   transaction?: (fn: () => Promise<unknown>) => Promise<unknown>;
 };
 

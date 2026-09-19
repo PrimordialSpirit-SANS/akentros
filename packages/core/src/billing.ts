@@ -1,6 +1,7 @@
 import { AkentrosError, invalidRequest } from "./openaiErrors.ts";
 import type { AkentrosQuery } from "./query.ts";
 import { akentrosQueryRows as rows } from "./query.ts";
+import { sqlDialect } from "./sqlDialect.ts";
 
 // 計費對外的型別契約:reserve→settle→refund 狀態機的輸入/輸出與 store
 // 介面。inference runtime 與 gateway 的計費包裝都依賴這些型別,讓「錢」的
@@ -107,7 +108,9 @@ export interface AkentrosBillingStore {
   settle(input: AkentrosBillingSettleInput): Promise<AkentrosBillingRow>;
   refund(input: AkentrosBillingRefundInput): Promise<AkentrosBillingRow>;
   refundFromState(input: AkentrosBillingRefundFromStateInput): Promise<AkentrosBillingRow>;
-  markNeedsReconciliation(input: AkentrosBillingMarkNeedsReconciliationInput): Promise<AkentrosBillingRow | null>;
+  markNeedsReconciliation(
+    input: AkentrosBillingMarkNeedsReconciliationInput,
+  ): Promise<AkentrosBillingRow | null>;
   reconcileStale(options?: AkentrosBillingReconcileOptions): Promise<AkentrosReconciliationOutcome[]>;
   resolveQuarantined(options?: AkentrosBillingQuarantineOptions): Promise<AkentrosReconciliationOutcome[]>;
 }
@@ -193,7 +196,7 @@ export const AKENTROS_BILLING_SQL = Object.freeze({
            requests.reserved_usd_micros, requests.charged_usd_micros, requests.refunded_usd_micros,
            requests.error_code, requests.http_status,
            reservations.state AS reservation_state,
-           TRUE AS idempotent_replay
+           1 AS idempotent_replay
     FROM ai_requests AS requests
     LEFT JOIN ai_billing_reservations AS reservations
       ON reservations.ai_request_id = requests.id
@@ -205,7 +208,7 @@ export const AKENTROS_BILLING_SQL = Object.freeze({
            requests.reserved_usd_micros, requests.charged_usd_micros, requests.refunded_usd_micros,
            requests.error_code, requests.http_status,
            reservations.state AS reservation_state,
-           TRUE AS idempotent_replay
+           1 AS idempotent_replay
     FROM ai_requests AS requests
     LEFT JOIN ai_billing_reservations AS reservations
       ON reservations.ai_request_id = requests.id
@@ -289,6 +292,7 @@ async function withTransaction<T>(query: AkentrosQuery, fn: () => Promise<T>): P
 }
 
 export function createAkentrosBillingStore(query: AkentrosQuery): AkentrosBillingStore {
+  const dialect = sqlDialect(query);
   if (typeof query !== "function") {
     throw new TypeError("createAkentrosBillingStore requires a database query function.");
   }
@@ -330,12 +334,15 @@ export function createAkentrosBillingStore(query: AkentrosQuery): AkentrosBillin
 
       return withTransaction(query, async () => {
         const now = nowIso();
+        // 金錢路徑的拒絕判定讀取:PostgreSQL(READ COMMITTED)必須 FOR UPDATE
+        // 鎖住預算/餘額列,併發保留單才不會以過期讀值通過檢查;SQLite 由
+        // BEGIN IMMEDIATE 的單寫者序列化保證,rowLock 為空字串。
         const keyRows = await query(
           `
           SELECT spend_limit_usd_micros, spend_used_usd_micros, spend_reserved_usd_micros
           FROM ai_api_keys
-          WHERE id = ? AND is_active = TRUE AND revoked_at IS NULL
-            AND (expires_at IS NULL OR expires_at > ?)
+          WHERE id = ? AND is_active = 1 AND revoked_at IS NULL
+            AND (expires_at IS NULL OR expires_at > ?)${dialect.rowLock ? ` ${dialect.rowLock}` : ""}
         `,
           [apiKeyId, now],
         );
@@ -344,7 +351,7 @@ export function createAkentrosBillingStore(query: AkentrosQuery): AkentrosBillin
         const userRows = await query(
           `
           SELECT id, username, display_name, email, balance_usd_micros
-          FROM users WHERE id = ?
+          FROM users WHERE id = ?${dialect.rowLock ? ` ${dialect.rowLock}` : ""}
         `,
           [userId],
         );
@@ -548,17 +555,20 @@ export function createAkentrosBillingStore(query: AkentrosQuery): AkentrosBillin
         // 意義就是「事先授權的消費上限」,SQL 層強制 charged ≤ reserved,
         // 退款也因而不可能為負。actualCostMicros 由 integerString 產出十進位
         // 字串,綁定為 TEXT;SQLite 純量函式參數不做欄位親和性轉換,故必須
-        // 顯式 CAST 為 INTEGER,否則 TEXT 恆大於 INTEGER 會夾到錯的一邊。
+        // 顯式 CAST 為 BIGINT,否則 TEXT 恆大於 INTEGER 會夾到錯的一邊。
         // (node:sqlite 未編入 LEAST();MIN() 是全平台可用的核心等價函式。)
+        // WHERE 的零成本守衛(? > 0)同受 TEXT 綁定影響:未 CAST 時 TEXT 恆
+        // 大於 0,守衛形同死碼——非零保留單以 actual=0 結算會靜默全額退款。
+        // CAST 後才真正攔下這種異常結算(零保留單走 reserved_usd_micros = 0)。
         const transitioned = await query(
           `
           UPDATE ai_billing_reservations
           SET state = 'settled',
-              charged_usd_micros = MIN(CAST(? AS INTEGER), reserved_usd_micros),
-              refunded_usd_micros = CAST(reserved_usd_micros - MIN(CAST(? AS INTEGER), reserved_usd_micros) AS INTEGER),
+              charged_usd_micros = ${dialect.min}(CAST(? AS BIGINT), reserved_usd_micros),
+              refunded_usd_micros = CAST(reserved_usd_micros - ${dialect.min}(CAST(? AS BIGINT), reserved_usd_micros) AS BIGINT),
               settled_at = ?, updated_at = ?
           WHERE request_id = ? AND state = 'reserved'
-            AND (? > 0 OR reserved_usd_micros = 0)
+            AND (CAST(? AS BIGINT) > 0 OR reserved_usd_micros = 0)
           RETURNING id, ai_request_id, user_id, state, reserved_usd_micros, charged_usd_micros, refunded_usd_micros
         `,
           [actualCostMicros, actualCostMicros, now, now, requestId, actualCostMicros],
@@ -575,7 +585,7 @@ export function createAkentrosBillingStore(query: AkentrosQuery): AkentrosBillin
         await query(
           `
           UPDATE ai_api_keys
-          SET spend_reserved_usd_micros = MAX(0, spend_reserved_usd_micros - ?),
+          SET spend_reserved_usd_micros = ${dialect.max}(0, spend_reserved_usd_micros - ?),
               spend_used_usd_micros = spend_used_usd_micros + ?,
               updated_at = ?
           WHERE id = ?
@@ -583,14 +593,17 @@ export function createAkentrosBillingStore(query: AkentrosQuery): AkentrosBillin
           [request.reserved_usd_micros, transition.charged_usd_micros, now, request.api_key_id],
         );
 
+        // 行鎖用戶列:ledger 分錄的 balance_before/after 鏈必須按提交順序
+        // 一致,PG 併發結算需序列化同一用戶的餘額讀寫(SQLite 由單寫者保證)。
         const userRows = await query(
-          `SELECT id, username, display_name, email, balance_usd_micros FROM users WHERE id = ?`,
+          `SELECT id, username, display_name, email, balance_usd_micros FROM users WHERE id = ?${dialect.rowLock ? ` ${dialect.rowLock}` : ""}`,
           [transition.user_id],
         );
         const user: any = rows(userRows)[0];
 
         if (Number(transition.refunded_usd_micros) > 0) {
-          const balanceBefore = Number(user.balance_usd_micros) - Number(transition.refunded_usd_micros);
+          const balanceBefore = BigInt(user.balance_usd_micros).toString();
+          const balanceAfter = (BigInt(balanceBefore) + BigInt(transition.refunded_usd_micros)).toString();
           await query(
             `
             UPDATE users
@@ -614,7 +627,7 @@ export function createAkentrosBillingStore(query: AkentrosQuery): AkentrosBillin
               user.email || "",
               transition.refunded_usd_micros,
               balanceBefore,
-              user.balance_usd_micros,
+              balanceAfter,
               transition.ai_request_id,
               requestId,
               JSON.stringify({ request_id: requestId, charged_usd_micros: transition.charged_usd_micros }),
@@ -705,21 +718,24 @@ export function createAkentrosBillingStore(query: AkentrosQuery): AkentrosBillin
         await query(
           `
           UPDATE ai_api_keys
-          SET spend_reserved_usd_micros = MAX(0, spend_reserved_usd_micros - ?),
+          SET spend_reserved_usd_micros = ${dialect.max}(0, spend_reserved_usd_micros - ?),
               updated_at = ?
           WHERE id = ?
         `,
           [request.reserved_usd_micros, now, request.api_key_id],
         );
 
+        // 行鎖用戶列:ledger 分錄的 balance_before/after 鏈必須按提交順序
+        // 一致,PG 併發結算需序列化同一用戶的餘額讀寫(SQLite 由單寫者保證)。
         const userRows = await query(
-          `SELECT id, username, display_name, email, balance_usd_micros FROM users WHERE id = ?`,
+          `SELECT id, username, display_name, email, balance_usd_micros FROM users WHERE id = ?${dialect.rowLock ? ` ${dialect.rowLock}` : ""}`,
           [transition.user_id],
         );
         const user: any = rows(userRows)[0];
 
         if (Number(transition.refunded_usd_micros) > 0) {
-          const balanceBefore = Number(user.balance_usd_micros) - Number(transition.refunded_usd_micros);
+          const balanceBefore = BigInt(user.balance_usd_micros).toString();
+          const balanceAfter = (BigInt(balanceBefore) + BigInt(transition.refunded_usd_micros)).toString();
           await query(
             `
             UPDATE users
@@ -743,7 +759,7 @@ export function createAkentrosBillingStore(query: AkentrosQuery): AkentrosBillin
               user.email || "",
               transition.refunded_usd_micros,
               balanceBefore,
-              user.balance_usd_micros,
+              balanceAfter,
               transition.ai_request_id,
               requestId,
               description,

@@ -16,10 +16,13 @@
   "dependencies": {
     "@akentros/core": "*",
     "dotenv": "^17.2.0",
-    "hono": "^4.9.0"
+    "hono": "^4.9.0",
+    "pg": "^8.23.0"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8",
     "@types/node": "^24.0.0",
+    "@types/pg": "^8.23.1",
     "typescript": "^5.9.2",
     "wrangler": "^4.40.0"
   }

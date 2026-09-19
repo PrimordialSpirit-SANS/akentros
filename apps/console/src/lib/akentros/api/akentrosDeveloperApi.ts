@@ -105,7 +105,9 @@ export async function listAkentrosKeys(signal?: AbortSignal): Promise<AkentrosAp
   return payload.keys;
 }
 
-export async function createAkentrosKey(options: AkentrosKeyCreateOptions): Promise<AkentrosKeyMutationResult> {
+export async function createAkentrosKey(
+  options: AkentrosKeyCreateOptions,
+): Promise<AkentrosKeyMutationResult> {
   return requestJson<AkentrosKeyMutationResult>("/keys", {
     method: "POST",
     body: JSON.stringify(options),
@@ -132,7 +134,10 @@ export async function getAkentrosUsageSummary(signal?: AbortSignal): Promise<Ake
   return normalizeAkentrosUsageSummary(payload?.usage);
 }
 
-export async function listAkentrosLogs(query: AkentrosLogsQuery, signal?: AbortSignal): Promise<AkentrosLogsPage> {
+export async function listAkentrosLogs(
+  query: AkentrosLogsQuery,
+  signal?: AbortSignal,
+): Promise<AkentrosLogsPage> {
   const params = new URLSearchParams();
   if (query.cursor) params.set("cursor", query.cursor);
   if (query.limit) params.set("limit", String(query.limit));

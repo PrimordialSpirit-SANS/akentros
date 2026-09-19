@@ -115,7 +115,11 @@ function flushPending(file: string) {
   }
 }
 
-export async function dbQuery(env: AkentrosRuntimeEnv, sql: string, params: any[] = []): Promise<QueryResult> {
+export async function dbQuery(
+  env: AkentrosRuntimeEnv,
+  sql: string,
+  params: any[] = [],
+): Promise<QueryResult> {
   const tx = txStorage.getStore();
   if (tx) {
     // 交易內:同一連線同步執行,單一 Node 執行緒保證不交錯。

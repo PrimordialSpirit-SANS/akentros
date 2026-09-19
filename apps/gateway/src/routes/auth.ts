@@ -1,8 +1,10 @@
+import { AkentrosError } from "@akentros/core/openaiErrors";
 import { parseUsdToMicros, usdMicrosToDecimalString } from "@akentros/core/pricing";
 import { Hono } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { createRateLimit } from "../middleware/rateLimit.ts";
 import type { AkentrosContext, AkentrosEnv, AkentrosNext, AkentrosRuntimeEnv } from "../types.ts";
+import { AKENTROS_SMALL_BODY_MAX_BYTES, readCappedText } from "../utils/bodyLimit.ts";
 import { randomBytesHex } from "../utils/crypto.ts";
 import { signAkentrosJwt, verifyAkentrosJwt } from "../utils/jwt.ts";
 import type { AkentrosAccount } from "../utils/users.ts";
@@ -207,6 +209,48 @@ function isUniqueEmailViolation(error: unknown): boolean {
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+// 登入/註冊承載遠小於 16KB;以串流計數上限讀取(Content-Length 預檢 + 逐塊
+// 硬上限)。這是未認證即可觸達的端點,不接受 Hono json() 的全量緩衝。
+type AuthJsonResult =
+  | { ok: true; body: Record<string, unknown> }
+  | { ok: false; status: 400 | 413; code: string; message: string };
+
+async function readAuthJsonObject(c: AkentrosContext): Promise<AuthJsonResult> {
+  let text: string;
+  try {
+    text = await readCappedText(c, AKENTROS_SMALL_BODY_MAX_BYTES);
+  } catch (error) {
+    if (error instanceof AkentrosError && error.status === 413) {
+      return { ok: false, status: 413, code: "request_too_large", message: "The request body is too large." };
+    }
+    return {
+      ok: false,
+      status: 400,
+      code: "invalid_request",
+      message: "The request body is not valid JSON.",
+    };
+  }
+  try {
+    const parsed = text ? JSON.parse(text) : null;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return {
+        ok: false,
+        status: 400,
+        code: "invalid_request",
+        message: "The request body is not valid JSON.",
+      };
+    }
+    return { ok: true, body: parsed as Record<string, unknown> };
+  } catch {
+    return {
+      ok: false,
+      status: 400,
+      code: "invalid_request",
+      message: "The request body is not valid JSON.",
+    };
+  }
+}
+
 authRoutes.use("*", authLimiter);
 
 authRoutes.post("/register", async (c: AkentrosContext) => {
@@ -216,12 +260,11 @@ authRoutes.post("/register", async (c: AkentrosContext) => {
       403,
     );
   }
-  let body: Record<string, unknown>;
-  try {
-    body = await c.req.json();
-  } catch {
-    return c.json({ error: "The request body is not valid JSON.", code: "invalid_request" }, 400);
+  const parsedBody = await readAuthJsonObject(c);
+  if (!parsedBody.ok) {
+    return c.json({ error: parsedBody.message, code: parsedBody.code }, parsedBody.status);
   }
+  const body = parsedBody.body;
   const email = String(body?.email || "")
     .trim()
     .toLowerCase();
@@ -264,12 +307,11 @@ authRoutes.post("/register", async (c: AkentrosContext) => {
 });
 
 authRoutes.post("/login", async (c: AkentrosContext) => {
-  let body: Record<string, unknown>;
-  try {
-    body = await c.req.json();
-  } catch {
-    return c.json({ error: "The request body is not valid JSON.", code: "invalid_request" }, 400);
+  const parsedBody = await readAuthJsonObject(c);
+  if (!parsedBody.ok) {
+    return c.json({ error: parsedBody.message, code: parsedBody.code }, parsedBody.status);
   }
+  const body = parsedBody.body;
   const email = String(body?.email || "")
     .trim()
     .toLowerCase();

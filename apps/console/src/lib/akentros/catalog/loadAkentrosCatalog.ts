@@ -1,4 +1,8 @@
-import type { AkentrosBrandManifest, AkentrosModelsCatalog, AkentrosProviderOfferingsCatalog } from "../types";
+import type {
+  AkentrosBrandManifest,
+  AkentrosModelsCatalog,
+  AkentrosProviderOfferingsCatalog,
+} from "../types";
 
 const CATALOG_ROOT = "/data/akentros";
 const BRAND_MANIFEST_PATH = "/brand/akentros/providers/manifest.v1.json";

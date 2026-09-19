@@ -1,4 +1,5 @@
 import { AkentrosError } from "./openaiErrors.ts";
+import { sqlDialect } from "./sqlDialect.ts";
 
 function rows(result: any): any[] {
   return Array.isArray(result?.rows) ? result.rows : [];
@@ -15,20 +16,22 @@ function positiveInteger(value: unknown, label: string, maximum: number) {
 // SQLite 方言:計數視窗以「分鐘起點的 UTC ISO 字串」為鍵,由呼叫端計算後
 // 綁定;原子性由 transaction(fn) 保證。RPM / max_in_flight 以資料表內的
 // 現值為準(與 authenticate 階段讀到的值可能不同時,以這裡為準)。
-export const AKENTROS_API_LIMIT_SQL = Object.freeze({
-  acquireKey: `
+function apiLimitSql(query: { dialect?: "postgres" | "sqlite" } = {}) {
+  const dialect = sqlDialect(query);
+  return Object.freeze({
+    acquireKey: `
     SELECT rpm_limit, max_in_flight
     FROM ai_api_keys
     WHERE id = ?
   `,
-  activeLeaseCount: `
+    activeLeaseCount: `
     SELECT COUNT(*) AS active_count
     FROM ai_api_inflight_leases
     WHERE api_key_id = ?
       AND released_at IS NULL
       AND expires_at > ?
   `,
-  incrementBucket: `
+    incrementBucket: `
     INSERT INTO ai_rate_limit_buckets (api_key_id, window_start, request_count)
     VALUES (?, ?, 1)
     ON CONFLICT (api_key_id, window_start) DO UPDATE
@@ -36,25 +39,27 @@ export const AKENTROS_API_LIMIT_SQL = Object.freeze({
     WHERE ai_rate_limit_buckets.request_count < ?
     RETURNING request_count
   `,
-  lease: `
+    lease: `
     INSERT INTO ai_api_inflight_leases (request_id, api_key_id, expires_at)
     VALUES (?, ?, ?)
     ON CONFLICT (request_id) DO NOTHING
     RETURNING request_id
   `,
-  // 併發下同 request_id 重入租約失敗時,把多加的視窗計數退回。
-  decrementBucket: `
+    // 併發下同 request_id 重入租約失敗時,把多加的視窗計數退回。
+    decrementBucket: `
     UPDATE ai_rate_limit_buckets
-    SET request_count = MAX(request_count - 1, 0)
+    SET request_count = ${dialect.max}(request_count - 1, 0)
     WHERE api_key_id = ? AND window_start = ?
   `,
-  release: `
+    release: `
     UPDATE ai_api_inflight_leases
     SET released_at = ?
     WHERE request_id = ? AND released_at IS NULL
     RETURNING request_id
   `,
-});
+  });
+}
+export const AKENTROS_API_LIMIT_SQL = apiLimitSql();
 
 // 執行交易:query 介面可選提供 transaction(fn)。
 async function withTransaction(query: any, fn: () => Promise<any>) {
@@ -70,6 +75,8 @@ function minuteWindowStart(now: number): string {
 }
 
 export function createAkentrosApiLimitStore(query: any) {
+  const sql = apiLimitSql(query);
+  const dialect = sqlDialect(query);
   if (typeof query !== "function") throw new TypeError("A database query function is required.");
   return Object.freeze({
     async acquire({ apiKeyId, requestId, rpmLimit, maxInFlight, leaseTtlMs = 120_000 }: any) {
@@ -80,7 +87,11 @@ export function createAkentrosApiLimitStore(query: any) {
       const windowStart = minuteWindowStart(Date.now());
 
       return withTransaction(query, async () => {
-        const keyRows = await query(AKENTROS_API_LIMIT_SQL.acquireKey, [String(apiKeyId)]);
+        // advisory lock:PG 的 READ COMMITTED 下,併發數讀取、RPM 視窗 upsert
+        // 與租約寫入之間的「讀—判—寫」必須以每金鑰 advisory 鎖序列化
+        // (SQLite 由交易起點的獨佔寫鎖保證)。
+        if (dialect.claimLock) await query(dialect.claimLock, [String(apiKeyId)]);
+        const keyRows = await query(sql.acquireKey, [String(apiKeyId)]);
         const key: any = rows(keyRows)[0];
         if (!key) {
           throw new AkentrosError("This API key has exceeded its request rate limit.", {
@@ -91,10 +102,7 @@ export function createAkentrosApiLimitStore(query: any) {
           });
         }
 
-        const counts = await query(AKENTROS_API_LIMIT_SQL.activeLeaseCount, [
-          String(apiKeyId),
-          new Date().toISOString(),
-        ]);
+        const counts = await query(sql.activeLeaseCount, [String(apiKeyId), new Date().toISOString()]);
         const activeCount = Number(rows(counts)[0]?.active_count || 0);
         if (activeCount >= Number(key.max_in_flight)) {
           throw new AkentrosError("This API key has too many requests in flight.", {
@@ -105,7 +113,7 @@ export function createAkentrosApiLimitStore(query: any) {
           });
         }
 
-        const bucket = await query(AKENTROS_API_LIMIT_SQL.incrementBucket, [
+        const bucket = await query(sql.incrementBucket, [
           String(apiKeyId),
           windowStart,
           Number(key.rpm_limit),
@@ -120,14 +128,10 @@ export function createAkentrosApiLimitStore(query: any) {
           });
         }
 
-        const lease = await query(AKENTROS_API_LIMIT_SQL.lease, [
-          String(requestId),
-          String(apiKeyId),
-          expiresAt,
-        ]);
+        const lease = await query(sql.lease, [String(requestId), String(apiKeyId), expiresAt]);
         const leaseRow: any = rows(lease)[0];
         if (!leaseRow) {
-          await query(AKENTROS_API_LIMIT_SQL.decrementBucket, [String(apiKeyId), windowStart]);
+          await query(sql.decrementBucket, [String(apiKeyId), windowStart]);
           throw new AkentrosError("This API key has exceeded its request rate limit.", {
             status: 429,
             type: "rate_limit_error",
@@ -141,7 +145,7 @@ export function createAkentrosApiLimitStore(query: any) {
     },
 
     async release(requestId: string) {
-      const result = await query(AKENTROS_API_LIMIT_SQL.release, [new Date().toISOString(), String(requestId)]);
+      const result = await query(sql.release, [new Date().toISOString(), String(requestId)]);
       return Boolean(rows(result)[0]);
     },
   });

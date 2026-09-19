@@ -19,12 +19,16 @@ const MAINTENANCE_PATH = "/internal/maintenance";
 export class AkentrosGateway {
   private readonly state: AkentrosDoState;
   private readonly env: AkentrosRuntimeEnv;
+  // Hono app 只建一次:env 在 DO 生命週期內不變,每請求重建(路由註冊、
+  // 中介層組裝)只是配置與 GC 浪費;與 nodeServer.ts 的做法對齊。
+  private readonly app: ReturnType<typeof createApp>;
   private readyPromise: Promise<void> | null = null;
 
   constructor(state: any, env: AkentrosRuntimeEnv) {
     this.state = state as AkentrosDoState;
     this.env = env;
     installAkentrosDbAdapter(createDoAkentrosDbAdapter(this.state));
+    this.app = createApp(this.env);
   }
 
   async fetch(request: Request): Promise<Response> {
@@ -36,7 +40,7 @@ export class AkentrosGateway {
       const summary = await runAkentrosMaintenance(this.env);
       return Response.json({ ok: true, maintenance: summary });
     }
-    return createApp(this.env).fetch(request, this.env);
+    return this.app.fetch(request, this.env);
   }
 
   private ensureReady(): Promise<void> {

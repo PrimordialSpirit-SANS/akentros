@@ -27,12 +27,25 @@ export function installAkentrosDbAdapter(adapter: AkentrosDbAdapter) {
   installedAdapter = adapter;
 }
 
-// Node 進入點啟動時呼叫一次。specifier 刻意以非字面量的形式動態 import:
-// 讓 Workers 打包(esbuild)無法靜態解析、不會把 node:sqlite 拉進 bundle;
-// Node 執行期仍以相對於本檔的 URL 正常解析。
+// Node 自架部署的運行方言:DATABASE_URL 為 postgres(ql):// 時使用 PostgreSQL
+// adapter,其餘(含預設 AKENTROS_DB_PATH)走 node:sqlite。Workers 部署固定
+// SQLite(DO storage.sql),不經此函式。
+export function isPostgresDatabaseUrl(value: unknown): boolean {
+  return /^postgres(ql)?:\/\//i.test(String(value || "").trim());
+}
+
+export function runtimeDialect(env: AkentrosRuntimeEnv): "postgres" | "sqlite" {
+  return isPostgresDatabaseUrl(env?.DATABASE_URL) ? "postgres" : "sqlite";
+}
+
+// Node 進入點啟動時呼叫一次(依 DATABASE_URL 選擇 adapter)。specifier 刻意
+// 以非字面量的形式動態 import:讓 Workers 打包(esbuild)無法靜態解析、不會
+// 把 node:sqlite 或 pg 拉進 bundle;Node 執行期仍以相對於本檔的 URL 正常解析。
 export async function installNodeAkentrosDbAdapter() {
   if (installedAdapter) return;
-  const specifier = ["./db", "node", "ts"].join(".");
+  const specifier = isPostgresDatabaseUrl(process.env.DATABASE_URL)
+    ? ["./db", "pg", "ts"].join(".")
+    : ["./db", "node", "ts"].join(".");
   installedAdapter = (await import(specifier)) as AkentrosDbAdapter;
 }
 
