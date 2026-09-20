@@ -21,9 +21,9 @@
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.8",
-    "@types/node": "^24.0.0",
+    "@types/node": "^26.6.1",
     "@types/pg": "^8.23.1",
-    "typescript": "^5.9.2",
-    "wrangler": "^4.40.0"
+    "typescript": "^7.0.2",
+    "wrangler": "^4.133.0"
   }
 }
