@@ -16,7 +16,7 @@
   "dependencies": {
     "@akentros/core": "*",
     "dotenv": "^17.2.0",
-    "hono": "^4.9.0",
+    "hono": "^4.13.8",
     "pg": "^8.23.0"
   },
   "devDependencies": {
