@@ -7,6 +7,7 @@ import type { AkentrosContext, AkentrosEnv, AkentrosNext, AkentrosRuntimeEnv } f
 import { AKENTROS_SMALL_BODY_MAX_BYTES, readCappedText } from "../utils/bodyLimit.ts";
 import { randomBytesHex } from "../utils/crypto.ts";
 import { signAkentrosJwt, verifyAkentrosJwt } from "../utils/jwt.ts";
+import { logAkentrosEvent } from "../utils/logger.ts";
 import type { AkentrosAccount } from "../utils/users.ts";
 import {
   AKENTROS_PASSWORD_ITERATIONS,
@@ -200,6 +201,29 @@ function signupBonusUsdMicros(env: AkentrosRuntimeEnv): string {
   }
 }
 
+// 防帳號枚舉(預設開啟):重複信箱註冊不再回 409 email_taken,改為「已受理」
+// 語意,回應本身不洩漏信箱是否已註冊。私有、僅內部可達的部署若需要明確的
+// 409 UX,可設 AKENTROS_SIGNUP_ANTI_ENUMERATION=false 還原。
+function signupAntiEnumeration(env: AkentrosRuntimeEnv): boolean {
+  return (
+    String(env?.AKENTROS_SIGNUP_ANTI_ENUMERATION || "")
+      .trim()
+      .toLowerCase() !== "false"
+  );
+}
+
+// 與成功註冊同層的 2xx 語意,但不發 session、不帶 user。攻擊者若要以回應區分
+// 「信箱已註冊」,必須完成整個註冊流程並檢查 session cookie,每一次探測都
+// 付出 PBKDF2 成本並消耗登入/註冊限流額度,大幅拉高枚舉成本。
+const SIGNUP_ACCEPTED_MESSAGE =
+  "Registration accepted. If the email is available, the account has been created — please sign in.";
+
+function concealedSignupResponse(c: AkentrosContext) {
+  // 營運可觀測性:回應不揭露,但伺服器日誌保留隱匿的重複註冊事件。
+  logAkentrosEvent("warn", "akentros_signup_duplicate_concealed");
+  return c.json({ ok: true, message: SIGNUP_ACCEPTED_MESSAGE }, 202);
+}
+
 function isUniqueEmailViolation(error: unknown): boolean {
   // 訊息比對覆蓋 node:sqlite 與 Workers storage.sql 的錯誤形狀
   // ("UNIQUE constraint failed: users.email")。
@@ -280,11 +304,16 @@ authRoutes.post("/register", async (c: AkentrosContext) => {
   if (password.length < 8 || password.length > 200) {
     return c.json({ error: "Password must be at least 8 characters.", code: "invalid_password" }, 400);
   }
+  // 時序等化:不論信箱是否已註冊,一律先付出 PBKDF2 成本再查庫,回應時間
+  // 不洩漏帳號存在性(與 login 的 dummy-hash 手法同一目的)。
+  const passwordHash = await hashPassword(password, c.env);
   if (await findUserByEmail(c.env, email)) {
+    if (signupAntiEnumeration(c.env)) {
+      return concealedSignupResponse(c);
+    }
     return c.json({ error: "This email is already registered.", code: "email_taken" }, 409);
   }
 
-  const passwordHash = await hashPassword(password, c.env);
   let user: AkentrosAccount;
   try {
     user = await createUser(c.env, {
@@ -295,9 +324,12 @@ authRoutes.post("/register", async (c: AkentrosContext) => {
     });
   } catch (error) {
     // 併發 race:兩個同信箱註冊都通過 findUserByEmail 檢查後,第二個 INSERT
-    // 撞 UNIQUE(users.email) 約束。資料未損毀,語意仍是 email_taken → 409,
-    // 不應落到 onError 變成 500。
+    // 撞 UNIQUE(users.email) 約束。資料未損毀,語意仍是重複信箱:走同一條
+    // 隱匿/409 分支,不應落到 onError 變成 500。
     if (isUniqueEmailViolation(error)) {
+      if (signupAntiEnumeration(c.env)) {
+        return concealedSignupResponse(c);
+      }
       return c.json({ error: "This email is already registered.", code: "email_taken" }, 409);
     }
     throw error;
