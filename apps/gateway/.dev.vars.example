@@ -7,6 +7,12 @@
 # 也可用 sqlite:// 前綴,例如 sqlite://./data/akentros.db
 AKENTROS_DB_PATH=./akentros.db
 
+# Node 自架的綁定位址。預設 127.0.0.1(僅接上 loopback,自架部署不會一啟動
+# 就暴露在所有網路介面)。反向代理、容器、叢集等需要對外服務時,明確設為
+# 0.0.0.0 或特定介面位址,並自行確保前方有適當的存取控制(防火牆/代理規則)。
+# 亦可使用標準 HOST 變數,AKENTROS_HOST 優先。Cloudflare Workers 部署不適用。
+AKENTROS_HOST=127.0.0.1
+
 # 資料庫(Node):改用 PostgreSQL 時,把 DATABASE_URL 設為 postgres:// 連線字串
 # (AKENTROS_DB_PATH 即不生效;migrate 與 server 會自動切換到 PG adapter)。
 # DATABASE_URL=postgres://user:password@localhost:5432/akentros
@@ -26,6 +32,11 @@ ADMIN_USERNAME=admin
 AKENTROS_SIGNUP_BONUS_USD=1000
 # 設為 true 時關閉公開註冊(僅管理員能開帳號)
 AKENTROS_DISABLE_REGISTRATION=
+# 防帳號枚舉(預設開啟):重複信箱註冊回不可區分的 202 受理訊息,不發
+# session、不揭露 email_taken,且回應前一律先付出 PBKDF2 成本(時序等化);
+# 隱匿的重複註冊會記錄 akentros_signup_duplicate_concealed 警告便於營運觀察。
+# 僅內部可達的私有部署若需要明確 409 UX,可設 false 還原。
+AKENTROS_SIGNUP_ANTI_ENUMERATION=
 # 登入/註冊限流的用戶端 IP 判定。Node 自架預設以「socket 來源位址」為身份
 # (不可偽造);僅當 gateway 前方有會「覆寫」cf-connecting-ip 標頭的受信賴
 # 反向代理(如 Cloudflare)時才設 true 改用標頭,否則保持留空——攻擊者可

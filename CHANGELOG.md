@@ -408,3 +408,36 @@ versioning follows [SemVer](https://semver.org/).
 
 - README rate-limit documentation now matches the actual enforcement semantics.
 - Console a11y findings tracked as lint warnings (10 known, see `biome.json`).
+
+### Security
+
+- **The Node gateway now binds to loopback by default.** `nodeServer.ts`
+  previously accepted connections on every interface (`0.0.0.0`), silently
+  exposing a freshly started self-hosted deployment to the whole network —
+  including the unauthenticated `/healthz`, CORS preflight handling and the
+  auth endpoints — before any firewall or reverse proxy had been configured.
+  The server now binds to `127.0.0.1` unless `AKENTROS_HOST` (or `HOST`) is
+  set explicitly; containerized or proxied deployments that need external
+  reachability set `AKENTROS_HOST=0.0.0.0` themselves and own access control
+  in front of the process. The `akentros_gateway_listening` log line now also
+  records the bound address so operators can verify it.
+- **Signup no longer doubles as an account-enumeration oracle.**
+  `POST /api/auth/register` used to answer a duplicate email with
+  `409 email_taken` and short-circuited before the password hash, so an
+  unauthenticated attacker could both read existence straight from the
+  response and infer it from the missing PBKDF2 cost. Registration now (1)
+  always hashes the password before touching the database, equalizing
+  response timing with the login endpoint's dummy-hash technique, and
+  (2) answers duplicate emails with an indistinct `202 {"ok": true}` accepted
+  response — no session cookie, no user object, no `email_taken` code — with
+  the duplicate concealed behind a `akentros_signup_duplicate_concealed` warn
+  log for operator visibility. Console registration handles the
+  session-less 202 by guiding the user to the login form. Private,
+  internal-only deployments can restore the explicit `409 email_taken`
+  contract with `AKENTROS_SIGNUP_ANTI_ENUMERATION=false`; public deployments
+  should additionally consider `AKENTROS_DISABLE_REGISTRATION=true`.
+- **Dev dependency audit is clean again.** `vitest` is bumped from
+  `^3.2.4` to `^4.1.11` in `apps/console`, clearing the moderate-severity
+  path traversal in `@vitest/mocker` (GHSA-82fw-gwwq-j7x9, `npm audit`
+  2 moderate → 0). The advisory is dev-only (test-time mock resolution), but
+  the fix keeps `npm audit` a usable CI gate.
