@@ -467,6 +467,12 @@ fieldset.choice {
   color: #b91c1c;
 }
 
+.alert-info {
+  border-color: rgba(122, 179, 248, 0.35);
+  background: var(--blue-soft);
+  color: #1d4ed8;
+}
+
 /* ---------- 登入頁 ---------- */
 
 .auth-wrap {
