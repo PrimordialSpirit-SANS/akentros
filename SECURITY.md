@@ -21,5 +21,7 @@
 - 供應商 secret 只存在 runtime 環境變數;資料庫僅存 opaque credential ID。
 - 管理面請求需登入 cookie(JWT)+ CSRF 雙提交標頭;公開推理面只接受 `sk-akentros-*` Bearer 金鑰,兩者互不可換。
 - `AKENTROS_ENABLED` 未明確為 `true` 時,`/api/ai/*` 路由不存在(fail-closed)。
+- 登入與註冊皆不以回應或時序洩漏帳號存在性:登入對不存在的帳號仍執行一次雜湊驗證;註冊一律先付出 PBKDF2 成本才查庫,且重複信箱回不可區分的 202 受理訊息(預設,`AKENTROS_SIGNUP_ANTI_ENUMERATION=false` 可還原私有部署的明確 409 UX),隱匿事件記錄於伺服器日誌。
+- Node 自架部署預設僅綁定 loopback(`AKENTROS_HOST` 可改);需對外時由部署者明確設定並自負前方存取控制。
 
 測試時請使用你自己的部署與金鑰,不要對他人部署產生供應商費用。

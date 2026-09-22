@@ -29,6 +29,12 @@ const env = process.env as AkentrosRuntimeEnv;
 
 const port = Number(env.AKENTROS_PORT || env.PORT || 8787);
 
+// 綁定位址:預設僅接上 loopback(127.0.0.1),避免自架部署一啟動就暴露在
+// 所有網路介面(0.0.0.0)。需要對外服務——反向代理、容器、叢集——時,明確
+// 設定 AKENTROS_HOST(或 HOST)=0.0.0.0 /特定介面位址,並自行確保前方有
+// 適當的存取控制。
+const host = String(env.AKENTROS_HOST || env.HOST || "127.0.0.1").trim() || "127.0.0.1";
+
 const intervalMs = Number(env.AKENTROS_MAINTENANCE_INTERVAL_MS) || 30 * 60_000;
 
 // 關機緩衝:等在途請求自然完成;逾時後主動斷開仍在串流的連線(SSE 等)。
@@ -82,9 +88,11 @@ const server = serve(
       return app.fetch(request, perRequestEnv as unknown as typeof env);
     },
     port,
+    hostname: host,
   },
   (info) => {
     logAkentrosEvent("info", "akentros_gateway_listening", {
+      address: info.address,
       port: info.port,
       maintenanceIntervalMinutes: Math.round(intervalMs / 60_000),
     });

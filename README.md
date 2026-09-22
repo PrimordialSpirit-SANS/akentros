@@ -143,6 +143,7 @@ npx wrangler deploy          # secrets 以 wrangler secret put 設定
 | 環境變數 | 必填 | 說明 |
 | --- | --- | --- |
 | `AKENTROS_DB_PATH` | 建議 | SQLite 資料庫檔案路徑(預設 `./akentros.db`,相對 `apps/gateway/`;相對路徑一律以此目錄為基準,不受啟動目錄影響) |
+| `AKENTROS_HOST` / `HOST` | 選配 | Node 自架的綁定位址(預設 `127.0.0.1` 僅接上 loopback;反向代理、容器等需對外時明確設為 `0.0.0.0` 或特定介面位址) |
 | `DATABASE_URL` | 選配 | 設為 `postgres://…`(或 `postgresql://…`)時,Node 自架部署改用 PostgreSQL(`npm run migrate` 同樣自動切換);未設或非 PG scheme 時走 SQLite。限流與 schema 檢查一律優先使用已安裝的資料庫 adapter,連線失敗才降級 |
 | `JWT_SECRET` | ✅ | 會話 cookie 簽名金鑰(≥32 bytes) |
 | `AKENTROS_API_KEY_PEPPER` | ✅ | API 金鑰 HMAC pepper(≥32 bytes) |
@@ -151,6 +152,7 @@ npx wrangler deploy          # secrets 以 wrangler secret put 設定
 | `AKENTROS_SIGNUP_BONUS_USD` | 選配 | 註冊初始餘額(預設 $5.00) |
 | `AKENTROS_ADMIN_STARTING_CREDITS_USD` | 選配 | 管理員初始餘額(預設 $500.00) |
 | `AKENTROS_DISABLE_REGISTRATION` | 選配 | 設 `true` 關閉公開註冊 |
+| `AKENTROS_SIGNUP_ANTI_ENUMERATION` | 選配 | 防帳號枚舉(預設開啟):重複信箱註冊回不可區分的 202 受理訊息、不發 session、回應時間與成功路徑等化;僅內部可達的私有部署可設 `false` 還原明確 409 `email_taken` UX |
 | `AKENTROS_TRUST_PROXY` | 選配 | 登入/註冊限流的用戶端 IP 判定:Node 自架預設用「socket 來源位址」(不可偽造);僅當 gateway 前方有會覆寫 `cf-connecting-ip` 的受信賴反向代理(如 Cloudflare)時設 `true` 改用標頭。Cloudflare Workers 部署一律以標頭為準 |
 | `FRONTEND_ORIGINS` | 建議 | 允許帶 cookie 的 console 來源(CSV) |
 | `OPENROUTER_API_KEY_1` … | 選配 | 供應商上游金鑰,見 `docs/PROVIDERS.md` |

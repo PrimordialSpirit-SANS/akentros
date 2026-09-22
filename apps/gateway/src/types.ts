@@ -26,6 +26,9 @@ export interface AkentrosRuntimeEnv {
   ENVIRONMENT?: string;
   PORT?: string;
   AKENTROS_PORT?: string;
+  HOST?: string;
+  AKENTROS_HOST?: string;
+  AKENTROS_SIGNUP_ANTI_ENUMERATION?: string;
   AKENTROS_MAINTENANCE_INTERVAL_MS?: string;
   AKENTROS_RECONCILE_LIMIT?: string;
   [key: string]: unknown;

@@ -31,6 +31,13 @@ Constraints that apply to every deployment of this topology:
   two server processes against the same `AKENTROS_DB_PATH`, and never shard
   reads/writes across instances.
 - **Persistent local disk** for the database file; backup per section 5.
+- **Loopback binding by default.** The Node server binds to `127.0.0.1`
+  unless `AKENTROS_HOST` (or `HOST`) is set. To serve traffic from a reverse
+  proxy, container, or cluster, set `AKENTROS_HOST=0.0.0.0` (or a specific
+  interface address) explicitly and make sure access control — firewall
+  rules, proxy ACLs, TLS termination — is in place first. The
+  `akentros_gateway_listening` log line records the bound address; verify it
+  after every deploy.
 
 ### Topology B: Cloudflare Workers (Durable Object)
 
@@ -119,6 +126,14 @@ check in `aiSchema.ts`) until the recorded version matches
 ```bash
 curl -s http://127.0.0.1:8787/api/ai/v1/models -H "Authorization: Bearer sk-akentros-live_invalid"
 # expect: 401 authentication_error (proves the inference face + auth + DB read)
+
+# Anti-enumeration probe (registration is enabled): signing up twice with the
+# same email must return 201 (fresh, session issued) then 202 {"ok":true}
+# (duplicate, NO session, NO email_taken code):
+curl -s -w '\n%{http_code}\n' -X POST http://127.0.0.1:8787/api/auth/register \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"probe@example.com","username":"probe","password":"probe-pass-1"}'
+# expect: 201 {"user":{...}} then, on repeat, 202 {"ok":true,"message":"Registration accepted..."}
 ```
 
 Then create a key in the console and run one streaming request; verify in the

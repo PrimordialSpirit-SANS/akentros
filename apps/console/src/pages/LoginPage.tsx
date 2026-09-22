@@ -23,17 +23,26 @@ export function LoginPage({ onAuthenticated }: { onAuthenticated: (user: Akentro
   const [password, setPassword] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState("");
+  const [notice, setNotice] = React.useState("");
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (busy) return;
     setError("");
+    setNotice("");
     setBusy(true);
     try {
       const user =
         mode === "login"
           ? await loginAkentrosAccount(email, password)
           : await registerAkentrosAccount(email, username, password);
+      if (!user) {
+        // 防枚舉回應(gateway 回 202 受理但不發 session):無法區分信箱是否
+        // 已被註冊,引導使用者改走登入。
+        setNotice("註冊已受理。若此信箱尚未被使用,帳號已建立 — 請以它登入;若你已有帳號,請直接登入。");
+        setMode("login");
+        return;
+      }
       onAuthenticated(user);
       navigate("/", { replace: true });
     } catch (cause) {
@@ -92,6 +101,11 @@ export function LoginPage({ onAuthenticated }: { onAuthenticated: (user: Akentro
               required
             />
           </label>
+          {notice && (
+            <div className="alert alert-info">
+              <span>{notice}</span>
+            </div>
+          )}
           {error && (
             <div className="alert alert-error">
               <span>{error}</span>
@@ -113,6 +127,7 @@ export function LoginPage({ onAuthenticated }: { onAuthenticated: (user: Akentro
             onClick={() => {
               setMode(mode === "login" ? "register" : "login");
               setError("");
+              setNotice("");
             }}
           >
             {mode === "login" ? "註冊新帳號" : "改為登入"}

@@ -63,14 +63,16 @@ export async function registerAkentrosAccount(
   email: string,
   username: string,
   password: string,
-): Promise<AkentrosConsoleUser> {
+): Promise<AkentrosConsoleUser | null> {
   const response = await apiFetch("/auth/register", {
     method: "POST",
     body: JSON.stringify({ email, username, password }),
   });
   if (!response.ok) throw new AkentrosAuthError(await readAuthError(response));
   const payload = await response.json();
-  return payload.user as AkentrosConsoleUser;
+  // 防帳號枚舉部署下,重複信箱回 202 {ok, message} 而非使用者物件;
+  // 回 null 由 UI 引導改走登入(回應不揭露信箱是否已被註冊)。
+  return (payload?.user as AkentrosConsoleUser | undefined) ?? null;
 }
 
 export async function logoutAkentrosAccount(): Promise<void> {
