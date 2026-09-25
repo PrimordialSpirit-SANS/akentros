@@ -146,6 +146,122 @@ test("same idempotency key replays the committed request without double charge",
   assert.equal(ledger.rows.length, 1);
 });
 
+// issue #13:opt-in 金鑰的 TTL 是重放窗口,不是金鑰的死刑。綁定生命周期
+// 四象限:過期重放列 → 釋放重執行;清理後空集 → 釋放重執行;活著的真列
+// → 重放;活著的 tombstone → 可分辨的 409。未 opt-in → 永久綁定不變。
+async function settledOptInFixture() {
+  const { query, user, apiKeyId } = await billingFixture();
+  await query(`UPDATE ai_api_keys SET idempotency_replay_ttl_seconds = 3600 WHERE id = ?`, [apiKeyId]);
+  const store = createAkentrosBillingStore(query);
+  const first = await store.reserve(reservation({ userId: user.id, apiKeyId }));
+  await store.markDispatched(first.requestId);
+  await store.settle({
+    requestId: first.requestId,
+    actualCostMicros: 3,
+    inputTokens: 4,
+    outputTokens: 2,
+    usageSource: "provider",
+    totalLatencyMs: 25,
+  });
+  return { query, user, apiKeyId, store, first };
+}
+
+test("opt-in key: expired replay binding is released and the retry executes as a new request", async () => {
+  const { query, user, apiKeyId, store, first } = await settledOptInFixture();
+  await query(
+    `INSERT INTO ai_idempotency_replays (
+       request_id, api_key_id, idempotency_key, request_fingerprint,
+       endpoint, response_status, content_type, response_payload, payload_bytes, expires_at
+     ) VALUES (?, ?, 'idem-1', ?, 'chat.completions', 200, 'application/json', '{}', 2, '2020-01-01T00:00:00.000Z')`,
+    [first.requestId, Number(apiKeyId), fingerprint],
+  );
+
+  const second = await store.reserve(reservation({ requestId: "req_test_2", userId: user.id, apiKeyId }));
+  assert.equal(second.status, "reserved");
+  assert.equal(second.idempotentReplay, false);
+  assert.notEqual(second.aiRequestId, first.aiRequestId);
+
+  // 舊列保留計費歷史但釋放鍵;新列接手綁定。
+  const rowsById = await query(`SELECT id, idempotency_key FROM ai_requests WHERE id IN (?, ?)`, [
+    first.aiRequestId,
+    second.aiRequestId,
+  ]);
+  const byId = new Map(rowsById.rows.map((row: any) => [String(row.id), row.idempotency_key]));
+  assert.equal(byId.get(String(first.aiRequestId)), null);
+  assert.equal(byId.get(String(second.aiRequestId)), "idem-1");
+
+  // 兩次執行各一筆保留分錄;結算退款獨立計算。
+  const reservations = await query(
+    `SELECT amount FROM ledger_entries WHERE transaction_type = 'ai_usage_reservation'`,
+  );
+  assert.equal(reservations.rows.length, 2);
+});
+
+test("opt-in key: purged replay row (no row left) also releases the binding", async () => {
+  const { user, apiKeyId, store, first } = await settledOptInFixture();
+  // 維護迴圈已清理過期列(或落地失敗從未寫入):readIdempotency 的 join
+  // 查不到重放列,綁定同樣必須釋放。
+  const second = await store.reserve(reservation({ requestId: "req_test_2", userId: user.id, apiKeyId }));
+  assert.equal(second.status, "reserved");
+  assert.equal(second.idempotentReplay, false);
+  assert.notEqual(second.aiRequestId, first.aiRequestId);
+});
+
+test("opt-in key: live replay binding still replays without a second charge", async () => {
+  const { query, user, apiKeyId, store, first } = await settledOptInFixture();
+  await query(
+    `INSERT INTO ai_idempotency_replays (
+       request_id, api_key_id, idempotency_key, request_fingerprint,
+       endpoint, response_status, content_type, response_payload, payload_bytes, expires_at
+     ) VALUES (?, ?, 'idem-1', ?, 'chat.completions', 200, 'application/json', '{}', 2, '2030-01-01T00:00:00.000Z')`,
+    [first.requestId, Number(apiKeyId), fingerprint],
+  );
+  const replay = await store.reserve(reservation({ userId: user.id, apiKeyId }));
+  assert.equal(replay.idempotentReplay, true);
+  assert.equal(replay.aiRequestId, first.aiRequestId);
+  const reservations = await query(
+    `SELECT amount FROM ledger_entries WHERE transaction_type = 'ai_usage_reservation'`,
+  );
+  assert.equal(reservations.rows.length, 1);
+});
+
+test("opt-in key: live tombstone binding returns 409 idempotency_replay_not_stored", async () => {
+  const { query, user, apiKeyId, store, first } = await settledOptInFixture();
+  await query(
+    `INSERT INTO ai_idempotency_replays (
+       request_id, api_key_id, idempotency_key, request_fingerprint,
+       endpoint, response_status, content_type, response_payload, payload_bytes, expires_at
+     ) VALUES (?, ?, 'idem-1', ?, 'chat.completions', 200, 'application/x-akentros-replay-tombstone', '', 0, '2030-01-01T00:00:00.000Z')`,
+    [first.requestId, Number(apiKeyId), fingerprint],
+  );
+  await assert.rejects(
+    store.reserve(reservation({ userId: user.id, apiKeyId })),
+    (error: any) => error.status === 409 && error.code === "idempotency_replay_not_stored",
+  );
+});
+
+test("non-opt-in key: settled request keeps the permanent binding", async () => {
+  const { query, user, apiKeyId } = await billingFixture();
+  const store = createAkentrosBillingStore(query);
+  const first = await store.reserve(reservation({ userId: user.id, apiKeyId }));
+  await store.markDispatched(first.requestId);
+  await store.settle({
+    requestId: first.requestId,
+    actualCostMicros: 3,
+    inputTokens: 4,
+    outputTokens: 2,
+    usageSource: "provider",
+    totalLatencyMs: 25,
+  });
+  const replay = await store.reserve(reservation({ userId: user.id, apiKeyId }));
+  assert.equal(replay.idempotentReplay, true);
+  assert.equal(replay.aiRequestId, first.aiRequestId);
+  const reservations = await query(
+    `SELECT amount FROM ledger_entries WHERE transaction_type = 'ai_usage_reservation'`,
+  );
+  assert.equal(reservations.rows.length, 1);
+});
+
 test("dispatch transitions reserved to dispatched", async () => {
   const { query, user, apiKeyId } = await billingFixture();
   const store = createAkentrosBillingStore(query);
