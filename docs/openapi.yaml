@@ -398,11 +398,22 @@ components:
         opt-in window greater than zero, successful responses (JSON and SSE) are
         stored for that long, and resending a completed key with an identical body
         replays the stored response (X-Akentros-Idempotent-Replay: true) without a
-        second execution or charge. Sending a key that is currently in progress
-        returns 409 with code `idempotent_request_in_progress`; reusing a key with a
-        different body returns 409 with code `idempotency_conflict`. Clients that
-        rely on OpenAI-style idempotent replay should treat these 409 responses
-        as terminal outcomes rather than retriable errors.
+        second execution or charge. When the window expires the key binding is
+        released and a retry with the same key and an identical body executes as a
+        brand-new request (billed as a new request) with a fresh window — the
+        OpenAI-compatible lifecycle: the TTL is a replay window, not a permanent
+        key embargo. Responses larger than 2 MB are never stored: while the window
+        is live, same-key retries return 409 with code
+        `idempotency_replay_not_stored` (no replay, no re-execution, no double
+        charge; use a new Idempotency-Key to re-execute); once the window expires,
+        the key is released like any other. Sending a key that is currently in
+        progress returns 409 with code `idempotent_request_in_progress`; reusing a
+        key with a different body returns 409 with code `idempotency_conflict`.
+        Clients that rely on OpenAI-style idempotent replay should treat
+        `idempotent_request_replayed` and `idempotency_replay_not_stored` as
+        terminal outcomes rather than retriable errors (the latter becomes
+        executable again after the window expires, or immediately under a new
+        key).
       schema:
         type: string
         minLength: 1
@@ -942,8 +953,13 @@ components:
             Opt-in idempotent replay window in seconds. When greater than zero,
             successful responses (JSON and SSE) are stored for this long and a
             retry with the same Idempotency-Key and identical body replays the
-            stored response instead of re-executing; 0 keeps the default
-            no-storage semantics (completed keys return 409).
+            stored response instead of re-executing. After the window expires
+            the key binding is released: a retry with the same key and body
+            executes as a brand-new request (billed again) and re-stores its
+            response. Responses larger than 2 MB are not stored; same-key
+            retries within the window return 409
+            `idempotency_replay_not_stored` instead. 0 keeps the default
+            no-storage semantics (completed keys return 409 permanently).
         expires_at:
           type: [string, 'null']
           format: date-time
