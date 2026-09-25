@@ -57,6 +57,7 @@ const PUBLIC_AKENTROS_ERROR_CODES = new Set([
   "rate_limit_exceeded",
   "max_in_flight_exceeded",
   "idempotency_conflict",
+  "idempotency_replay_not_stored",
   "idempotent_request_in_progress",
   "idempotent_request_replayed",
   "request_cancelled",

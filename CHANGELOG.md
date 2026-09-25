@@ -57,6 +57,34 @@ versioning follows [SemVer](https://semver.org/).
 
 ### Fixed
 
+- **Opt-in idempotent replay: an expired TTL permanently killed the key
+  (issue #13).** For keys with `idempotency_replay_ttl_seconds > 0`, once the
+  stored replay expired, every retry with the same `Idempotency-Key` received
+  `409 idempotent_request_replayed` forever: the gateway treated the expired
+  replay row as a miss, but `billing.reserve`'s idempotency read found the
+  original `ai_requests` row through the partial unique index
+  `(api_key_id, idempotency_key)` — which has no time bound — and refused to
+  re-execute. Responses over the 2 MB storage cap were never stored at all,
+  so their keys were dead from the first retry, and the error code documented
+  the *non-opt-in* stance, leaving opted-in clients unable to tell TTL expiry
+  from "replay not stored" from "not opted in". The binding lifecycle now
+  follows the replay window (OpenAI-compatible): `readIdempotency` joins the
+  key's replay TTL and the replay row's expiry, and an expired (or purged)
+  binding is released inside the reservation transaction — the old
+  `ai_requests` row keeps its billing history with `idempotency_key` set to
+  NULL and the retry executes as a brand-new request, re-storing its response
+  via `ON CONFLICT … DO UPDATE` (previously `DO NOTHING` silently swallowed
+  the new response against the expired-but-unpurged row). Oversized responses
+  now store a same-TTL tombstone (`application/x-akentros-replay-tombstone`)
+  instead of skipping storage silently: within the window, same-key retries
+  return the new distinguishable `409 idempotency_replay_not_stored` (no
+  replay, no re-execution, no double charge); after the window the key is
+  released like any other. Keys without the opt-in keep the permanent-binding
+  stance (`409 idempotent_request_replayed`) unchanged, as do fingerprint
+  conflicts (`409 idempotency_conflict`) and in-progress keys
+  (`409 idempotent_request_in_progress`). The `Idempotency-Key` parameter
+  docs in `docs/openapi.yaml`, the README, and the console docs page now
+  document the full lifecycle.
 - **Refund ledger entries recorded a shifted running balance.** The settle
   and refund paths computed the refund entry's `balance_before` as
   `read_balance − refunded` and wrote `balance_after` as the pre-update read,

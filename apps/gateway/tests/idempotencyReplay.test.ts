@@ -264,3 +264,174 @@ test("opt-in key replays the stored response; non-opt-in key keeps 409 semantics
     globalThis.fetch = originalFetch;
   }
 });
+
+// issue #13:TTL 過期後綁定必須釋放,同鍵重送以全新請求重新執行並重新
+// 落地(OpenAI 語意),而不是永久 409。
+test("opt-in key: after replay TTL expiry the same key re-executes and re-stores the new response", async () => {
+  const userId = await seedUser("replay-expiry@example.com");
+  const { secret } = await createAkentrosApiKey(env, userId, {
+    name: "replay-expiry-key",
+    idempotency_replay_ttl_seconds: 3600,
+  });
+  const app = createTestApp(env);
+  const requestBody = {
+    model: "akentros/gpt-5.2",
+    messages: [{ role: "user", content: "Hello expiry" }],
+  };
+  let providerCalls = 0;
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (_url: any, _init: any) => {
+    providerCalls += 1;
+    const answer = providerCalls === 1 ? "first answer" : "second answer";
+    return new Response(
+      JSON.stringify({
+        id: `upstream-expiry-${providerCalls}`,
+        object: "chat.completion",
+        choices: [{ index: 0, message: { role: "assistant", content: answer }, finish_reason: "stop" }],
+        usage: { prompt_tokens: 5, completion_tokens: 3, total_tokens: 8 },
+      }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    );
+  }) as any;
+
+  try {
+    const send = () =>
+      app.request("/api/ai/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${secret}`,
+          "content-type": "application/json",
+          "idempotency-key": "e2e-expiry",
+        },
+        body: JSON.stringify(requestBody),
+      });
+
+    const first = await send();
+    assert.equal(first.status, 200);
+    const firstBody: any = await first.json();
+    assert.equal(firstBody.choices[0].message.content, "first answer");
+    assert.equal(providerCalls, 1);
+
+    // TTL 內重送:重放,不執行。
+    const inWindow = await send();
+    assert.equal(inWindow.status, 200);
+    assert.equal(inWindow.headers.get("x-akentros-idempotent-replay"), "true");
+    const inWindowBody: any = await inWindow.json();
+    assert.equal(inWindowBody.choices[0].message.content, "first answer");
+    assert.equal(providerCalls, 1);
+
+    // 重放列過期(維護迴圈尚未清理):同鍵重送 = 全新執行 + 重新落地。
+    await dbQuery(
+      env,
+      `UPDATE ai_idempotency_replays SET expires_at = '2020-01-01T00:00:00.000Z' WHERE idempotency_key = 'e2e-expiry'`,
+    );
+    const afterExpiry = await send();
+    assert.equal(afterExpiry.status, 200);
+    assert.equal(afterExpiry.headers.get("x-akentros-idempotent-replay"), null);
+    const afterExpiryBody: any = await afterExpiry.json();
+    assert.equal(afterExpiryBody.choices[0].message.content, "second answer");
+    assert.equal(providerCalls, 2);
+
+    // 新回應已覆寫過期列:再次重送重放「第二次」的回應,而非舊回應。
+    const replayNew = await send();
+    assert.equal(replayNew.status, 200);
+    assert.equal(replayNew.headers.get("x-akentros-idempotent-replay"), "true");
+    const replayNewBody: any = await replayNew.json();
+    assert.equal(replayNewBody.choices[0].message.content, "second answer");
+    assert.equal(providerCalls, 2);
+
+    // 重放列唯一,指向最新一次執行。
+    const replayRows = await dbQuery(
+      env,
+      `SELECT request_id, content_type, response_payload FROM ai_idempotency_replays WHERE idempotency_key = 'e2e-expiry'`,
+    );
+    assert.equal(replayRows.rows.length, 1);
+    assert.match(String(replayRows.rows[0].response_payload), /second answer/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+// issue #13:超過 2MB 落地上限的回應改落 tombstone——TTL 內同鍵重送得到
+// 可分辨的 409 idempotency_replay_not_stored(不重放、不重新執行、不雙重
+// 扣費);TTL 過期後綁定釋放,同鍵可重新執行。
+test("opt-in key: oversized response stores a tombstone; retries are rejected distinctly until the window expires", async () => {
+  const userId = await seedUser("replay-oversized@example.com");
+  const { secret } = await createAkentrosApiKey(env, userId, {
+    name: "replay-oversized-key",
+    idempotency_replay_ttl_seconds: 3600,
+  });
+  const app = createTestApp(env);
+  const requestBody = {
+    model: "akentros/gpt-5.2",
+    messages: [{ role: "user", content: "Hello oversized" }],
+  };
+  let providerCalls = 0;
+  const originalFetch = globalThis.fetch;
+  const oversizedContent = "x".repeat(2.2 * 1024 * 1024);
+  globalThis.fetch = (async (_url: any, _init: any) => {
+    providerCalls += 1;
+    return new Response(
+      JSON.stringify({
+        id: `upstream-oversized-${providerCalls}`,
+        object: "chat.completion",
+        choices: [
+          {
+            index: 0,
+            message: { role: "assistant", content: oversizedContent },
+            finish_reason: "stop",
+          },
+        ],
+        usage: { prompt_tokens: 5, completion_tokens: 3, total_tokens: 8 },
+      }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    );
+  }) as any;
+
+  try {
+    const send = () =>
+      app.request("/api/ai/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${secret}`,
+          "content-type": "application/json",
+          "idempotency-key": "e2e-oversized",
+        },
+        body: JSON.stringify(requestBody),
+      });
+
+    const first = await send();
+    assert.equal(first.status, 200);
+    await first.text();
+    assert.equal(providerCalls, 1);
+
+    // tombstone 已落地:內容空、標記內容類型、同 TTL。
+    const tombstone = await dbQuery(
+      env,
+      `SELECT content_type, response_payload, payload_bytes, expires_at FROM ai_idempotency_replays WHERE idempotency_key = 'e2e-oversized'`,
+    );
+    assert.equal(tombstone.rows.length, 1);
+    assert.equal(tombstone.rows[0].content_type, "application/x-akentros-replay-tombstone");
+    assert.equal(tombstone.rows[0].response_payload, "");
+
+    // TTL 內同鍵重送:可分辨的 409,不重放、不重新執行、不雙重扣費。
+    const rejected = await send();
+    assert.equal(rejected.status, 409);
+    const rejectedBody: any = await rejected.json();
+    assert.equal(rejectedBody.error.code, "idempotency_replay_not_stored");
+    assert.equal(providerCalls, 1);
+
+    // tombstone 過期:綁定釋放,同鍵重送重新執行。
+    await dbQuery(
+      env,
+      `UPDATE ai_idempotency_replays SET expires_at = '2020-01-01T00:00:00.000Z' WHERE idempotency_key = 'e2e-oversized'`,
+    );
+    const afterExpiry = await send();
+    assert.equal(afterExpiry.status, 200);
+    assert.equal(afterExpiry.headers.get("x-akentros-idempotent-replay"), null);
+    await afterExpiry.text();
+    assert.equal(providerCalls, 2);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

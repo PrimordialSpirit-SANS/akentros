@@ -100,10 +100,14 @@ export function DocsPage() {
         <div>
           <strong style={{ fontSize: "0.84rem" }}>Idempotency-Key 語意</strong>
           <p style={{ margin: "4px 0 0", fontSize: "0.85rem", lineHeight: 1.6 }}>
-            冪等鍵用於防止同一請求被重複執行與重複扣款。與 OpenAI「重放原始回應」的語意不同:Akentros 不落地
-            prompt 與 completion,已完成的冪等鍵重送會回
+            冪等鍵用於防止同一請求被重複執行與重複扣款。預設(未開啟重放)金鑰不落地 prompt 與
+            completion,已完成的冪等鍵重送會回
             <code>409 idempotent_request_replayed</code>(附原始 X-Request-Id),進行中的鍵則回
-            <code>409 idempotent_request_in_progress</code>。依賴冪等重放的客戶端應將 409
+            <code>409 idempotent_request_in_progress</code>。在金鑰上開啟
+            <code>idempotency_replay_ttl_seconds</code>{" "}
+            後,成功回應會落地該時限:時限內同鍵同體重送直接重放原始回應;時限屆滿後綁定釋放,同鍵重送視為全新請求重新執行(重新計費)。超過
+            2MB 的回應無法落地,時限內同鍵重送回
+            <code>409 idempotency_replay_not_stored</code>(換新鍵可立即重新執行)。依賴冪等重放的客戶端應將 409
             視為終局結果,而非可重試錯誤。
           </p>
         </div>
