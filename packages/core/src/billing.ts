@@ -208,11 +208,20 @@ export const AKENTROS_BILLING_SQL = Object.freeze({
            requests.reserved_usd_micros, requests.charged_usd_micros, requests.refunded_usd_micros,
            requests.error_code, requests.http_status,
            reservations.state AS reservation_state,
+           api_keys.idempotency_replay_ttl_seconds AS replay_ttl_seconds,
+           replays.expires_at AS replay_expires_at,
+           replays.content_type AS replay_content_type,
            1 AS idempotent_replay
     FROM ai_requests AS requests
     LEFT JOIN ai_billing_reservations AS reservations
       ON reservations.ai_request_id = requests.id
+    LEFT JOIN ai_api_keys AS api_keys
+      ON api_keys.id = requests.api_key_id
+    LEFT JOIN ai_idempotency_replays AS replays
+      ON replays.api_key_id = requests.api_key_id
+     AND replays.idempotency_key = requests.idempotency_key
     WHERE requests.api_key_id = ? AND requests.idempotency_key = ?
+    LIMIT 1
   `,
   dispatch: `
     UPDATE ai_requests
@@ -252,6 +261,62 @@ function idempotencyConflict() {
     code: "idempotency_conflict",
     param: "Idempotency-Key",
   });
+}
+
+// 回應超過重放落地上限（>2MB）時的 tombstone 內容類型：重放表以此標記
+// 「綁定存在但回應不可重放」。同鍵重送在 TTL 內得到 409
+// idempotency_replay_not_stored（不重放、不重新執行、不雙重扣費）；TTL 過期
+// 後綁定隨 tombstone 一起釋放。gateway 的 ai_idempotency_replays 寫入端
+// 與此處的分類端共用同一常量，避免字面量漂移。
+export const AKENTROS_REPLAY_TOMBSTONE_CONTENT_TYPE = "application/x-akentros-replay-tombstone";
+
+function replayNotStoredError() {
+  return new AkentrosError(
+    "The original response for this Idempotency-Key exceeded the replay storage limit and cannot be replayed; send a new Idempotency-Key to execute the request again.",
+    {
+      status: 409,
+      type: "invalid_request_error",
+      code: "idempotency_replay_not_stored",
+      param: "Idempotency-Key",
+    },
+  );
+}
+
+// 冪等綁定的生命周期分類（issue #13）：同 (api_key_id, idempotency_key) 的
+// ai_requests 綁定列已存在時，依金鑰 opt-in 狀態與重放列（ai_idempotency_
+// replays，以鍵身份 join）決定重送的下場。
+//
+// - "replay"：綁定有效，回讀原列。涵蓋：未 opt-in（永久綁定，inference 層
+//   對進行中/已完成分別回 409 in_progress/replayed，既有隱私立場不變）、
+//   opt-in 且請求進行中（reserved/dispatched）、opt-in 且重放列仍在 TTL 內
+//   （閘道層重放；漏至 billing 時 inference 回 409 replayed）。
+// - "not_stored"：opt-in 且重放列是活著的 tombstone（回應超過 2MB 上限）
+//   → 409 idempotency_replay_not_stored，可分辨、不雙重扣費。
+// - "expired"：opt-in 且原請求已終結、重放列已過期或不存在（含維護迴圈
+//   清理後的空集）→ 綁定釋放、同鍵重送以全新請求重新執行（OpenAI 語意：
+//   TTL 只是重放窗口，不是金鑰的死刑）。執行失敗（failed）或當初被拒
+//   （rejected）的綁定同樣走此路——沒有落地回應可重放，鍵不應永久卡死。
+type AkentrosIdempotentBindingOutcome = "replay" | "not_stored" | "expired";
+
+function classifyIdempotentBinding(row: any, now: string): AkentrosIdempotentBindingOutcome {
+  const ttlSeconds = Number(row?.replay_ttl_seconds) > 0 ? Number(row.replay_ttl_seconds) : 0;
+  if (ttlSeconds <= 0) return "replay";
+  const status = String(row?.status || "");
+  if (status === "reserved" || status === "dispatched") return "replay";
+  const replayExpiresAt = row?.replay_expires_at ? String(row.replay_expires_at) : null;
+  if (replayExpiresAt !== null && replayExpiresAt > now) {
+    return String(row.replay_content_type) === AKENTROS_REPLAY_TOMBSTONE_CONTENT_TYPE
+      ? "not_stored"
+      : "replay";
+  }
+  return "expired";
+}
+
+// 分類結果的兌現：not_stored 拋出可分辨的 409；replay 回讀原列（呼叫端
+// inference.reserve 以 replayError 呈現進行中/已完成兩種 409）。
+function resolveIdempotentBinding(row: any, outcome: AkentrosIdempotentBindingOutcome) {
+  if (outcome === "not_stored") throw replayNotStoredError();
+  return normalizeBillingRow(row, true)!;
 }
 
 function insufficientPoints(requestId: string) {
@@ -321,14 +386,16 @@ export function createAkentrosBillingStore(query: AkentrosQuery): AkentrosBillin
         throw new TypeError("expiresAt must be an ISO 8601 timestamp.");
       }
 
-      // 冪等重放:同 (api_key_id, idempotency_key) 已存在時直接回讀,
-      // 不建立新請求、不扣點。
+      // 冪等綁定 fast path:同 (api_key_id, idempotency_key) 已存在時分類
+      // 處理,不建立新請求、不扣點。僅「過期綁定」不在這裡處理——釋放必須
+      // 與新列寫入同一交易,否則釋放與重綁之間的空窗會讓第三方插隊奪鍵。
       if (idempotencyKey) {
         const replayed = await query(AKENTROS_BILLING_SQL.readIdempotency, [apiKeyId, idempotencyKey]);
         const replayRow: any = rows(replayed)[0];
         if (replayRow) {
           if (String(replayRow.request_fingerprint) !== fingerprint) throw idempotencyConflict();
-          return normalizeBillingRow(replayRow, true)!;
+          const outcome = classifyIdempotentBinding(replayRow, nowIso());
+          if (outcome !== "expired") return resolveIdempotentBinding(replayRow, outcome);
         }
       }
 
@@ -386,8 +453,34 @@ export function createAkentrosBillingStore(query: AkentrosQuery): AkentrosBillin
           }
         }
 
-        const inserted = await query(
-          `
+        // 冪等綁定檢查與過期釋放必須與新列寫入同一交易(fast path 之間狀態
+        // 可能已變:原請求完成、鍵被重綁或釋放)。INSERT 撞上併發同鍵建立
+        // 時,回讀分類並最多重試一次:併發對手的綁定若仍有效(進行中/可重
+        // 放/tombstone)依其分類處理,若也已過期則釋放後重試。
+        let insertedRow: any = null;
+        for (let attempt = 0; attempt < 2 && !insertedRow; attempt += 1) {
+          if (idempotencyKey) {
+            const replayed = await query(AKENTROS_BILLING_SQL.readIdempotency, [apiKeyId, idempotencyKey]);
+            const replayRow: any = rows(replayed)[0];
+            if (replayRow) {
+              if (String(replayRow.request_fingerprint) !== fingerprint) throw idempotencyConflict();
+              const outcome = classifyIdempotentBinding(replayRow, now);
+              if (outcome !== "expired") return resolveIdempotentBinding(replayRow, outcome);
+              // 過期綁定釋放:舊列保留(計費歷史與審計不動),idempotency_key
+              // 置 NULL 讓位給本次重送的新請求(OpenAI 語意:TTL 是重放窗口,
+              // 不是金鑰的死刑)。財務軌跡由 ledger_entries.idempotency_key 保留。
+              await query(
+                `
+          UPDATE ai_requests
+          SET idempotency_key = NULL, updated_at = ?
+          WHERE id = ? AND idempotency_key = ?
+        `,
+                [now, replayRow.ai_request_id, idempotencyKey],
+              );
+            }
+          }
+          const inserted = await query(
+            `
           INSERT INTO ai_requests (
             request_id, user_id, api_key_id, idempotency_key, request_fingerprint,
             endpoint, stream, public_model, pricing_revision, pricing_snapshot,
@@ -398,34 +491,28 @@ export function createAkentrosBillingStore(query: AkentrosQuery): AkentrosBillin
           ON CONFLICT DO NOTHING
           RETURNING id
         `,
-          [
-            requestId,
-            userId,
-            apiKeyId,
-            idempotencyKey,
-            fingerprint,
-            endpoint,
-            Boolean(input?.stream),
-            publicModel,
-            pricingRevision,
-            JSON.stringify(input?.pricingSnapshot || {}),
-            reservedCostMicros,
-            status,
-            errorCode,
-            httpStatus,
-            status === "rejected" ? now : null,
-            now,
-            now,
-          ],
-        );
-        const insertedRow: any = rows(inserted)[0];
-        if (!insertedRow && idempotencyKey) {
-          // 併發下同一冪等鍵剛被別的請求建立:回讀。
-          const replayed = await query(AKENTROS_BILLING_SQL.readIdempotency, [apiKeyId, idempotencyKey]);
-          const replayRow: any = rows(replayed)[0];
-          if (!replayRow) throw invalidBillingState("The reservation could not be created.");
-          if (String(replayRow.request_fingerprint) !== fingerprint) throw idempotencyConflict();
-          return normalizeBillingRow(replayRow, true)!;
+            [
+              requestId,
+              userId,
+              apiKeyId,
+              idempotencyKey,
+              fingerprint,
+              endpoint,
+              Boolean(input?.stream),
+              publicModel,
+              pricingRevision,
+              JSON.stringify(input?.pricingSnapshot || {}),
+              reservedCostMicros,
+              status,
+              errorCode,
+              httpStatus,
+              status === "rejected" ? now : null,
+              now,
+              now,
+            ],
+          );
+          insertedRow = rows(inserted)[0] || null;
+          if (!insertedRow && !idempotencyKey) break;
         }
         if (!insertedRow) throw invalidBillingState("The reservation could not be created.");
         const aiRequestId = insertedRow.id;
