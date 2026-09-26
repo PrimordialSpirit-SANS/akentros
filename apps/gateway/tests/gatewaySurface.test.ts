@@ -184,6 +184,10 @@ test("session endpoints validate input before touching the database", async () =
     [{ email: "nope", username: "ab", password: "longenough1" }, "invalid_email"],
     [{ email: "a@b.co", username: "a", password: "longenough1" }, "invalid_username"],
     [{ email: "a@b.co", username: "ab", password: "short" }, "invalid_password"],
+    // 字元禁則:內部換行、零寬空格、雙向覆寫控制符皆拒於觸庫之前。
+    [{ email: "a@b.co", username: "ab\ncd", password: "longenough1" }, "invalid_username"],
+    [{ email: "a@b.co", username: "invi\u200Bsible", password: "longenough1" }, "invalid_username"],
+    [{ email: "a@b.co", username: "ho\u202Enest", password: "longenough1" }, "invalid_username"],
   ];
   for (const [payload, code] of cases) {
     const response = await aiRequest("/api/auth/register", base, {
