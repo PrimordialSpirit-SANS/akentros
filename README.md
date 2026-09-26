@@ -152,7 +152,7 @@ npx wrangler deploy          # secrets 以 wrangler secret put 設定
 | `AKENTROS_SIGNUP_BONUS_USD` | 選配 | 註冊初始餘額(預設 $5.00) |
 | `AKENTROS_ADMIN_STARTING_CREDITS_USD` | 選配 | 管理員初始餘額(預設 $500.00) |
 | `AKENTROS_DISABLE_REGISTRATION` | 選配 | 設 `true` 關閉公開註冊 |
-| `AKENTROS_SIGNUP_ANTI_ENUMERATION` | 選配 | 防帳號枚舉(預設開啟):重複信箱註冊回不可區分的 202 受理訊息、不發 session、回應時間與成功路徑等化;僅內部可達的私有部署可設 `false` 還原明確 409 `email_taken` UX |
+| `AKENTROS_SIGNUP_ANTI_ENUMERATION` | 選配 | 防帳號枚舉(預設開啟):不論信箱是否已註冊,一律回同形 202 受理訊息(狀態碼、主體、cookie 完全一致)、不發 session、不回 user,回應時間與成功路徑等化;僅內部可達的私有部署可設 `false` 還原「新註冊 201 自動登入/重複 409 `email_taken`」UX |
 | `AKENTROS_TRUST_PROXY` | 選配 | 登入/註冊限流的用戶端 IP 判定:Node 自架預設用「socket 來源位址」(不可偽造);僅當 gateway 前方有會覆寫 `cf-connecting-ip` 的受信賴反向代理(如 Cloudflare)時設 `true` 改用標頭。Cloudflare Workers 部署一律以標頭為準 |
 | `FRONTEND_ORIGINS` | 建議 | 允許帶 cookie 的 console 來源(CSV) |
 | `OPENROUTER_API_KEY_1` … | 選配 | 供應商上游金鑰,見 `docs/PROVIDERS.md` |

@@ -489,3 +489,23 @@ versioning follows [SemVer](https://semver.org/).
   forms" remain a single list and cannot drift. Rejections are visible as
   `akentros_auth_origin_rejected` warn logs and still consume the auth
   rate-limit budget.
+
+### Security
+
+- **Fresh and duplicate signups are now truly indistinguishable in
+  anti-enumeration mode.** The concealed-signup feature answered a duplicate
+  email with `202 {"ok":true}` — but a *fresh* email still got
+  `201 {user}` plus a session cookie, so the status code alone was a
+  complete account-enumeration oracle, defeating the concealment the README
+  already promises ("不可區分" / indistinguishable). In
+  `AKENTROS_SIGNUP_ANTI_ENUMERATION` mode (the default), both paths now
+  return the byte-identical `202` accepted response: no user object, no
+  session cookie, same PBKDF2-equalized timing. Fresh signups no longer
+  auto-login; the console registration form already guides users to the
+  login flow (the session-less 202 path was built for it), and the account
+  is immediately usable with the registered credentials. The explicit
+  opt-out contract for internal-only deployments is unchanged:
+  `AKENTROS_SIGNUP_ANTI_ENUMERATION=false` still returns `201` + auto-login
+  for fresh signups and `409 email_taken` for duplicates. The deployment
+  smoke test in `docs/DEPLOYMENT.md` now probes for the identical-202
+  property instead of the old 201-then-202 distinction.
