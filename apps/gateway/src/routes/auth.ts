@@ -276,16 +276,21 @@ function signupAntiEnumeration(env: AkentrosRuntimeEnv): boolean {
   );
 }
 
-// 與成功註冊同層的 2xx 語意,但不發 session、不帶 user。攻擊者若要以回應區分
-// 「信箱已註冊」,必須完成整個註冊流程並檢查 session cookie,每一次探測都
-// 付出 PBKDF2 成本並消耗登入/註冊限流額度,大幅拉高枚舉成本。
+// 防枚舉模式下,新註冊與重複信箱共用同一個 202 受理回應:狀態碼、主體、
+// cookie 三者完全一致,回應端不存在任何可區分「信箱是否已註冊」的訊號
+// (201 vs 202 的差異本身就是枚舉 oracle)。每次探測都付出 PBKDF2 成本並
+// 消耗登入/註冊限流額度;受理後不自動登入,請使用者改走登入流程。
 const SIGNUP_ACCEPTED_MESSAGE =
   "Registration accepted. If the email is available, the account has been created — please sign in.";
+
+function acceptedSignupResponse(c: AkentrosContext) {
+  return c.json({ ok: true, message: SIGNUP_ACCEPTED_MESSAGE }, 202);
+}
 
 function concealedSignupResponse(c: AkentrosContext) {
   // 營運可觀測性:回應不揭露,但伺服器日誌保留隱匿的重複註冊事件。
   logAkentrosEvent("warn", "akentros_signup_duplicate_concealed");
-  return c.json({ ok: true, message: SIGNUP_ACCEPTED_MESSAGE }, 202);
+  return acceptedSignupResponse(c);
 }
 
 function isUniqueEmailViolation(error: unknown): boolean {
@@ -398,6 +403,12 @@ authRoutes.post("/register", async (c: AkentrosContext) => {
       return c.json({ error: "This email is already registered.", code: "email_taken" }, 409);
     }
     throw error;
+  }
+  if (signupAntiEnumeration(c.env)) {
+    // 新註冊與重複信箱必須回應同形:201(+user+session)與 202 的狀態碼差異
+    // 本身就是「信箱已註冊」的枚舉 oracle,違反 README 承諾的「不可區分」。
+    // 防枚舉模式下不自動登入,受理後請使用者以註冊憑證登入(前端已支援此流程)。
+    return acceptedSignupResponse(c);
   }
   await issueSession(c, c.env, user.id);
   return c.json({ user: publicUser(user) }, 201);

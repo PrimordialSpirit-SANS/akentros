@@ -43,7 +43,7 @@ function registerRequest(email: string, username: string, password: string) {
   };
 }
 
-test("duplicate signup is concealed behind an accepted 202 response by default", async () => {
+test("anti-enumeration mode returns identical 202 responses for fresh and duplicate signups", async () => {
   await installNodeAkentrosDbAdapter();
   const env = await createSchemaReadyEnv();
   const app = createTestApp(env);
@@ -52,12 +52,16 @@ test("duplicate signup is concealed behind an accepted 202 response by default",
     "/api/auth/register",
     registerRequest("taken@example.com", "alice", "longenough1"),
   );
-  assert.equal(first.status, 201);
+  // 新註冊與重複信箱必須完全同形:狀態碼、主體、cookie 一致 ——
+  // 201 vs 202 的差異本身就是枚舉 oracle(README 承諾的「不可區分」)。
+  assert.equal(first.status, 202);
   const firstBody = (await first.json()) as any;
-  assert.ok(firstBody.user, "fresh signup returns the created user");
-  assert.ok(
-    first.headers.get("set-cookie")?.includes("akentros_token="),
-    "fresh signup issues a session cookie",
+  assert.equal(firstBody.ok, true);
+  assert.equal(firstBody.user, undefined, "fresh signup must not leak the created user");
+  assert.equal(
+    first.headers.get("set-cookie"),
+    null,
+    "fresh signup must not auto-issue a session in anti-enumeration mode",
   );
 
   const duplicate = await app.request(
@@ -70,6 +74,18 @@ test("duplicate signup is concealed behind an accepted 202 response by default",
   assert.equal(duplicateBody.user, undefined, "concealed response must not leak the account");
   assert.equal(duplicateBody.code, undefined, "concealed response must not expose email_taken");
   assert.equal(duplicate.headers.get("set-cookie"), null, "concealed response must not issue a session");
+
+  // 回應完全同形:狀態碼與主體逐位元組一致,枚舉者無從區分。
+  assert.deepEqual(duplicateBody, firstBody);
+
+  // 受理語意為真:新註冊的帳號可立即以註冊憑證登入。
+  const login = await app.request("/api/auth/login", {
+    method: "POST",
+    body: JSON.stringify({ email: "taken@example.com", password: "longenough1" }),
+    headers: { "Content-Type": "application/json" },
+  });
+  assert.equal(login.status, 200);
+  assert.equal(((await login.json()) as any).user.username, "alice");
 });
 
 test("AKENTROS_SIGNUP_ANTI_ENUMERATION=false restores the explicit 409 contract", async () => {
@@ -100,7 +116,7 @@ test("concealed duplicate signup does not alter or take over the existing accoun
     "/api/auth/register",
     registerRequest("owner@example.com", "owner", "ownerpass99"),
   );
-  assert.equal(first.status, 201);
+  assert.equal(first.status, 202);
 
   const probe = await app.request(
     "/api/auth/register",
