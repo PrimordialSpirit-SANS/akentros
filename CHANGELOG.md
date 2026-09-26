@@ -509,3 +509,17 @@ versioning follows [SemVer](https://semver.org/).
   for fresh signups and `409 email_taken` for duplicates. The deployment
   smoke test in `docs/DEPLOYMENT.md` now probes for the identical-202
   property instead of the old 201-then-202 distinction.
+
+### Security
+
+- **Usernames now reject control and invisible characters.** Registration
+  only checked username length (2-40), so interior newlines, zero-width
+  spaces, bidi override controls and BOM were accepted. Console output is
+  escaped, so this was never an XSS vector, but the characters still
+  pollute structured logs and list UI rendering, and zero-width/bidi
+  characters enable username spoofing (inserting a zero-width space or RLO
+  override to impersonate another user's display name). A character
+  denylist (C0/C1 controls, DEL, line/paragraph separators, zero-width and
+  bidi controls, BOM) now rejects such usernames with the existing
+  `400 invalid_username` before the database is touched; all other visible
+  characters (including CJK and emoji) remain allowed.

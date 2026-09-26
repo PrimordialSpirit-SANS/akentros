@@ -302,6 +302,15 @@ function isUniqueEmailViolation(error: unknown): boolean {
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+// 使用者名稱字元禁則:控制字元(C0/C1、DEL)、行/段落分隔符、零寬字元、
+// 雙向覆寫控制符與 BOM。輸出端雖已全面轉義,這些字元仍會污染結構化日誌
+// 與清單 UI 的視覺判讀,且零寬/雙向字元可用於帳號仿冒(在使用者名稱中
+// 插入零寬空格或 RLO 覆寫來假冒他人)。長度檢查之外補上字元禁則,
+// 讓髒輸入在觸庫前就被擋下;其餘可見字元(含 CJK、表情符號)不設限。
+const USERNAME_FORBIDDEN_PATTERN =
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: the denylist is the point - it rejects control, separator and invisible-spoofing characters in usernames
+  /[\u0000-\u001F\u007F-\u009F\u200B-\u200F\u2028\u2029\u202A-\u202E\u2066-\u2069\uFEFF]/;
+
 // 登入/註冊承載遠小於 16KB;以串流計數上限讀取(Content-Length 預檢 + 逐塊
 // 硬上限)。這是未認證即可觸達的端點,不接受 Hono json() 的全量緩衝。
 type AuthJsonResult =
@@ -368,8 +377,14 @@ authRoutes.post("/register", async (c: AkentrosContext) => {
   if (!EMAIL_PATTERN.test(email) || email.length > 254) {
     return c.json({ error: "A valid email address is required.", code: "invalid_email" }, 400);
   }
-  if (username.length < 2 || username.length > 40) {
-    return c.json({ error: "Username must be 2-40 characters.", code: "invalid_username" }, 400);
+  if (username.length < 2 || username.length > 40 || USERNAME_FORBIDDEN_PATTERN.test(username)) {
+    return c.json(
+      {
+        error: "Username must be 2-40 characters and may not contain control or invisible characters.",
+        code: "invalid_username",
+      },
+      400,
+    );
   }
   if (password.length < 8 || password.length > 200) {
     return c.json({ error: "Password must be at least 8 characters.", code: "invalid_password" }, 400);
