@@ -469,3 +469,23 @@ versioning follows [SemVer](https://semver.org/).
   path traversal in `@vitest/mocker` (GHSA-82fw-gwwq-j7x9, `npm audit`
   2 moderate → 0). The advisory is dev-only (test-time mock resolution), but
   the fix keeps `npm audit` a usable CI gate.
+
+### Security
+
+- **Pre-auth endpoints now block cross-site login CSRF with an Origin check.**
+  The CSRF double-submit cookie only protects requests that already carry a
+  `csrf_token` cookie, and `SameSite=Lax` cannot mitigate login CSRF: the
+  session cookie is set by the *response*, so a hidden cross-site form
+  posting the attacker's own credentials silently logs the victim's browser
+  into the attacker's account (enabling after-the-fact monitoring of the
+  victim's console activity). `POST /api/auth/login`, `/register` and
+  `/logout` now reject any request whose `Origin` (or `Referer` origin) is
+  neither same-origin nor in the CORS allowlist — browsers always attach
+  `Origin` to cross-site POSTs, so the vector dies at the header layer,
+  before any body parsing. Requests without `Origin`/`Referer` (curl, SDKs)
+  pass through unaffected: CSRF is a browser-only threat model. The check
+  reuses `isCredentialedOriginAllowed`, so "origins allowed to make
+  credentialed cross-origin requests" and "origins allowed to submit login
+  forms" remain a single list and cannot drift. Rejections are visible as
+  `akentros_auth_origin_rejected` warn logs and still consume the auth
+  rate-limit budget.

@@ -2,6 +2,7 @@ import { AkentrosError } from "@akentros/core/openaiErrors";
 import { parseUsdToMicros, usdMicrosToDecimalString } from "@akentros/core/pricing";
 import { Hono } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
+import { isCredentialedOriginAllowed } from "../middleware/cors.ts";
 import { createRateLimit } from "../middleware/rateLimit.ts";
 import type { AkentrosContext, AkentrosEnv, AkentrosNext, AkentrosRuntimeEnv } from "../types.ts";
 import { AKENTROS_SMALL_BODY_MAX_BYTES, readCappedText } from "../utils/bodyLimit.ts";
@@ -107,6 +108,69 @@ function timingSafeEqual(left: string, right: string): boolean {
     difference |= left.charCodeAt(index) ^ right.charCodeAt(index);
   }
   return difference === 0;
+}
+
+// ── Pre-auth 的 CSRF 緩解:Origin/Referer 檢查 ─────────────────────────────
+// requireCsrfToken 的雙提交 cookie 只保護「已取得 session」後的 mutating 請求;
+// login/register 本身沒有 csrf cookie 可提交,而 SameSite=Lax 擋不了 login
+// CSRF —— session cookie 是由「回應」設定的:攻擊者以隱藏表單把自己的憑證
+// 送進受害者的瀏覽器,受害者就被靜默登入攻擊者帳號(供攻擊者側錄後續操作)。
+// 瀏覽器對所有跨來源 POST 一律附帶 Origin 標頭,因此:
+// - Origin(或 Referer 的 origin)存在、但既非同源也不在 CORS 白名單 → 403;
+// - 兩者皆缺 → 放行:這是非瀏覽器客戶端(curl、SDK)的正常形狀,而 CSRF
+//   威脅模型只存在於瀏覽器。
+// 與 cors.ts 共用 isCredentialedOriginAllowed,確保「可跨來源帶憑證請求的
+// 來源」與「可提交登入表單的來源」永遠是同一份名單,不會漂移。
+function requestOwnOrigin(c: AkentrosContext): string {
+  try {
+    return new URL(c.req.url).origin;
+  } catch {
+    return "";
+  }
+}
+
+// Origin 優先;缺少時退回 Referer 的 origin(scheme://host:port)。
+// 無法解析的 Referer 視同未提供 —— 跨站 POST 在現代瀏覽器必定帶 Origin,
+// 走不到這條退路。
+function readDeclaredOrigin(c: AkentrosContext): string {
+  const origin = String(c.req.header("origin") || "").trim();
+  if (origin) return origin;
+  const referer = String(c.req.header("referer") || "").trim();
+  if (!referer) return "";
+  try {
+    return new URL(referer).origin;
+  } catch {
+    return "";
+  }
+}
+
+export async function requireTrustedOrigin(c: AkentrosContext, next: AkentrosNext) {
+  const method = c.req.method.toUpperCase();
+  if (method === "GET" || method === "HEAD" || method === "OPTIONS") {
+    await next();
+    return;
+  }
+  const declared = readDeclaredOrigin(c);
+  if (!declared) {
+    await next();
+    return;
+  }
+  // 「null」origin(沙箱 iframe)無法與任何部署同源,白名單檢查自然拒絕。
+  const trusted = declared === requestOwnOrigin(c) || isCredentialedOriginAllowed(c, declared);
+  if (!trusted) {
+    logAkentrosEvent("warn", "akentros_auth_origin_rejected", {
+      method,
+      path: c.req.path,
+    });
+    return c.json(
+      {
+        error: "Requests from this origin are not allowed.",
+        code: "origin_forbidden",
+      },
+      403,
+    );
+  }
+  await next();
 }
 
 const authLimiter = createRateLimit({
@@ -276,6 +340,7 @@ async function readAuthJsonObject(c: AkentrosContext): Promise<AuthJsonResult> {
 }
 
 authRoutes.use("*", authLimiter);
+authRoutes.use("*", requireTrustedOrigin);
 
 authRoutes.post("/register", async (c: AkentrosContext) => {
   if (registrationDisabled(c.env)) {

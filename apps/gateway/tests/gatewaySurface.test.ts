@@ -111,6 +111,65 @@ test("CSRF double-submit accepts matching header and passes GET through", async 
   assert.equal(read.status, 200);
 });
 
+test("pre-auth mutating endpoints reject cross-site Origin headers (login CSRF)", async () => {
+  const base = { AKENTROS_ENABLED: "true", JWT_SECRET: SECRET };
+  const evil = { "Content-Type": "application/json", Origin: "https://evil.example" };
+
+  // 瀏覽器對跨來源 POST 一律附帶 Origin;login CSRF(以攻擊者憑證把受害者
+  // 的瀏覽器靜默登入攻擊者帳號)在標頭層即被擋下,403 先於任何 body 解析。
+  const login = await aiRequest("/api/auth/login", base, {
+    method: "POST",
+    body: JSON.stringify({ email: "a@b.co", password: "longenough1" }),
+    headers: evil,
+  });
+  assert.equal(login.status, 403);
+  assert.equal(((await login.json()) as any).code, "origin_forbidden");
+
+  const register = await aiRequest("/api/auth/register", base, {
+    method: "POST",
+    body: JSON.stringify({ email: "a@b.co", username: "ab", password: "longenough1" }),
+    headers: evil,
+  });
+  assert.equal(register.status, 403);
+  assert.equal(((await register.json()) as any).code, "origin_forbidden");
+
+  const logout = await aiRequest("/api/auth/logout", base, { method: "POST", headers: evil });
+  assert.equal(logout.status, 403);
+
+  // 「null」origin(沙箱 iframe)無法與任何部署同源,同樣拒絕。
+  const sandboxed = await aiRequest("/api/auth/login", base, {
+    method: "POST",
+    body: JSON.stringify({ email: "a@b.co", password: "longenough1" }),
+    headers: { "Content-Type": "application/json", Origin: "null" },
+  });
+  assert.equal(sandboxed.status, 403);
+
+  // Origin 檢查僅限 mutating 請求:GET 不受影響(仍由 authenticateToken 擋 401)。
+  const me = await aiRequest("/api/auth/me", base, { headers: { Origin: "https://evil.example" } });
+  assert.equal(me.status, 401);
+});
+
+test("pre-auth mutating endpoints allow same-origin, allowlisted and absent Origin headers", async () => {
+  const base = { AKENTROS_ENABLED: "true", JWT_SECRET: SECRET };
+  // 以 400 invalid_request 證明請求「通過」origin 閘門並進入 handler 的
+  // 內容驗證 —— 被閘門擋下的請求會是 403 origin_forbidden。
+  const post = (headers: Record<string, string>) =>
+    aiRequest("/api/auth/login", base, {
+      method: "POST",
+      body: "not-json",
+      headers: { "Content-Type": "application/json", ...headers },
+    });
+
+  // 同源:app.request 的請求 url 即 http://localhost/…。
+  assert.equal((await post({ Origin: "http://localhost" })).status, 400);
+  // CORS 白名單內的開發來源(DEFAULT_ALLOWED_ORIGINS)。
+  assert.equal((await post({ Origin: "http://localhost:5173" })).status, 400);
+  // Referer 退路:取 Referer 的 origin 判定。
+  assert.equal((await post({ Referer: "http://localhost:5173/login" })).status, 400);
+  // 非瀏覽器客戶端(curl/SDK)不帶 Origin/Referer → 放行。
+  assert.equal((await post({})).status, 400);
+});
+
 test("session endpoints validate input before touching the database", async () => {
   const base = { AKENTROS_ENABLED: "true", JWT_SECRET: SECRET };
 
