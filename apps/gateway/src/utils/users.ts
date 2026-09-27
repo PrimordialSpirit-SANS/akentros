@@ -174,15 +174,36 @@ export async function createUser(
   return serializeAccount(row);
 }
 
-// migrate script 的管理員種子:已存在時僅確保 role = admin,不覆寫密碼。
+// migrate script 的管理員種子:帳號不存在時建立;已存在時「只有種子密碼驗證
+// 通過(= operator 擁有該帳號)」才升權,密碼不符一律拒絕——在公開註冊的
+// 部署裡,任何人都能搶先註冊 operator 稍後才設定的 ADMIN_EMAIL;若無聲地
+// 把這個帳號升成 admin,攻擊者即以「自設密碼」取得完整管理權,而 operator
+// 設定的 ADMIN_PASSWORD 永遠無法登入(帳號預先註冊接管,已以 PoC 驗證)。
 export async function upsertAdminUser(
   env: AkentrosRuntimeEnv,
-  options: { email: string; passwordHash: string; username: string; balanceUsdMicros: string },
+  options: {
+    email: string;
+    password: string;
+    passwordHash: string;
+    username: string;
+    balanceUsdMicros: string;
+  },
 ): Promise<{ created: boolean }> {
-  const existing = await dbGet(env, `SELECT id, role FROM users WHERE email = ? LIMIT 1`, [
+  const existing = await dbGet(env, `SELECT id, role, password_hash FROM users WHERE email = ? LIMIT 1`, [
     options.email.trim().toLowerCase(),
   ]);
   if (existing) {
+    const ownedBySeed = await verifyPassword(options.password, String(existing.password_hash || ""));
+    if (!ownedBySeed) {
+      const error = new Error(
+        `ADMIN_EMAIL (${options.email.trim()}) is already registered with a different password. ` +
+          "Refusing to promote an account the admin seed does not own (possible account pre-hijacking). " +
+          "If this account is yours, set ADMIN_PASSWORD to that account's current password; " +
+          "otherwise investigate who registered it before re-running the migration.",
+      ) as Error & { code?: string };
+      error.code = "AKENTROS_ADMIN_SEED_EMAIL_TAKEN";
+      throw error;
+    }
     // 時間戳由呼叫端綁定(與其餘寫入路徑的慣例一致,不依賴方言的 now() 語法)。
     await dbQuery(env, `UPDATE users SET role = 'admin', updated_at = ? WHERE id = ?`, [
       new Date().toISOString(),
