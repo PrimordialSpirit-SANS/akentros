@@ -334,14 +334,17 @@ function isUniqueEmailViolation(error: unknown): boolean {
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-// 使用者名稱字元禁則:控制字元(C0/C1、DEL)、行/段落分隔符、零寬字元、
-// 雙向覆寫控制符與 BOM。輸出端雖已全面轉義,這些字元仍會污染結構化日誌
-// 與清單 UI 的視覺判讀,且零寬/雙向字元可用於帳號仿冒(在使用者名稱中
-// 插入零寬空格或 RLO 覆寫來假冒他人)。長度檢查之外補上字元禁則,
-// 讓髒輸入在觸庫前就被擋下;其餘可見字元(含 CJK、表情符號)不設限。
+// 使用者名稱字元禁則:控制字元(C0/C1、DEL)、行/段落分隔符、軟連字號、
+// 零寬字元、雙向覆寫控制符(含 ALM)、蒙古語母音分隔符、不可見運算子與
+// 淘汰控制符(u2060-206F)、BOM。輸出端雖已全面轉義,這些字元仍會污染
+// 結構化日誌與清單 UI 的視覺判讀,且零寬/雙向字元可用於帳號仿冒(在使用者
+// 名稱中插入零寬空格或 RLO 覆寫來假冒他人)。長度檢查之外補上字元禁則,
+// 讓髒輸入在觸庫前就被擋下;其餘可見字元(含 CJK、單碼點表情符號)不設限
+// —— ZWJ(u200D)落在 u200B-u200F 禁區,組合式表情(家庭、職業等)因此
+// 一併排除:ZWJ 本身是不可見連接符,允許它等於重開仿冒面,取捨上禁則優先。
 const USERNAME_FORBIDDEN_PATTERN =
   // biome-ignore lint/suspicious/noControlCharactersInRegex: the denylist is the point - it rejects control, separator and invisible-spoofing characters in usernames
-  /[\u0000-\u001F\u007F-\u009F\u200B-\u200F\u2028\u2029\u202A-\u202E\u2066-\u2069\uFEFF]/;
+  /[\u0000-\u001F\u007F-\u009F\u00AD\u061C\u180E\u200B-\u200F\u2028\u2029\u202A-\u202E\u2060-\u206F\uFEFF]/;
 
 // 登入/註冊承載遠小於 16KB;以串流計數上限讀取(Content-Length 預檢 + 逐塊
 // 硬上限)。這是未認證即可觸達的端點,不接受 Hono json() 的全量緩衝。
