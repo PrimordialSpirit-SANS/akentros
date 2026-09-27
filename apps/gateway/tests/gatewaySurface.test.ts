@@ -251,6 +251,10 @@ test("session endpoints validate input before touching the database", async () =
     [{ email: "a@b.co", username: "ab\ncd", password: "longenough1" }, "invalid_username"],
     [{ email: "a@b.co", username: "invi\u200Bsible", password: "longenough1" }, "invalid_username"],
     [{ email: "a@b.co", username: "ho\u202Enest", password: "longenough1" }, "invalid_username"],
+    // 審查補漏:軟連字號、阿拉伯文記號(ALM)、word joiner。
+    [{ email: "a@b.co", username: "so\u00ADoft", password: "longenough1" }, "invalid_username"],
+    [{ email: "a@b.co", username: "ar\u061Cab", password: "longenough1" }, "invalid_username"],
+    [{ email: "a@b.co", username: "wj\u2060oin", password: "longenough1" }, "invalid_username"],
   ];
   for (const [payload, code] of cases) {
     const response = await aiRequest("/api/auth/register", base, {
