@@ -111,6 +111,125 @@ test("CSRF double-submit accepts matching header and passes GET through", async 
   assert.equal(read.status, 200);
 });
 
+test("pre-auth mutating endpoints reject cross-site Origin headers (login CSRF)", async () => {
+  const base = { AKENTROS_ENABLED: "true", JWT_SECRET: SECRET };
+  const evil = { "Content-Type": "application/json", Origin: "https://evil.example" };
+
+  // 瀏覽器對跨來源 POST 一律附帶 Origin;login CSRF(以攻擊者憑證把受害者
+  // 的瀏覽器靜默登入攻擊者帳號)在標頭層即被擋下,403 先於任何 body 解析。
+  const login = await aiRequest("/api/auth/login", base, {
+    method: "POST",
+    body: JSON.stringify({ email: "a@b.co", password: "longenough1" }),
+    headers: evil,
+  });
+  assert.equal(login.status, 403);
+  assert.equal(((await login.json()) as any).code, "origin_forbidden");
+
+  const register = await aiRequest("/api/auth/register", base, {
+    method: "POST",
+    body: JSON.stringify({ email: "a@b.co", username: "ab", password: "longenough1" }),
+    headers: evil,
+  });
+  assert.equal(register.status, 403);
+  assert.equal(((await register.json()) as any).code, "origin_forbidden");
+
+  const logout = await aiRequest("/api/auth/logout", base, { method: "POST", headers: evil });
+  assert.equal(logout.status, 403);
+
+  // 「null」origin(沙箱 iframe)無法與任何部署同源,同樣拒絕。
+  const sandboxed = await aiRequest("/api/auth/login", base, {
+    method: "POST",
+    body: JSON.stringify({ email: "a@b.co", password: "longenough1" }),
+    headers: { "Content-Type": "application/json", Origin: "null" },
+  });
+  assert.equal(sandboxed.status, 403);
+
+  // Origin 檢查僅限 mutating 請求:GET 不受影響(仍由 authenticateToken 擋 401)。
+  const me = await aiRequest("/api/auth/me", base, { headers: { Origin: "https://evil.example" } });
+  assert.equal(me.status, 401);
+});
+
+test("pre-auth mutating endpoints allow same-origin, allowlisted and absent Origin headers", async () => {
+  const base = { AKENTROS_ENABLED: "true", JWT_SECRET: SECRET };
+  // 以 400 invalid_request 證明請求「通過」origin 閘門並進入 handler 的
+  // 內容驗證 —— 被閘門擋下的請求會是 403 origin_forbidden。
+  const post = (headers: Record<string, string>) =>
+    aiRequest("/api/auth/login", base, {
+      method: "POST",
+      body: "not-json",
+      headers: { "Content-Type": "application/json", ...headers },
+    });
+
+  // 同源:app.request 的請求 url 即 http://localhost/…。
+  assert.equal((await post({ Origin: "http://localhost" })).status, 400);
+  // CORS 白名單內的開發來源(DEFAULT_ALLOWED_ORIGINS)。
+  assert.equal((await post({ Origin: "http://localhost:5173" })).status, 400);
+  // Referer 退路:取 Referer 的 origin 判定。
+  assert.equal((await post({ Referer: "http://localhost:5173/login" })).status, 400);
+  // 非瀏覽器客戶端(curl/SDK)不帶 Origin/Referer → 放行。
+  assert.equal((await post({})).status, 400);
+});
+
+test("same-origin check honors x-forwarded-* only when a proxy is explicitly trusted", async () => {
+  const base = { AKENTROS_ENABLED: "true", JWT_SECRET: SECRET };
+  // TLS 終止的代理後方,c.req.url 的 scheme 仍是 http:,瀏覽器 Origin 是 https:
+  // —— 這正是 requestOwnOrigin 需要信任代理重建自身來源的拓撲。
+  const post = (env: any, headers: Record<string, string>) =>
+    aiRequest("/api/auth/login", env, {
+      method: "POST",
+      body: "not-json",
+      headers: { "Content-Type": "application/json", ...headers },
+    });
+  const proxiedOrigin = {
+    "x-forwarded-proto": "https",
+    "x-forwarded-host": "console.example.com",
+    Origin: "https://console.example.com",
+  };
+
+  // 未宣告信任代理:x-forwarded-* 可偽造,同源判定仍以 socket URL 為準 → 403。
+  assert.equal((await post(base, proxiedOrigin)).status, 403);
+  // 偽造「成對」的 x-forwarded-host + 指向自己的惡意 Origin 也一樣 403 ——
+  // 攻擊者無法以假標頭把自身來源改造成自己的 origin。
+  assert.equal(
+    (
+      await post(base, {
+        "x-forwarded-proto": "https",
+        "x-forwarded-host": "evil.example",
+        Origin: "https://evil.example",
+      })
+    ).status,
+    403,
+  );
+
+  // 宣告信任代理(承諾前方代理會覆寫 x-forwarded-*):以標頭重建自身來源,
+  // 同源請求放行,通過閘門後由內容驗證回 400。
+  assert.equal((await post({ ...base, AKENTROS_TRUST_PROXY: "true" }, proxiedOrigin)).status, 400);
+  // 代理鏈的逗號清單取第一個值。
+  assert.equal(
+    (
+      await post(
+        { ...base, AKENTROS_TRUST_PROXY: "true" },
+        {
+          "x-forwarded-proto": "https, http",
+          "x-forwarded-host": "console.example.com, internal.proxy",
+          Origin: "https://console.example.com",
+        },
+      )
+    ).status,
+    400,
+  );
+  // 標頭不成形(壞 host)時退回 socket URL → 非同源 → 403,不會誤放行。
+  assert.equal(
+    (
+      await post(
+        { ...base, AKENTROS_TRUST_PROXY: "true" },
+        { "x-forwarded-proto": "https", "x-forwarded-host": "not a host", Origin: "https://x" },
+      )
+    ).status,
+    403,
+  );
+});
+
 test("session endpoints validate input before touching the database", async () => {
   const base = { AKENTROS_ENABLED: "true", JWT_SECRET: SECRET };
 
@@ -125,6 +244,14 @@ test("session endpoints validate input before touching the database", async () =
     [{ email: "nope", username: "ab", password: "longenough1" }, "invalid_email"],
     [{ email: "a@b.co", username: "a", password: "longenough1" }, "invalid_username"],
     [{ email: "a@b.co", username: "ab", password: "short" }, "invalid_password"],
+    // 字元禁則:內部換行、零寬空格、雙向覆寫控制符皆拒於觸庫之前。
+    [{ email: "a@b.co", username: "ab\ncd", password: "longenough1" }, "invalid_username"],
+    [{ email: "a@b.co", username: "invi\u200Bsible", password: "longenough1" }, "invalid_username"],
+    [{ email: "a@b.co", username: "ho\u202Enest", password: "longenough1" }, "invalid_username"],
+    // 審查補漏:軟連字號、阿拉伯文記號(ALM)、word joiner。
+    [{ email: "a@b.co", username: "so\u00ADoft", password: "longenough1" }, "invalid_username"],
+    [{ email: "a@b.co", username: "ar\u061Cab", password: "longenough1" }, "invalid_username"],
+    [{ email: "a@b.co", username: "wj\u2060oin", password: "longenough1" }, "invalid_username"],
   ];
   for (const [payload, code] of cases) {
     const response = await aiRequest("/api/auth/register", base, {

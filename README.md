@@ -28,7 +28,7 @@ See [Quick start](#快速開始) below, [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)
 - **美元計費**:內部以微美元整數結算(無浮點誤差),請求前「預留」消費上限、完成後依實際 usage 結算、差額自動退回;全流程冪等、可重跑、可對帳。
 - **多供應商池**:37 條 credential 設定(openrouter、cloudflare-workers-ai、qwencloud、openai、anthropic、groq…),加權輪詢、健康冷卻、in-flight lease、自動 fallback;secret 只存環境變數名稱,資料庫僅存 opaque credential ID。
 - **API 金鑰管理**:`sk-akentros-live_/sk-akentros-test_` 金鑰、只顯示一次、pepper-HMAC digest 落庫;可設定過期時間、模型白名單、RPM、最大併發與美元消費上限。金鑰級 RPM/併發由資料庫交易內原子計數強制;登入與金鑰管理的 IP 限流同樣以 SQLite 固定窗口計數(單程序全域生效),資料庫不可用時降級為 in-process 記憶體視窗。
-- **內建帳號系統**:註冊/登入(JWT cookie + CSRF 雙提交)、migrate 時可種子管理員、新戶送點、可關閉公開註冊。
+- **內建帳號系統**:註冊/登入(JWT cookie + CSRF 雙提交,pre-auth 端點另以 Origin/Referer 檢查擋 login CSRF)、migrate 時可種子管理員、新戶送點、可關閉公開註冊。
 - **開發者控制台**:總覽、金鑰、串流測試(逐字渲染、usage 統計)、模型目錄(含免費額度)、請求紀錄與單筆詳情;提供 `?demo=1` 離線示範模式。
 - **維運探針與結構化日誌**:`GET /healthz` 回報程序與資料庫狀態(200 ok / 503 degraded),供負載平衡與監控探測;Node 自架拓撲另提供 `GET /metrics`(Prometheus 文字格式:請求數、延遲、token 用量、消費金額,`AKENTROS_METRICS_ENABLED=false` 可關閉);內部日誌以單行 JSON 輸出,可直接交由 Cloudflare observability、journald 等採集。
 - **契約測試護欄**:openapi.yaml、前後端 catalog、路由與安全不變式都有測試釘死,漂移即擋建置。Biome lint/format 與 `npm audit`(high 以上)同樣在 CI 強制。
@@ -152,8 +152,8 @@ npx wrangler deploy          # secrets 以 wrangler secret put 設定
 | `AKENTROS_SIGNUP_BONUS_USD` | 選配 | 註冊初始餘額(預設 $5.00) |
 | `AKENTROS_ADMIN_STARTING_CREDITS_USD` | 選配 | 管理員初始餘額(預設 $500.00) |
 | `AKENTROS_DISABLE_REGISTRATION` | 選配 | 設 `true` 關閉公開註冊 |
-| `AKENTROS_SIGNUP_ANTI_ENUMERATION` | 選配 | 防帳號枚舉(預設開啟):重複信箱註冊回不可區分的 202 受理訊息、不發 session、回應時間與成功路徑等化;僅內部可達的私有部署可設 `false` 還原明確 409 `email_taken` UX |
-| `AKENTROS_TRUST_PROXY` | 選配 | 登入/註冊限流的用戶端 IP 判定:Node 自架預設用「socket 來源位址」(不可偽造);僅當 gateway 前方有會覆寫 `cf-connecting-ip` 的受信賴反向代理(如 Cloudflare)時設 `true` 改用標頭。Cloudflare Workers 部署一律以標頭為準 |
+| `AKENTROS_SIGNUP_ANTI_ENUMERATION` | 選配 | 防帳號枚舉(預設開啟):不論信箱是否已註冊,一律回同形 202 受理訊息(狀態碼、主體、cookie 完全一致)、不發 session、不回 user,回應時間與成功路徑等化;僅內部可達的私有部署可設 `false` 還原「新註冊 201 自動登入/重複 409 `email_taken`」UX |
+| `AKENTROS_TRUST_PROXY` | 選配 | 信任反向代理的宣告:設 `true` 表示 gateway 前方有會「覆寫」標頭的受信賴代理(如 Cloudflare、nginx)。此時登入/註冊限流改以 `cf-connecting-ip` 判定用戶端 IP,且 pre-auth 同源檢查改以 `x-forwarded-proto`/`x-forwarded-host` 重建自身來源(TLS 終止代理後 `c.req.url` 仍是 http:,瀏覽器 Origin 卻是 https:,需標頭才能正確判同源)。未設定的 Node 自架一律以不可偽造的 socket 位址/URL 為準,標頭不採信。Cloudflare Workers 部署一律以標頭為準 |
 | `FRONTEND_ORIGINS` | 建議 | 允許帶 cookie 的 console 來源(CSV) |
 | `OPENROUTER_API_KEY_1` … | 選配 | 供應商上游金鑰,見 `docs/PROVIDERS.md` |
 
