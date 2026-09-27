@@ -121,7 +121,43 @@ function timingSafeEqual(left: string, right: string): boolean {
 //   威脅模型只存在於瀏覽器。
 // 與 cors.ts 共用 isCredentialedOriginAllowed,確保「可跨來源帶憑證請求的
 // 來源」與「可提交登入表單的來源」永遠是同一份名單,不會漂移。
+
+// 代理鏈標頭可能是逗號清單(「客戶端, 代理」);一律取第一個值。
+function firstForwardedValue(value: unknown): string {
+  return String(value || "")
+    .split(",")[0]
+    .trim();
+}
+
+// 明確宣告信任反向代理:運維承諾 gateway 前方有會「覆寫」cf-connecting-ip
+// 與 x-forwarded-* 的受信賴代理(Cloudflare、nginx 等),因此客戶端帶入的
+// 同名標頭不會存活到 gateway。與 akentrosAuthRateLimitIdentity 共用同一個
+// 定義,讓信任邊界只有一處語意。
+function akentrosTrustProxyEnabled(c: AkentrosContext): boolean {
+  return (
+    String(c.env?.AKENTROS_TRUST_PROXY || "")
+      .trim()
+      .toLowerCase() === "true"
+  );
+}
+
 function requestOwnOrigin(c: AkentrosContext): string {
+  // TLS 終止的反向代理後方,c.req.url 的 scheme 仍是 socket 的 http:
+  // (@hono/node-server 只在 socket 加密時才解析出 https),瀏覽器的
+  // Origin 卻是 https://…,逐字串比對會把「同源」誤判成跨源。宣告信任
+  // 代理時改以 x-forwarded-proto/x-forwarded-host 重建自身來源;未宣告時
+  // 這些標頭可偽造、一律不信,維持 socket URL。
+  if (akentrosTrustProxyEnabled(c)) {
+    const proto = firstForwardedValue(c.req.header("x-forwarded-proto"));
+    const host = firstForwardedValue(c.req.header("x-forwarded-host"));
+    if (proto && host) {
+      try {
+        return new URL(`${proto}://${host}`).origin;
+      } catch {
+        // 不成形的標頭組合:退回 socket URL,同源判定自然不成立。
+      }
+    }
+  }
   try {
     return new URL(c.req.url).origin;
   } catch {
@@ -193,11 +229,7 @@ const authLimiter = createRateLimit({
 // 4. 都拿不到(本地 IPC、Unix socket)併入 "local" 共享桶。
 export function akentrosAuthRateLimitIdentity(c: AkentrosContext): string {
   const forwarded = String(c.req.header("cf-connecting-ip") || "").trim();
-  if (
-    String(c.env?.AKENTROS_TRUST_PROXY || "")
-      .trim()
-      .toLowerCase() === "true"
-  ) {
+  if (akentrosTrustProxyEnabled(c)) {
     return forwarded || "local";
   }
   const remote = String((c.env as Record<string, unknown>)?.AKENTROS_REMOTE_ADDR || "").trim();
