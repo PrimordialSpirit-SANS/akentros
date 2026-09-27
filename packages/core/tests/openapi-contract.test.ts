@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import yaml from "js-yaml";
+import { load as loadYaml } from "js-yaml";
 
-const specification: any = yaml.load(
+const specification: any = loadYaml(
   readFileSync(new URL("../../../docs/openapi.yaml", import.meta.url), "utf8"),
 );
 
