@@ -1,15 +1,15 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import { stripTypeScriptTypes } from "node:module";
 import test from "node:test";
-import ts from "typescript";
 
 const source = await readFile(
   new URL("../../../apps/console/src/lib/akentros/api/sseEventParser.ts", import.meta.url),
   "utf8",
 );
-const { outputText } = ts.transpileModule(source, {
-  compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
-});
+// 以 Node 內建的型別擦除取代 ts.transpileModule(TS7 移除了該 JS API);
+// 契約測試只需要剝除標註,目標檔案不含 enum/namespace 等不可擦除語法。
+const outputText = stripTypeScriptTypes(source);
 const parserModuleUrl = `data:text/javascript;base64,${Buffer.from(outputText).toString("base64")}`;
 const { SseEventParser, consumeSseEventsToDone, readSseEvents } = await import(parserModuleUrl);
 
