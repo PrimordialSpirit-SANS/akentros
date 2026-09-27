@@ -170,6 +170,69 @@ test("pre-auth mutating endpoints allow same-origin, allowlisted and absent Orig
   assert.equal((await post({})).status, 400);
 });
 
+test("same-origin check honors x-forwarded-* only when a proxy is explicitly trusted", async () => {
+  const base = { AKENTROS_ENABLED: "true", JWT_SECRET: SECRET };
+  // TLS 終止的代理後方,c.req.url 的 scheme 仍是 http:,瀏覽器 Origin 是 https:
+  // —— 這正是 requestOwnOrigin 需要信任代理重建自身來源的拓撲。
+  const post = (env: any, headers: Record<string, string>) =>
+    aiRequest("/api/auth/login", env, {
+      method: "POST",
+      body: "not-json",
+      headers: { "Content-Type": "application/json", ...headers },
+    });
+  const proxiedOrigin = {
+    "x-forwarded-proto": "https",
+    "x-forwarded-host": "console.example.com",
+    Origin: "https://console.example.com",
+  };
+
+  // 未宣告信任代理:x-forwarded-* 可偽造,同源判定仍以 socket URL 為準 → 403。
+  assert.equal((await post(base, proxiedOrigin)).status, 403);
+  // 偽造「成對」的 x-forwarded-host + 指向自己的惡意 Origin 也一樣 403 ——
+  // 攻擊者無法以假標頭把自身來源改造成自己的 origin。
+  assert.equal(
+    (
+      await post(base, {
+        "x-forwarded-proto": "https",
+        "x-forwarded-host": "evil.example",
+        Origin: "https://evil.example",
+      })
+    ).status,
+    403,
+  );
+
+  // 宣告信任代理(承諾前方代理會覆寫 x-forwarded-*):以標頭重建自身來源,
+  // 同源請求放行,通過閘門後由內容驗證回 400。
+  assert.equal(
+    (await post({ ...base, AKENTROS_TRUST_PROXY: "true" }, proxiedOrigin)).status,
+    400,
+  );
+  // 代理鏈的逗號清單取第一個值。
+  assert.equal(
+    (
+      await post(
+        { ...base, AKENTROS_TRUST_PROXY: "true" },
+        {
+          "x-forwarded-proto": "https, http",
+          "x-forwarded-host": "console.example.com, internal.proxy",
+          Origin: "https://console.example.com",
+        },
+      )
+    ).status,
+    400,
+  );
+  // 標頭不成形(壞 host)時退回 socket URL → 非同源 → 403,不會誤放行。
+  assert.equal(
+    (
+      await post(
+        { ...base, AKENTROS_TRUST_PROXY: "true" },
+        { "x-forwarded-proto": "https", "x-forwarded-host": "not a host", Origin: "https://x" },
+      )
+    ).status,
+    403,
+  );
+});
+
 test("session endpoints validate input before touching the database", async () => {
   const base = { AKENTROS_ENABLED: "true", JWT_SECRET: SECRET };
 
