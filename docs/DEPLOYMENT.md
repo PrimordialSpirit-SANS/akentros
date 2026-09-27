@@ -128,12 +128,14 @@ curl -s http://127.0.0.1:8787/api/ai/v1/models -H "Authorization: Bearer sk-aken
 # expect: 401 authentication_error (proves the inference face + auth + DB read)
 
 # Anti-enumeration probe (registration is enabled): signing up twice with the
-# same email must return 201 (fresh, session issued) then 202 {"ok":true}
-# (duplicate, NO session, NO email_taken code):
+# same email must return the SAME indistinguishable 202 {"ok":true} both
+# times — no user payload, no session cookie, no email_taken code:
 curl -s -w '\n%{http_code}\n' -X POST http://127.0.0.1:8787/api/auth/register \
   -H 'Content-Type: application/json' \
   -d '{"email":"probe@example.com","username":"probe","password":"probe-pass-1"}'
-# expect: 201 {"user":{...}} then, on repeat, 202 {"ok":true,"message":"Registration accepted..."}
+# expect: 202 {"ok":true,"message":"Registration accepted..."} then, on repeat,
+# the byte-identical 202 response (fresh signups no longer auto-login; the
+# account is immediately usable via the normal login endpoint)
 ```
 
 Then create a key in the console and run one streaming request; verify in the

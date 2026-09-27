@@ -2,6 +2,7 @@ import { AkentrosError } from "@akentros/core/openaiErrors";
 import { parseUsdToMicros, usdMicrosToDecimalString } from "@akentros/core/pricing";
 import { Hono } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
+import { isCredentialedOriginAllowed } from "../middleware/cors.ts";
 import { createRateLimit } from "../middleware/rateLimit.ts";
 import type { AkentrosContext, AkentrosEnv, AkentrosNext, AkentrosRuntimeEnv } from "../types.ts";
 import { AKENTROS_SMALL_BODY_MAX_BYTES, readCappedText } from "../utils/bodyLimit.ts";
@@ -109,6 +110,105 @@ function timingSafeEqual(left: string, right: string): boolean {
   return difference === 0;
 }
 
+// ── Pre-auth 的 CSRF 緩解:Origin/Referer 檢查 ─────────────────────────────
+// requireCsrfToken 的雙提交 cookie 只保護「已取得 session」後的 mutating 請求;
+// login/register 本身沒有 csrf cookie 可提交,而 SameSite=Lax 擋不了 login
+// CSRF —— session cookie 是由「回應」設定的:攻擊者以隱藏表單把自己的憑證
+// 送進受害者的瀏覽器,受害者就被靜默登入攻擊者帳號(供攻擊者側錄後續操作)。
+// 瀏覽器對所有跨來源 POST 一律附帶 Origin 標頭,因此:
+// - Origin(或 Referer 的 origin)存在、但既非同源也不在 CORS 白名單 → 403;
+// - 兩者皆缺 → 放行:這是非瀏覽器客戶端(curl、SDK)的正常形狀,而 CSRF
+//   威脅模型只存在於瀏覽器。
+// 與 cors.ts 共用 isCredentialedOriginAllowed,確保「可跨來源帶憑證請求的
+// 來源」與「可提交登入表單的來源」永遠是同一份名單,不會漂移。
+
+// 代理鏈標頭可能是逗號清單(「客戶端, 代理」);一律取第一個值。
+function firstForwardedValue(value: unknown): string {
+  return String(value || "")
+    .split(",")[0]
+    .trim();
+}
+
+// 明確宣告信任反向代理:運維承諾 gateway 前方有會「覆寫」cf-connecting-ip
+// 與 x-forwarded-* 的受信賴代理(Cloudflare、nginx 等),因此客戶端帶入的
+// 同名標頭不會存活到 gateway。與 akentrosAuthRateLimitIdentity 共用同一個
+// 定義,讓信任邊界只有一處語意。
+function akentrosTrustProxyEnabled(c: AkentrosContext): boolean {
+  return (
+    String(c.env?.AKENTROS_TRUST_PROXY || "")
+      .trim()
+      .toLowerCase() === "true"
+  );
+}
+
+function requestOwnOrigin(c: AkentrosContext): string {
+  // TLS 終止的反向代理後方,c.req.url 的 scheme 仍是 socket 的 http:
+  // (@hono/node-server 只在 socket 加密時才解析出 https),瀏覽器的
+  // Origin 卻是 https://…,逐字串比對會把「同源」誤判成跨源。宣告信任
+  // 代理時改以 x-forwarded-proto/x-forwarded-host 重建自身來源;未宣告時
+  // 這些標頭可偽造、一律不信,維持 socket URL。
+  if (akentrosTrustProxyEnabled(c)) {
+    const proto = firstForwardedValue(c.req.header("x-forwarded-proto"));
+    const host = firstForwardedValue(c.req.header("x-forwarded-host"));
+    if (proto && host) {
+      try {
+        return new URL(`${proto}://${host}`).origin;
+      } catch {
+        // 不成形的標頭組合:退回 socket URL,同源判定自然不成立。
+      }
+    }
+  }
+  try {
+    return new URL(c.req.url).origin;
+  } catch {
+    return "";
+  }
+}
+
+// Origin 優先;缺少時退回 Referer 的 origin(scheme://host:port)。
+// 無法解析的 Referer 視同未提供 —— 跨站 POST 在現代瀏覽器必定帶 Origin,
+// 走不到這條退路。
+function readDeclaredOrigin(c: AkentrosContext): string {
+  const origin = String(c.req.header("origin") || "").trim();
+  if (origin) return origin;
+  const referer = String(c.req.header("referer") || "").trim();
+  if (!referer) return "";
+  try {
+    return new URL(referer).origin;
+  } catch {
+    return "";
+  }
+}
+
+export async function requireTrustedOrigin(c: AkentrosContext, next: AkentrosNext) {
+  const method = c.req.method.toUpperCase();
+  if (method === "GET" || method === "HEAD" || method === "OPTIONS") {
+    await next();
+    return;
+  }
+  const declared = readDeclaredOrigin(c);
+  if (!declared) {
+    await next();
+    return;
+  }
+  // 「null」origin(沙箱 iframe)無法與任何部署同源,白名單檢查自然拒絕。
+  const trusted = declared === requestOwnOrigin(c) || isCredentialedOriginAllowed(c, declared);
+  if (!trusted) {
+    logAkentrosEvent("warn", "akentros_auth_origin_rejected", {
+      method,
+      path: c.req.path,
+    });
+    return c.json(
+      {
+        error: "Requests from this origin are not allowed.",
+        code: "origin_forbidden",
+      },
+      403,
+    );
+  }
+  await next();
+}
+
 const authLimiter = createRateLimit({
   keyPrefix: "akentros-auth",
   windowMs: 15 * 60 * 1000,
@@ -129,11 +229,7 @@ const authLimiter = createRateLimit({
 // 4. 都拿不到(本地 IPC、Unix socket)併入 "local" 共享桶。
 export function akentrosAuthRateLimitIdentity(c: AkentrosContext): string {
   const forwarded = String(c.req.header("cf-connecting-ip") || "").trim();
-  if (
-    String(c.env?.AKENTROS_TRUST_PROXY || "")
-      .trim()
-      .toLowerCase() === "true"
-  ) {
+  if (akentrosTrustProxyEnabled(c)) {
     return forwarded || "local";
   }
   const remote = String((c.env as Record<string, unknown>)?.AKENTROS_REMOTE_ADDR || "").trim();
@@ -212,16 +308,21 @@ function signupAntiEnumeration(env: AkentrosRuntimeEnv): boolean {
   );
 }
 
-// 與成功註冊同層的 2xx 語意,但不發 session、不帶 user。攻擊者若要以回應區分
-// 「信箱已註冊」,必須完成整個註冊流程並檢查 session cookie,每一次探測都
-// 付出 PBKDF2 成本並消耗登入/註冊限流額度,大幅拉高枚舉成本。
+// 防枚舉模式下,新註冊與重複信箱共用同一個 202 受理回應:狀態碼、主體、
+// cookie 三者完全一致,回應端不存在任何可區分「信箱是否已註冊」的訊號
+// (201 vs 202 的差異本身就是枚舉 oracle)。每次探測都付出 PBKDF2 成本並
+// 消耗登入/註冊限流額度;受理後不自動登入,請使用者改走登入流程。
 const SIGNUP_ACCEPTED_MESSAGE =
   "Registration accepted. If the email is available, the account has been created — please sign in.";
+
+function acceptedSignupResponse(c: AkentrosContext) {
+  return c.json({ ok: true, message: SIGNUP_ACCEPTED_MESSAGE }, 202);
+}
 
 function concealedSignupResponse(c: AkentrosContext) {
   // 營運可觀測性:回應不揭露,但伺服器日誌保留隱匿的重複註冊事件。
   logAkentrosEvent("warn", "akentros_signup_duplicate_concealed");
-  return c.json({ ok: true, message: SIGNUP_ACCEPTED_MESSAGE }, 202);
+  return acceptedSignupResponse(c);
 }
 
 function isUniqueEmailViolation(error: unknown): boolean {
@@ -232,6 +333,18 @@ function isUniqueEmailViolation(error: unknown): boolean {
 }
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// 使用者名稱字元禁則:控制字元(C0/C1、DEL)、行/段落分隔符、軟連字號、
+// 零寬字元、雙向覆寫控制符(含 ALM)、蒙古語母音分隔符、不可見運算子與
+// 淘汰控制符(u2060-206F)、BOM。輸出端雖已全面轉義,這些字元仍會污染
+// 結構化日誌與清單 UI 的視覺判讀,且零寬/雙向字元可用於帳號仿冒(在使用者
+// 名稱中插入零寬空格或 RLO 覆寫來假冒他人)。長度檢查之外補上字元禁則,
+// 讓髒輸入在觸庫前就被擋下;其餘可見字元(含 CJK、單碼點表情符號)不設限
+// —— ZWJ(u200D)落在 u200B-u200F 禁區,組合式表情(家庭、職業等)因此
+// 一併排除:ZWJ 本身是不可見連接符,允許它等於重開仿冒面,取捨上禁則優先。
+const USERNAME_FORBIDDEN_PATTERN =
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: the denylist is the point - it rejects control, separator and invisible-spoofing characters in usernames
+  /[\u0000-\u001F\u007F-\u009F\u00AD\u061C\u180E\u200B-\u200F\u2028\u2029\u202A-\u202E\u2060-\u206F\uFEFF]/;
 
 // 登入/註冊承載遠小於 16KB;以串流計數上限讀取(Content-Length 預檢 + 逐塊
 // 硬上限)。這是未認證即可觸達的端點,不接受 Hono json() 的全量緩衝。
@@ -276,6 +389,7 @@ async function readAuthJsonObject(c: AkentrosContext): Promise<AuthJsonResult> {
 }
 
 authRoutes.use("*", authLimiter);
+authRoutes.use("*", requireTrustedOrigin);
 
 authRoutes.post("/register", async (c: AkentrosContext) => {
   if (registrationDisabled(c.env)) {
@@ -298,8 +412,14 @@ authRoutes.post("/register", async (c: AkentrosContext) => {
   if (!EMAIL_PATTERN.test(email) || email.length > 254) {
     return c.json({ error: "A valid email address is required.", code: "invalid_email" }, 400);
   }
-  if (username.length < 2 || username.length > 40) {
-    return c.json({ error: "Username must be 2-40 characters.", code: "invalid_username" }, 400);
+  if (username.length < 2 || username.length > 40 || USERNAME_FORBIDDEN_PATTERN.test(username)) {
+    return c.json(
+      {
+        error: "Username must be 2-40 characters and may not contain control or invisible characters.",
+        code: "invalid_username",
+      },
+      400,
+    );
   }
   if (password.length < 8 || password.length > 200) {
     return c.json({ error: "Password must be at least 8 characters.", code: "invalid_password" }, 400);
@@ -333,6 +453,12 @@ authRoutes.post("/register", async (c: AkentrosContext) => {
       return c.json({ error: "This email is already registered.", code: "email_taken" }, 409);
     }
     throw error;
+  }
+  if (signupAntiEnumeration(c.env)) {
+    // 新註冊與重複信箱必須回應同形:201(+user+session)與 202 的狀態碼差異
+    // 本身就是「信箱已註冊」的枚舉 oracle,違反 README 承諾的「不可區分」。
+    // 防枚舉模式下不自動登入,受理後請使用者以註冊憑證登入(前端已支援此流程)。
+    return acceptedSignupResponse(c);
   }
   await issueSession(c, c.env, user.id);
   return c.json({ user: publicUser(user) }, 201);
