@@ -203,10 +203,7 @@ test("same-origin check honors x-forwarded-* only when a proxy is explicitly tru
 
   // 宣告信任代理(承諾前方代理會覆寫 x-forwarded-*):以標頭重建自身來源,
   // 同源請求放行,通過閘門後由內容驗證回 400。
-  assert.equal(
-    (await post({ ...base, AKENTROS_TRUST_PROXY: "true" }, proxiedOrigin)).status,
-    400,
-  );
+  assert.equal((await post({ ...base, AKENTROS_TRUST_PROXY: "true" }, proxiedOrigin)).status, 400);
   // 代理鏈的逗號清單取第一個值。
   assert.equal(
     (
