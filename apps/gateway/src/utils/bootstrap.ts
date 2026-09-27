@@ -32,6 +32,9 @@ export async function seedAkentrosAdminFromEnv(
   const passwordHash = await hashPassword(adminPassword, env);
   const { created } = await upsertAdminUser(env, {
     email: adminEmail,
+    // password 僅用於「既有帳號的擁有權驗證」(upsertAdminUser 內以
+    // verifyPassword 比對,不入庫);passwordHash 僅在建立新帳號時落地。
+    password: adminPassword,
     passwordHash,
     username: env?.ADMIN_USERNAME?.trim() || "admin",
     balanceUsdMicros: parseUsdToMicros(
