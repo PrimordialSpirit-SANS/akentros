@@ -486,18 +486,21 @@ versioning follows [SemVer](https://semver.org/).
   pass through unaffected: CSRF is a browser-only threat model. The check
   reuses `isCredentialedOriginAllowed`, so "origins allowed to make
   credentialed cross-origin requests" and "origins allowed to submit login
-  forms" remain a single list and cannot drift. Rejections are visible as
-  `akentros_auth_origin_rejected` warn logs and still consume the auth
-  rate-limit budget.
-
-### Security
-
+  forms" remain a single list and cannot drift. Same-origin detection
+  rebuilds the deployment's own origin from `x-forwarded-proto` /
+  `x-forwarded-host` when `AKENTROS_TRUST_PROXY=true` — behind a
+  TLS-terminating reverse proxy the socket URL stays `http://` while the
+  browser's Origin is `https://`, so without the forwarded headers a
+  same-origin console deployment that never listed its public origin would
+  be locked out; without the opt-in the forgeable headers stay untrusted.
+  Rejections are visible as `akentros_auth_origin_rejected` warn logs and
+  still consume the auth rate-limit budget.
 - **Fresh and duplicate signups are now truly indistinguishable in
   anti-enumeration mode.** The concealed-signup feature answered a duplicate
-  email with `202 {"ok":true}` — but a *fresh* email still got
-  `201 {user}` plus a session cookie, so the status code alone was a
-  complete account-enumeration oracle, defeating the concealment the README
-  already promises ("不可區分" / indistinguishable). In
+  email with `202 {"ok":true}` — but a *fresh* email still got `201 {user}`
+  plus a session cookie, so the status code alone was a complete
+  account-enumeration oracle, defeating the concealment the README already
+  promises ("不可區分" / indistinguishable). In
   `AKENTROS_SIGNUP_ANTI_ENUMERATION` mode (the default), both paths now
   return the byte-identical `202` accepted response: no user object, no
   session cookie, same PBKDF2-equalized timing. Fresh signups no longer
@@ -509,9 +512,6 @@ versioning follows [SemVer](https://semver.org/).
   for fresh signups and `409 email_taken` for duplicates. The deployment
   smoke test in `docs/DEPLOYMENT.md` now probes for the identical-202
   property instead of the old 201-then-202 distinction.
-
-### Security
-
 - **Usernames now reject control and invisible characters.** Registration
   only checked username length (2-40), so interior newlines, zero-width
   spaces, bidi override controls and BOM were accepted. Console output is
@@ -519,7 +519,12 @@ versioning follows [SemVer](https://semver.org/).
   pollute structured logs and list UI rendering, and zero-width/bidi
   characters enable username spoofing (inserting a zero-width space or RLO
   override to impersonate another user's display name). A character
-  denylist (C0/C1 controls, DEL, line/paragraph separators, zero-width and
-  bidi controls, BOM) now rejects such usernames with the existing
-  `400 invalid_username` before the database is touched; all other visible
-  characters (including CJK and emoji) remain allowed.
+  denylist (C0/C1 controls, DEL, soft hyphen, line/paragraph separators,
+  zero-width and bidi controls including ALM, the Mongolian vowel
+  separator, the invisible-operator/deprecated-control range U+2060-U+206F,
+  and BOM) now rejects such usernames with the existing `400
+  invalid_username` before the database is touched. All other visible
+  characters remain allowed — CJK and single-codepoint emoji included;
+  ZWJ compound emoji (family, professions, flag-with-symbol sequences) are
+  intentionally excluded along with the other invisible joiners, since
+  ZWJ is itself a spoofing vector.
