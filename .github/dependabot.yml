@@ -8,6 +8,9 @@ updates:
     groups:
       dev-dependencies:
         dependency-type: development
+        update-types:
+          - "version-update:semver-patch"
+          - "version-update:semver-minor"
   - package-ecosystem: github-actions
     directory: /
     schedule:
