@@ -20,7 +20,7 @@ const MAX_TRACKED_KEYS = 10_000;
 
 const memoryBuckets = new Map<string, WindowBucket>();
 
-// 資料表 `akentros_ip_rate_limit_windows` 由 schema migration v7 建立(schema
+// 資料表 `akentros_ip_rate_limit_windows` 由 schema migration v2 建立(schema
 // 只進不退的治理規則),limiter 本身不做 DDL。
 
 export const AKENTROS_IP_RATE_LIMIT_SQL = Object.freeze({

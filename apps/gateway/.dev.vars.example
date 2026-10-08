@@ -29,7 +29,10 @@ ADMIN_EMAIL=
 ADMIN_PASSWORD=
 ADMIN_USERNAME=admin
 # 新註冊帳號的初始點數
-AKENTROS_SIGNUP_BONUS_USD=1000
+# 注意:本值為「每個新帳號」即贈的金額。公開(可觸及網際網路)部署請保持
+# 低額(或設 0 並改用管理員開通流程)——註冊無信箱驗證,高額贈點會成為
+# 換 IP 洗贈點的濫用面;僅私有/內部部署可依需調高。
+AKENTROS_SIGNUP_BONUS_USD=5.00
 # 設為 true 時關閉公開註冊(僅管理員能開帳號)
 AKENTROS_DISABLE_REGISTRATION=
 # 防帳號枚舉(預設開啟):重複信箱註冊回不可區分的 202 受理訊息,不發
