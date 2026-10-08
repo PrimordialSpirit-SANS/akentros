@@ -104,7 +104,7 @@ const client = new OpenAI({
 });
 
 const stream = await client.chat.completions.create({
-  model: 'akentros/llama-3.2-1b-instruct',  // 模型目錄見控制台「模型」頁
+  model: 'akentros/gpt-5.2',  // 模型目錄見控制台「模型」頁
   messages: [{ role: 'user', content: '你好!' }],
   stream: true,
 });
