@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>API not available (404)</title>
+    <style>
+      body { font-family: system-ui, sans-serif; margin: 0; display: grid; place-items: center; min-height: 100vh; background: #0b1220; color: #e6edf3; }
+      main { max-width: 32rem; padding: 2rem; text-align: center; }
+      h1 { font-size: 1.4rem; margin-bottom: .5rem; }
+      p { line-height: 1.6; color: #9fb0c3; }
+      code { color: #7ee2b8; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>404 — API endpoint not available</h1>
+      <p>
+        This Cloudflare Pages deployment does not serve an API at this origin.
+        The Akentros gateway must be deployed separately (Workers) and reached
+        through a same-origin proxy, or <code>VITE_AKENTROS_API_BASE</code>
+        must point at a same-site (<code>eTLD+1</code>) gateway origin — see
+        the deployment notes about <code>SameSite=Lax</code> session cookies.
+      </p>
+    </main>
+  </body>
+</html>

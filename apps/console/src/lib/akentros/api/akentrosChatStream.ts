@@ -158,6 +158,9 @@ export async function streamAkentrosChat(options: StreamAkentrosChatOptions): Pr
     stream: true,
     stream_options: { include_usage: true },
     max_completion_tokens: Math.max(1, Math.trunc(options.maxCompletionTokens)),
+    // FN-10 fix:thinking 選項此前被接受但從未序列化(靜默 no-op);後端
+    // 現已真實支援 {thinking: boolean}(FN-4),前端把它帶進請求體。
+    ...(options.thinking === undefined ? {} : { chat_template_kwargs: { thinking: options.thinking } }),
   };
 
   let response: Response;

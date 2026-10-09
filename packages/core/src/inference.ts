@@ -51,6 +51,9 @@ const PUBLIC_AKENTROS_ERROR_CODES = new Set([
   "model_not_allowed",
   "context_length_exceeded",
   "request_too_large",
+  // FN-2 fix 配套:深巢狀 JSON 的 400 錯誤碼必須在公開白名單內,
+  // 否則 publicProviderError 會把 prepare 的 400 改寫成 503。
+  "request_too_complex",
   "spend_limit_exceeded",
   "insufficient_balance",
   "free_quota_exceeded",
@@ -71,6 +74,10 @@ const MAX_PROVIDER_ATTEMPTS = 8;
 const MAX_TOOL_CALL_ARGUMENTS_CHARS = 256 * 1024;
 // tools[].function.parameters 為任意 JSON Schema;序列化長度上限同上。
 const MAX_TOOL_PARAMETERS_JSON_CHARS = 64 * 1024;
+// Recursive JSON.stringify throws RangeError beyond ~4.4k nesting levels; far
+// below that we reject with a 400 instead of letting serialization explode in
+// validateTools, token estimation, or the upstream fetch body.
+const MAX_REQUEST_JSON_DEPTH = 64;
 
 function requestId() {
   return `req_${globalThis.crypto.randomUUID().replaceAll("-", "")}`;
@@ -78,6 +85,25 @@ function requestId() {
 
 function isObject(value: unknown): value is Record<string, any> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+// Iterative (non-recursive) max nesting depth probe. A recursive walk would
+// itself throw RangeError on the exact inputs it is meant to measure.
+function maxJsonDepth(root: unknown): number {
+  if (root === null || typeof root !== "object") return 1;
+  let max = 1;
+  const stack: Array<{ node: unknown; depth: number }> = [{ node: root, depth: 1 }];
+  while (stack.length > 0) {
+    const { node, depth } = stack.pop() as { node: unknown; depth: number };
+    if (depth > max) max = depth;
+    if (node !== null && typeof node === "object") {
+      for (const key of Object.keys(node)) {
+        const child = (node as Record<string, unknown>)[key];
+        if (child !== null && typeof child === "object") stack.push({ node: child, depth: depth + 1 });
+      }
+    }
+  }
+  return max;
 }
 
 function integer(
@@ -136,11 +162,13 @@ function validateStreamOptions(value: unknown, stream: boolean) {
 
 function validateChatTemplateKwargs(value: unknown, _modelId: string) {
   if (value === undefined) return undefined;
-  throw invalidRequest(
-    "chat_template_kwargs only supports a boolean thinking option for this Akentros model.",
-    "chat_template_kwargs",
-    "unsupported_parameter",
-  );
+  if (!isObject(value) || typeof (value as any).thinking !== "boolean" || Object.keys(value).length !== 1)
+    throw invalidRequest(
+      "chat_template_kwargs must be an object with a single boolean thinking field.",
+      "chat_template_kwargs",
+      "unsupported_parameter",
+    );
+  return { thinking: (value as any).thinking };
 }
 
 function validateFunctionCall(
@@ -195,7 +223,13 @@ function validateMessages(messages: unknown): any[] {
         throw invalidRequest("Tool messages require a valid tool_call_id.", `${label}.tool_call_id`);
     } else if (message.tool_call_id !== undefined)
       throw invalidRequest("tool_call_id is only valid for tool messages.", `${label}.tool_call_id`);
-    if ((typeof message.content !== "string" || message.content.length === 0) && !hasToolCalls)
+    if (hasToolCalls) {
+      // Assistant tool-call turns may carry null content (or a short string of
+      // interleaved text), but never structured content parts — the public
+      // contract declares content as string|null for every role.
+      if (message.content !== undefined && message.content !== null && typeof message.content !== "string")
+        throw invalidRequest("Message content must be a string or null.", `${label}.content`);
+    } else if (typeof message.content !== "string" || message.content.length === 0)
       throw invalidRequest(
         "Messages require non-empty text content or assistant tool calls.",
         `${label}.content`,
@@ -212,7 +246,8 @@ function validateMessages(messages: unknown): any[] {
       : undefined;
     return {
       role: message.role,
-      content: hasToolCalls && message.content === undefined ? null : message.content,
+      content:
+        hasToolCalls && (message.content === undefined || message.content === null) ? null : message.content,
       ...(toolCalls ? { tool_calls: toolCalls } : {}),
       ...(message.role === "tool" ? { tool_call_id: message.tool_call_id } : {}),
     };
@@ -242,7 +277,25 @@ function validateTools(value: unknown): any[] {
       );
     if (!isObject(fn.parameters))
       throw invalidRequest("Tool parameters must be a JSON Schema object.", `${label}.function.parameters`);
-    if (JSON.stringify(fn.parameters).length > MAX_TOOL_PARAMETERS_JSON_CHARS)
+    if (maxJsonDepth(fn.parameters) > MAX_REQUEST_JSON_DEPTH)
+      throw invalidRequest(
+        "Tool parameters exceed the supported nesting depth.",
+        `${label}.function.parameters`,
+        "request_too_complex",
+      );
+    let serializedParameters: string;
+    try {
+      serializedParameters = JSON.stringify(fn.parameters) ?? "";
+    } catch (error) {
+      if (error instanceof RangeError)
+        throw invalidRequest(
+          "Tool parameters exceed the supported nesting depth.",
+          `${label}.function.parameters`,
+          "request_too_complex",
+        );
+      throw error;
+    }
+    if (serializedParameters.length > MAX_TOOL_PARAMETERS_JSON_CHARS)
       throw invalidRequest(
         "Tool parameters exceed the supported size.",
         `${label}.function.parameters`,
@@ -587,7 +640,18 @@ export async function prepareAkentrosChatRequest({
     ...(tools ? { tools } : {}),
     ...(toolChoice !== undefined ? { tool_choice: toolChoice } : {}),
   };
-  const estimatedInputTokens = estimateInputTokens({ messages, ...(tools ? { tools } : {}) });
+  let estimatedInputTokens: number;
+  try {
+    estimatedInputTokens = estimateInputTokens({ messages, ...(tools ? { tools } : {}) });
+  } catch (error) {
+    if (error instanceof RangeError)
+      throw invalidRequest(
+        "The request exceeds the supported complexity.",
+        "messages",
+        "request_too_complex",
+      );
+    throw error;
+  }
   let reservedCostMicros: ReturnType<typeof calculateReservationCostMicros>;
   try {
     reservedCostMicros = calculateReservationCostMicros(model, estimatedInputTokens, maxCompletionTokens);
@@ -904,7 +968,10 @@ export function createAkentrosInferenceRuntime({
     // route.timeout_ms;若保留單剩餘時間不足以再完整跑一個 attempt(含
     // 結算緩衝),必須停止重試,否則「仍在執行的請求」會被回收器判為
     // 過期並轉入 needs_reconciliation,使用者點數被多鎖一小時且平台吸收
-    // 成本。第一個 attempt 不受此限制(保留單剛建立,必有完整額度)。
+    // 成本。FN-5 fix:首次 attempt 不再豁免——config 驗證層已保證
+    // timeout_ms ≤ 240s(240+15s 緩衝 < 300s TTL),正常設定下首次 attempt
+    // 必然在期限前完成;若部署端繞過驗證塞入超長 timeout,此處直接
+    // 停止派發(503)也遠比結算被對帳搶先(隔離一小時)安全。
     const reservationDeadlineMs = Date.parse(prepared?.reservation?.expiresAt || "");
     const SETTLEMENT_BUFFER_MS = 15_000;
     for (const route of prepared.routes) {
@@ -912,7 +979,6 @@ export function createAkentrosInferenceRuntime({
       const attemptedCredentialIds = new Set<string>();
       while (attemptNumber < MAX_PROVIDER_ATTEMPTS) {
         if (
-          attemptNumber > 0 &&
           Number.isFinite(reservationDeadlineMs) &&
           Date.now() + routeTimeoutMs + SETTLEMENT_BUFFER_MS > reservationDeadlineMs
         ) {

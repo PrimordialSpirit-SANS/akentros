@@ -435,3 +435,114 @@ test("opt-in key: oversized response stores a tombstone; retries are rejected di
     globalThis.fetch = originalFetch;
   }
 });
+
+// SN-9 fix:冪等重放原本在 RPM admission 之前短路,opt-in TTL 金鑰可無界
+// 重放繞過限流。修復後重放命中也計入 RPM —— rpm_limit=2 的金鑰在第 3 個
+// 請求(即使是重放)收到 429。
+test("idempotent replays count toward the key's RPM admission (SN-9)", async () => {
+  const userId = await seedUser("replay-rpm@example.com");
+  const { secret } = await createAkentrosApiKey(env, userId, {
+    name: "rpm-capped-replay-key",
+    idempotency_replay_ttl_seconds: 3600,
+    rpm_limit: 2,
+    max_in_flight: 4,
+  });
+  const app = createTestApp(env);
+  const requestBody = {
+    model: "akentros/gpt-5.2",
+    messages: [{ role: "user", content: "RPM replay" }],
+  };
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async () =>
+    new Response(
+      JSON.stringify({
+        id: "upstream-rpm",
+        object: "chat.completion",
+        choices: [{ index: 0, message: { role: "assistant", content: "ok" }, finish_reason: "stop" }],
+        usage: { prompt_tokens: 5, completion_tokens: 3, total_tokens: 8 },
+      }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    )) as any;
+  const send = (idemKey: string) =>
+    app.request("/api/ai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${secret}`,
+        "content-type": "application/json",
+        "idempotency-key": idemKey,
+      },
+      body: JSON.stringify(requestBody),
+    });
+  try {
+    // 請求 1:執行(消耗 1 個 RPM 名額)。
+    const first = await send("rpm-1");
+    assert.equal(first.status, 200);
+    await first.json();
+    // 請求 2:重放命中,也消耗 1 個 RPM 名額。
+    const second = await send("rpm-1");
+    assert.equal(second.status, 200);
+    assert.equal(second.headers.get("x-akentros-idempotent-replay"), "true");
+    await second.json();
+    // 請求 3:RPM 名額已滿 —— 即使是重放也 429,不再無界放行。
+    const third = await send("rpm-1");
+    assert.equal(third.status, 429);
+    const thirdBody: any = await third.json();
+    assert.equal(thirdBody.error.code, "rate_limit_exceeded");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+// SN-8 fix:/models 原先完全沒有限流(金鑰級 RPM 只涵蓋 chat/embeddings)。
+// 修復後 /models 與 chat 共用同一把金鑰 RPM 桶 —— rpm_limit=2 的金鑰,
+// 1 次 chat + 3 次 models 的第 3 次 models 收到 429。
+test("models listing counts toward the key's RPM admission (SN-8)", async () => {
+  const userId = await seedUser("models-rpm@example.com");
+  const { secret } = await createAkentrosApiKey(env, userId, {
+    name: "rpm-capped-models-key",
+    rpm_limit: 2,
+    max_in_flight: 4,
+  });
+  const app = createTestApp(env);
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async () =>
+    new Response(
+      JSON.stringify({
+        id: "upstream-models",
+        object: "chat.completion",
+        choices: [{ index: 0, message: { role: "assistant", content: "ok" }, finish_reason: "stop" }],
+        usage: { prompt_tokens: 5, completion_tokens: 3, total_tokens: 8 },
+      }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    )) as any;
+  try {
+    const chat = await app.request("/api/ai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${secret}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "akentros/gpt-5.2",
+        messages: [{ role: "user", content: "Models RPM" }],
+      }),
+    });
+    assert.equal(chat.status, 200);
+    await chat.json();
+
+    const firstModels = await app.request("/api/ai/v1/models", {
+      headers: { authorization: `Bearer ${secret}` },
+    });
+    assert.equal(firstModels.status, 200);
+    await firstModels.json();
+
+    const secondModels = await app.request("/api/ai/v1/models", {
+      headers: { authorization: `Bearer ${secret}` },
+    });
+    assert.equal(secondModels.status, 429);
+    const secondBody: any = await secondModels.json();
+    assert.equal(secondBody.error.code, "rate_limit_exceeded");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

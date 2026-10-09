@@ -30,9 +30,17 @@
     "crons": ["*/30 * * * *"]
   },
   "vars": {
-    // fail-closed 開關:僅 true 時啟用 /api/ai/*(建議部署後先用 404 驗證路由
-    // 存在性,再打開)。
-    "AKENTROS_ENABLED": "true",
+    // fail-closed 開關:僅 true 時啟用 /api/ai/* 與 /api/auth/*。SN-15 fix:
+    // 範本預設改為 "false",與自身註解(部署後先以 404 驗證路由存在性,
+    // 煙霧測試通過後再打開)一致;先前預設 true 與註解自相矛盾。
+    "AKENTROS_ENABLED": "false",
+    // SN-15 fix:防濫用相關變數在範本中顯露出來(此前只存在於 .dev.vars.example,
+    // 生產樣板反而比開發樣板鬆):
+    //   AKENTROS_SIGNUP_BONUS_USD - 註冊贈點(預設 $5);對外開放註冊的部署
+    //     應明確決定金額,設 0 可停用。
+    //   AKENTROS_DISABLE_REGISTRATION=true - 完全關閉註冊(已種子的管理員不受影響)。
+    "AKENTROS_SIGNUP_BONUS_USD": "0",
+    "AKENTROS_DISABLE_REGISTRATION": "true",
     "RATE_LIMIT_NAMESPACE": "akentros",
     // 依實際 Pages 網域填:允許帶 cookie 的 console 來源(CSV)。
     "FRONTEND_ORIGINS": "http://localhost:5173",

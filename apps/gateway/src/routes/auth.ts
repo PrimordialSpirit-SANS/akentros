@@ -122,11 +122,16 @@ function timingSafeEqual(left: string, right: string): boolean {
 // 與 cors.ts 共用 isCredentialedOriginAllowed,確保「可跨來源帶憑證請求的
 // 來源」與「可提交登入表單的來源」永遠是同一份名單,不會漂移。
 
-// 代理鏈標頭可能是逗號清單(「客戶端, 代理」);一律取第一個值。
-function firstForwardedValue(value: unknown): string {
-  return String(value || "")
-    .split(",")[0]
-    .trim();
+// 代理鏈標頭可能是逗號清單(「客戶端, 代理」)。append 模式的代理把
+// 自己的觀察值附加在尾端,首值是客戶端可注入側;SN-6 fix:一律取
+// 最後一值(最接近受信代理的觀察),避免攻擊者注入 x-forwarded-host
+// 偽造「同源」誤導 pre-auth 登入的 CSRF 同源判定。
+function lastForwardedValue(value: unknown): string {
+  const parts = String(value || "")
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean);
+  return parts.length > 0 ? parts[parts.length - 1] : "";
 }
 
 // 明確宣告信任反向代理:運維承諾 gateway 前方有會「覆寫」cf-connecting-ip
@@ -148,8 +153,8 @@ function requestOwnOrigin(c: AkentrosContext): string {
   // 代理時改以 x-forwarded-proto/x-forwarded-host 重建自身來源;未宣告時
   // 這些標頭可偽造、一律不信,維持 socket URL。
   if (akentrosTrustProxyEnabled(c)) {
-    const proto = firstForwardedValue(c.req.header("x-forwarded-proto"));
-    const host = firstForwardedValue(c.req.header("x-forwarded-host"));
+    const proto = lastForwardedValue(c.req.header("x-forwarded-proto"));
+    const host = lastForwardedValue(c.req.header("x-forwarded-host"));
     if (proto && host) {
       try {
         return new URL(`${proto}://${host}`).origin;
@@ -218,30 +223,48 @@ const authLimiter = createRateLimit({
 
 // auth 限流(登入/註冊/登出)的身份決定順序:
 // 1. AKENTROS_TRUST_PROXY=true:明確宣告信任反向代理,以 cf-connecting-ip 標頭
-//    為準。僅當 gateway 前方有會「覆寫」此標頭的受信賴代理(Cloudflare 等)
-//    才應開啟。
+//    為準,其次 x-forwarded-for 最後一值(append 模式代理最接近受信方的
+//    觀察;SN-2 fix:不設 cf-connecting-ip 的 nginx 類代理不再讓全站退化
+//    為單一 "local" 共享桶 —— 60 次/15 分鐘就能鎖死所有真實用戶的登入)。
 // 2. 連線來源位址:Node 自架部署由 nodeServer 從 socket 注入
 //    AKENTROS_REMOTE_ADDR,不可偽造,是未開啟信任代理時的預設身份。若直接
 //    讀請求標頭,Node/http 不會過濾 cf-connecting-ip,攻擊者每個請求帶一個
 //    不同的假 IP 即可完全繞過限流(無限暴力嘗試密碼、洗註冊附贈點數)。
 // 3. Workers/DO 部署:流量一律經 Cloudflare 代理,標頭由其附加、用戶端
 //    帶入的同名標頭會被覆蓋,且 runtime 內拿不到 socket 位址 → 以標頭為準。
-// 4. 都拿不到(本地 IPC、Unix socket)併入 "local" 共享桶。
+// 4. 都拿不到(本地 IPC、Unix socket)併入 "local" 共享桶,並對運維發出
+//    一次性告警(每種退化成因只記一次,避免刷屏)。
+let authRateLimitDegradedNotified = false;
 export function akentrosAuthRateLimitIdentity(c: AkentrosContext): string {
-  const forwarded = String(c.req.header("cf-connecting-ip") || "").trim();
-  if (akentrosTrustProxyEnabled(c)) {
-    return forwarded || "local";
-  }
+  const cfIp = String(c.req.header("cf-connecting-ip") || "").trim();
   const remote = String((c.env as Record<string, unknown>)?.AKENTROS_REMOTE_ADDR || "").trim();
-  if (remote) return remote;
-  return forwarded || "local";
+  if (akentrosTrustProxyEnabled(c)) {
+    if (cfIp) return cfIp;
+    const forwardedFor = lastForwardedValue(c.req.header("x-forwarded-for"));
+    if (forwardedFor) return `xff:${forwardedFor}`;
+    if (remote) return remote;
+  } else if (remote) {
+    return remote;
+  }
+  if (cfIp && !akentrosTrustProxyEnabled(c)) return cfIp;
+  if (!authRateLimitDegradedNotified) {
+    authRateLimitDegradedNotified = true;
+    logAkentrosEvent("warn", "akentros_auth_rate_limit_identity_degraded", {
+      trustProxy: akentrosTrustProxyEnabled(c),
+      hint: "auth rate limiting fell back to a shared bucket; set AKENTROS_TRUST_PROXY=true behind a trusted reverse proxy that overwrites identity headers, or expose the socket address.",
+    });
+  }
+  return "local";
 }
 
 function isSecureRequest(c: AkentrosContext): boolean {
   try {
-    return (
-      new URL(c.req.url).protocol === "https:" || String(c.req.header("x-forwarded-proto") || "") === "https"
-    );
+    if (new URL(c.req.url).protocol === "https:") return true;
+    // SN-5 fix:僅在明確宣告信任代理時採信 x-forwarded-proto,與
+    // requestOwnOrigin 的信任邊界一致;未宣告時該標頭可偽造(純 HTTP
+    // 下偽造 https 可翻轉 cookie 的 Secure 屬性),一律不信。
+    if (!akentrosTrustProxyEnabled(c)) return false;
+    return lastForwardedValue(c.req.header("x-forwarded-proto")) === "https";
   } catch {
     return false;
   }

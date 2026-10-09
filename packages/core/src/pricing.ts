@@ -138,7 +138,19 @@ export function calculateReservationCostMicros(modelOrConfig: any, inputTokens: 
 }
 
 export function estimateInputTokens(body: any) {
-  const serialized = typeof body === "string" ? body : (JSON.stringify(body) ?? "");
+  let serialized: string;
+  if (typeof body === "string") {
+    serialized = body;
+  } else {
+    try {
+      serialized = JSON.stringify(body) ?? "";
+    } catch (error) {
+      // V8's recursive serializer throws RangeError on pathologically nested
+      // input; surface it with the same semantics as the safe-integer guard.
+      if (error instanceof RangeError) throw new RangeError("Estimated input token count is too large.");
+      throw error;
+    }
+  }
   const byteLength = new TextEncoder().encode(serialized).byteLength;
   const messageCount = Array.isArray(body?.messages) ? body.messages.length : 0;
   const overhead = 32 + messageCount * 8;

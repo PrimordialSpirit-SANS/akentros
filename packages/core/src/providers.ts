@@ -431,6 +431,11 @@ async function* anthropicOpenAiChunks(source: ReadableStream<Uint8Array>, provid
   let inputTokens = 0;
   let outputTokens = 0;
   let finishReason: string | null = null;
+  // Per-stream tool-call ordinal: Anthropic indexes content blocks (a text
+  // block before a tool_use consumes index 0), but OpenAI clients assemble
+  // tool_calls by ordinal position. Map block index -> tool-call ordinal.
+  let nextToolOrdinal = 0;
+  const toolOrdinalByBlockIndex = new Map<number, number>();
   for await (const event of parseSseStream(source)) {
     if (event.data === "[DONE]") break;
     let payload: any;
@@ -459,6 +464,9 @@ async function* anthropicOpenAiChunks(source: ReadableStream<Uint8Array>, provid
       case "content_block_start": {
         const block = payload.content_block;
         if (block?.type === "tool_use") {
+          const blockIndex = Number.isSafeInteger(Number(payload.index)) ? Number(payload.index) : 0;
+          const ordinal = nextToolOrdinal++;
+          toolOrdinalByBlockIndex.set(blockIndex, ordinal);
           yield {
             choices: [
               {
@@ -466,7 +474,7 @@ async function* anthropicOpenAiChunks(source: ReadableStream<Uint8Array>, provid
                 delta: {
                   tool_calls: [
                     {
-                      index: Number.isSafeInteger(Number(payload.index)) ? Number(payload.index) : 0,
+                      index: ordinal,
                       id: typeof block.id === "string" && block.id ? block.id : "tool_0",
                       type: "function",
                       function: { name: typeof block.name === "string" ? block.name : "", arguments: "" },
@@ -491,6 +499,8 @@ async function* anthropicOpenAiChunks(source: ReadableStream<Uint8Array>, provid
           typeof delta.partial_json === "string" &&
           delta.partial_json
         ) {
+          const blockIndex = Number.isSafeInteger(Number(payload.index)) ? Number(payload.index) : 0;
+          const ordinal = toolOrdinalByBlockIndex.get(blockIndex) ?? 0;
           yield {
             choices: [
               {
@@ -498,7 +508,7 @@ async function* anthropicOpenAiChunks(source: ReadableStream<Uint8Array>, provid
                 delta: {
                   tool_calls: [
                     {
-                      index: Number.isSafeInteger(Number(payload.index)) ? Number(payload.index) : 0,
+                      index: ordinal,
                       function: { arguments: delta.partial_json },
                     },
                   ],

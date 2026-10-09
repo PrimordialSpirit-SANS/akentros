@@ -229,13 +229,102 @@ test("chat preparation validates allowlists, features, limits, and nested finger
   assert.deepEqual(canonical.body.stream_options, { include_usage: true });
   assert.doesNotMatch(JSON.stringify(canonical.body), /vendor_hint|openrouter/i);
 
+  // FN-4 fix: chat_template_kwargs genuinely supports a single boolean thinking
+  // field and is forwarded verbatim upstream; anything else stays a 400.
+  const thinkingRequest = await prepareAkentrosChatRequest({
+    body: body({ chat_template_kwargs: { thinking: true } }),
+    aiKey: aiKey(),
+  });
+  assert.deepEqual(thinkingRequest.body.chat_template_kwargs, { thinking: true });
   await assert.rejects(
     prepareAkentrosChatRequest({
-      body: body({ chat_template_kwargs: { thinking: true } }),
+      body: body({ chat_template_kwargs: { thinking: "yes" } }),
       aiKey: aiKey(),
     }),
     (error: any) => error.status === 400 && error.code === "unsupported_parameter",
   );
+  await assert.rejects(
+    prepareAkentrosChatRequest({
+      body: body({ chat_template_kwargs: { temperature: 0.7 } }),
+      aiKey: aiKey(),
+    }),
+    (error: any) => error.status === 400 && error.code === "unsupported_parameter",
+  );
+});
+
+// FN-2 fix: pathologically nested tools[].function.parameters must fail as a
+// 400 request_too_complex at validation time — never an uncaught RangeError
+// from JSON.stringify escaping as a 5xx in estimation or upstream dispatch.
+test("chat preparation rejects pathologically nested tool parameters as 400 request_too_complex", async () => {
+  const deepParameters: any = { type: "object" };
+  let node = deepParameters;
+  for (let i = 0; i < 4_500; i += 1) {
+    node.properties = { nested: { type: "object" } };
+    node = node.properties.nested;
+  }
+  await assert.rejects(
+    prepareAkentrosChatRequest({
+      body: body({
+        tools: [{ type: "function", function: { name: "deep", parameters: deepParameters } }],
+      }),
+      aiKey: aiKey(),
+    }),
+    (error: any) => error.status === 400 && error.code === "request_too_complex",
+  );
+});
+
+// FN-3 fix: assistant tool-call turns must not smuggle structured content
+// past the string|null contract; null content stays valid and is forwarded as null.
+test("chat preparation enforces string-or-null content on assistant tool-call turns", async () => {
+  await assert.rejects(
+    prepareAkentrosChatRequest({
+      body: body({
+        messages: [
+          {
+            role: "assistant",
+            tool_calls: [{ id: "call_1", type: "function", function: { name: "lookup", arguments: "{}" } }],
+            content: [{ type: "text", text: "must not pass" }],
+          },
+          { role: "user", content: "continue" },
+        ],
+      }),
+      aiKey: aiKey(),
+    }),
+    (error: any) => error.status === 400 && /string or null/.test(error.message),
+  );
+  await assert.rejects(
+    prepareAkentrosChatRequest({
+      body: body({
+        messages: [
+          {
+            role: "assistant",
+            tool_calls: [{ id: "call_1", type: "function", function: { name: "lookup", arguments: "{}" } }],
+            content: { arbitrary: "object" },
+          },
+          { role: "user", content: "continue" },
+        ],
+      }),
+      aiKey: aiKey(),
+    }),
+    (error: any) => error.status === 400 && /string or null/.test(error.message),
+  );
+  const nullContent = await prepareAkentrosChatRequest({
+    body: body({
+      messages: [
+        {
+          role: "assistant",
+          tool_calls: [{ id: "call_1", type: "function", function: { name: "lookup", arguments: "{}" } }],
+          content: null,
+        },
+        { role: "user", content: "continue" },
+      ],
+    }),
+    aiKey: aiKey(),
+  });
+  assert.equal(nullContent.body.messages[0].content, null);
+  assert.deepEqual(nullContent.body.messages[0].tool_calls, [
+    { id: "call_1", type: "function", function: { name: "lookup", arguments: "{}" } },
+  ]);
 });
 
 test("non-stream inference reserves, dispatches, calls provider, and settles in order", async () => {

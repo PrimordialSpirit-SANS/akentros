@@ -141,3 +141,41 @@ test("concealed duplicate signup does not alter or take over the existing accoun
   const ownerBody = (await ownerLogin.json()) as any;
   assert.equal(ownerBody.user.username, "owner", "account identity is unchanged");
 });
+
+// SN-5 fix:isSecureRequest 原本無條件信任 x-forwarded-proto,純 HTTP 下
+// 偽造 https 可翻轉 session cookie 的 Secure 屬性。修復後僅在
+// AKENTROS_TRUST_PROXY=true 時採信該標頭,與 requestOwnOrigin 的信任
+// 邊界一致。
+test("session cookie Secure attribute follows the trust-proxy boundary (SN-5)", async () => {
+  await installNodeAkentrosDbAdapter();
+  const env = await createSchemaReadyEnv();
+  const app = createTestApp(env);
+
+  const register = await app.request(
+    "/api/auth/register",
+    registerRequest("secure-cookie@example.com", "secureuser", "longenough1"),
+  );
+  assert.equal(register.status, 202);
+
+  // 登入成功會 Set-Cookie;此測試殼跑在純 HTTP(c.req.url 是 http:)。
+  const login = {
+    method: "POST",
+    body: JSON.stringify({ email: "secure-cookie@example.com", password: "longenough1" }),
+    headers: {
+      "Content-Type": "application/json",
+      "x-forwarded-proto": "https",
+    },
+  };
+  const untrusted = await app.request("/api/auth/login", login);
+  assert.equal(untrusted.status, 200);
+  // 未宣告信任代理:偽造的 x-forwarded-proto 不採信,cookie 不得帶 Secure。
+  assert.equal(untrusted.headers.get("set-cookie")?.includes("Secure"), false);
+
+  const trusted = await createTestApp(await createSchemaReadyEnv({ AKENTROS_TRUST_PROXY: "true" })).request(
+    "/api/auth/login",
+    login,
+  );
+  assert.equal(trusted.status, 200);
+  // 宣告信任代理(前方有 TLS 終止的受信賴代理):採信 https,cookie 帶 Secure。
+  assert.equal(trusted.headers.get("set-cookie")?.includes("Secure"), true);
+});

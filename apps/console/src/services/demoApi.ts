@@ -598,6 +598,10 @@ async function handleDeveloperRequest(pathname: string, request: Request): Promi
 
 export function isAkentrosDemoMode(): boolean {
   if (import.meta.env.VITE_AKENTROS_DEMO === "1") return true;
+  // SN-14 fix:?demo=1(任意值)可在正式網域啟動示範模式,營造假登入畫面的
+  // 釣魚可信度。生產建置一律停用 URL 參數啟用路徑,只認構建期的
+  // VITE_AKENTROS_DEMO=1;本地開發(DEV)保留即時切換便利。
+  if (import.meta.env.PROD) return false;
   if (typeof window === "undefined") return false;
   return new URLSearchParams(window.location.search).has("demo");
 }

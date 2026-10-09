@@ -32,19 +32,31 @@ export function LogsPage() {
   const [error, setError] = React.useState("");
   const [loading, setLoading] = React.useState(true);
   const [detail, setDetail] = React.useState<AkentrosRequestDetail | null>(null);
+  const loadAbortRef = React.useRef<AbortController | null>(null);
+  const detailAbortRef = React.useRef<AbortController | null>(null);
 
   const load = React.useCallback(
     async (cursor: string | null = null, append = false) => {
+      // FN-9 fix:快速切換篩選時,較慢的舊回應後到會覆寫新結果(亂序競態)。
+      // 每次載入以 AbortController 取消舊請求;abort 是預期行為,不進錯誤。
+      loadAbortRef.current?.abort();
+      const controller = new AbortController();
+      loadAbortRef.current = controller;
       setLoading(true);
       setError("");
       try {
-        const page = await listAkentrosLogs({ cursor, limit: 25, status: status || undefined });
+        const page = await listAkentrosLogs(
+          { cursor, limit: 25, status: status || undefined },
+          controller.signal,
+        );
+        if (controller.signal.aborted) return;
         setLogs((current) => (append ? [...current, ...page.logs] : page.logs));
         setPagination(page.pagination);
       } catch (cause) {
+        if ((cause as Error)?.name === "AbortError") return;
         setError((cause as Error).message);
       } finally {
-        setLoading(false);
+        if (!controller.signal.aborted) setLoading(false);
       }
     },
     [status],
@@ -64,9 +76,16 @@ export function LogsPage() {
   }, [detail]);
 
   const open = async (requestId: string) => {
+    // FN-9 fix:詳情 drawer 同樣以 AbortController 取消舊請求,避免亂序覆寫。
+    detailAbortRef.current?.abort();
+    const controller = new AbortController();
+    detailAbortRef.current = controller;
     try {
-      setDetail(await getAkentrosRequestDetail(requestId));
+      const loaded = await getAkentrosRequestDetail(requestId, controller.signal);
+      if (controller.signal.aborted) return;
+      setDetail(loaded);
     } catch (cause) {
+      if ((cause as Error)?.name === "AbortError") return;
       setError((cause as Error).message);
     }
   };

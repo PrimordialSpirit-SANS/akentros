@@ -89,6 +89,21 @@ Workers-specific caveats:
   directory `apps/console/dist`, `VITE_AKENTROS_API_BASE` pointing at the
   Worker URL; set `FRONTEND_ORIGINS` on the Worker to the Pages origin.
   SPA fallback (`apps/console/public/_redirects`) is included in the build.
+  - SN-4 caveat: session cookies are `SameSite=Lax`, so a cross-site fetch
+    from `*.pages.dev` to `*.workers.dev` (different sites under the public
+    suffix list) never carries the cookie — the login response succeeds but
+    every later management call returns 401. Pick exactly one:
+    1. Host console and gateway under the same registrable domain
+       (eTLD+1), e.g. `console.example.com` + `api.example.com`, with
+       `VITE_AKENTROS_API_BASE=https://api.example.com/api`.
+    2. Serve the console from Pages and proxy `/api/*` same-origin via
+       Pages Functions or a reverse proxy, leaving
+       `VITE_AKENTROS_API_BASE` empty (same-origin `/api`).
+    3. (Not recommended) relax cookies to `SameSite=None; Secure` and
+       re-evaluate the CSRF surface before doing so.
+  - Same caveat applies to the local dev pairing of
+    `http://127.0.0.1:8787/api` with the Vite dev server on
+    `localhost:5173` (see `apps/console/vite.config.ts`).
 
 ## 1. Required configuration
 
@@ -101,8 +116,13 @@ production, `wrangler secret put` on Workers):
   `apps/gateway/`)
 - `JWT_SECRET` (at least 32 random bytes; signs the console session cookie)
 - `AKENTROS_API_KEY_PEPPER` (at least 32 random bytes)
-- `AKENTROS_ENABLED=true` - fail-closed gate for `/api/ai/*`
+- `AKENTROS_ENABLED=true` - fail-closed gate for `/api/ai/*` and `/api/auth/*`
 - `FRONTEND_ORIGINS` - cookie-enabled console origins (CSV)
+- `AKENTROS_METRICS_TOKEN` (Node topology only, SN-1) - protects `/metrics`
+  (request counts, token spend) with `Authorization: Bearer <token>`; when
+  unset, `/metrics` answers only loopback sources (127.0.0.1/::1) and returns
+  404 to anyone else. Reverse-proxy deployments must set this token or block
+  the `/metrics` path at the proxy.
 - Provider upstream keys - set only the providers actually enabled (see
   [PROVIDERS.md](PROVIDERS.md)); secrets live only in the runtime environment,
   the database stores opaque credential IDs.

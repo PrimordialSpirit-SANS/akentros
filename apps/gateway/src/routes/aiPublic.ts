@@ -216,8 +216,27 @@ aiPublicRoutes.use("*", async (c: AkentrosContext, next: AkentrosNext) => {
 });
 aiPublicRoutes.use("*", authenticateAkentrosKey);
 
-aiPublicRoutes.get("/models", requireAiScope("models:read"), (c: AkentrosContext) => {
-  return c.json(visibleModels(c.get("aiKey")!));
+aiPublicRoutes.get("/models", requireAiScope("models:read"), async (c: AkentrosContext) => {
+  const aiKey = c.get("aiKey")!;
+  const requestId = newRequestId();
+  c.set("aiRequestId", requestId);
+  setPublicHeaders(c, requestId);
+  // SN-8 fix:/models 原先完全沒有限流(金鑰級 RPM 只涵蓋 chat/embeddings,
+  // IP 限流只涵蓋 auth),持金鈅者可無限率存取。納入與 chat 同一桶的
+  // 金鈅級 RPM admission;併發上限取小值,避免 /models 洪峰吃光金鈅的
+  // in-flight 配額。
+  await acquireAkentrosApiLimit(c.env, {
+    apiKeyId: aiKey.id,
+    requestId,
+    rpmLimit: aiKey.rpm_limit,
+    maxInFlight: Math.max(1, Math.min(Number(aiKey.max_in_flight) || 1, 4)),
+    leaseTtlMs: 30_000,
+  });
+  try {
+    return c.json(visibleModels(aiKey));
+  } finally {
+    await releaseAkentrosApiLimit(c.env, requestId).catch(() => {});
+  }
 });
 
 export async function handleAkentrosChatCompletions(
@@ -232,11 +251,13 @@ export async function handleAkentrosChatCompletions(
   let prepared: any;
   let streamContext: any;
   let admissionAcquired = false;
+  let admissionRequestId: string | null = null;
   let admissionReleasePromise: Promise<unknown> | null = null;
   const releaseAdmissionOnce = () => {
-    if (!admissionAcquired || !prepared?.requestId) return Promise.resolve();
+    if (!admissionAcquired || !admissionRequestId) return Promise.resolve();
     if (!admissionReleasePromise) {
-      admissionReleasePromise = releaseAkentrosApiLimit(c.env, prepared.requestId)
+      const leasedId = admissionRequestId;
+      admissionReleasePromise = releaseAkentrosApiLimit(c.env, leasedId)
         .catch(() => {})
         .finally(() => {
           admissionAcquired = false;
@@ -253,6 +274,24 @@ export async function handleAkentrosChatCompletions(
         code: "authentication_unavailable",
       });
     }
+    // SN-10 fix + SN-9 fix:admission 提到 32MB body 緩衝之前 —— 原本
+    // max_in_flight 不涵蓋讀取 body 中的連線,慢速傳送大 body 的連線可
+    // 繞過併發上限累積記憶體壓力;冪等重放原本也在 RPM admission 之前
+    // 短路,opt-in TTL 金鑰可無界重放。統一以臨時 requestId 先租;重放
+    // 命中與驗證失敗路徑都會釋放(finally 保證)。
+    const provisionalId = newRequestId();
+    await acquireAkentrosApiLimit(c.env, {
+      apiKeyId: aiKey.id,
+      requestId: provisionalId,
+      rpmLimit: aiKey.rpm_limit,
+      maxInFlight: aiKey.max_in_flight,
+      // 租約涵蓋 body 讀取 + 整個推論階段(最長可達 8 次 provider 嘗試)。
+      // 對齊保留單的 5 分鐘窗口,避免租約提前過期使 max_in_flight 在
+      // 尾段失去保護。
+      leaseTtlMs: 5 * 60_000,
+    });
+    admissionAcquired = true;
+    admissionRequestId = provisionalId;
     prepared = await prepareAkentrosChatRequest({
       body: await readPublicJsonObject(c),
       aiKey,
@@ -261,17 +300,10 @@ export async function handleAkentrosChatCompletions(
     c.set("aiRequestId", prepared.requestId);
     setPublicHeaders(c, prepared.requestId);
     const replay = await replayForPrepared(c.env, aiKey, prepared);
-    if (replay) return replayToResponse(c, replay);
-    await acquireAkentrosApiLimit(c.env, {
-      apiKeyId: aiKey.id,
-      requestId: prepared.requestId,
-      rpmLimit: aiKey.rpm_limit,
-      maxInFlight: aiKey.max_in_flight,
-      // 租約必須涵蓋整個推論階段(最長可達 8 次 provider 嘗試)。對齊保留單
-      // 的 5 分鐘窗口,避免租約提前過期使 max_in_flight 在尾段失去保護。
-      leaseTtlMs: 5 * 60_000,
-    });
-    admissionAcquired = true;
+    if (replay) {
+      await releaseAdmissionOnce();
+      return replayToResponse(c, replay);
+    }
     if (c.req.raw.signal.aborted) {
       throw new AkentrosProviderError("The client disconnected before dispatch.", {
         category: "client_disconnected",
@@ -443,11 +475,13 @@ export async function handleAkentrosEmbeddings(
   setPublicHeaders(c, c.get("aiRequestId") || "");
   let prepared: any;
   let admissionAcquired = false;
+  let admissionRequestId: string | null = null;
   let admissionReleasePromise: Promise<unknown> | null = null;
   const releaseAdmissionOnce = () => {
-    if (!admissionAcquired || !prepared?.requestId) return Promise.resolve();
+    if (!admissionAcquired || !admissionRequestId) return Promise.resolve();
     if (!admissionReleasePromise) {
-      admissionReleasePromise = releaseAkentrosApiLimit(c.env, prepared.requestId)
+      const leasedId = admissionRequestId;
+      admissionReleasePromise = releaseAkentrosApiLimit(c.env, leasedId)
         .catch(() => {})
         .finally(() => {
           admissionAcquired = false;
@@ -464,6 +498,19 @@ export async function handleAkentrosEmbeddings(
         code: "authentication_unavailable",
       });
     }
+    // SN-10 fix + SN-9 fix:與 chat 相同,admission 提到 body 緩衝與 replay
+    // 檢查之前;臨時 requestId 先租,重放命中與驗證失敗都會釋放。
+    const provisionalId = newRequestId();
+    await acquireAkentrosApiLimit(c.env, {
+      apiKeyId: aiKey.id,
+      requestId: provisionalId,
+      rpmLimit: aiKey.rpm_limit,
+      maxInFlight: aiKey.max_in_flight,
+      // 與 chat 相同:租約涵蓋 body 讀取 + 整個推論階段(含 provider 重試)。
+      leaseTtlMs: 5 * 60_000,
+    });
+    admissionAcquired = true;
+    admissionRequestId = provisionalId;
     prepared = await prepareAkentrosEmbeddingsRequest({
       body: await readPublicJsonObject(c),
       aiKey,
@@ -472,16 +519,10 @@ export async function handleAkentrosEmbeddings(
     c.set("aiRequestId", prepared.requestId);
     setPublicHeaders(c, prepared.requestId);
     const replay = await replayForPrepared(c.env, aiKey, prepared);
-    if (replay) return replayToResponse(c, replay);
-    await acquireAkentrosApiLimit(c.env, {
-      apiKeyId: aiKey.id,
-      requestId: prepared.requestId,
-      rpmLimit: aiKey.rpm_limit,
-      maxInFlight: aiKey.max_in_flight,
-      // 與 chat 相同:租約涵蓋整個推論階段(含 provider 重試),對齊保留單窗口。
-      leaseTtlMs: 5 * 60_000,
-    });
-    admissionAcquired = true;
+    if (replay) {
+      await releaseAdmissionOnce();
+      return replayToResponse(c, replay);
+    }
     if (c.req.raw.signal.aborted) {
       throw new AkentrosProviderError("The client disconnected before dispatch.", {
         category: "client_disconnected",

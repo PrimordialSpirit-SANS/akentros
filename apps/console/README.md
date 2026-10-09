@@ -40,17 +40,20 @@ http://localhost:5173/?demo=1
 
 ## 路由
 
+FN-11 fix:路由表與 App.tsx 實作對齊 —— 新版路徑為主路由,`/Developer/*`
+僅作舊深連結轉址相容(`LegacyDeveloperRedirect`);先前文件把兩者寫反。
+
 | 路徑 | 頁面 |
 | --- | --- |
-| `/` | 轉址到 `/Developer/ai-api` |
-| `/Developer` | 開發者專區首頁(獨立版簡易實作) |
-| `/Developer/ai-api` | 控制台總覽 |
-| `/Developer/ai-api/keys` | API 金鑰 |
-| `/Developer/ai-api/test` | 串流測試 |
-| `/Developer/ai-api/docs` | 快速開始 |
-| `/Developer/ai-api/models` | 模型 |
-| `/Developer/ai-api/providers` | 供應商 |
-| `/Developer/ai-api/logs` | 請求紀錄 |
+| `/` | 控制台總覽(主路由) |
+| `/login` | 登入 |
+| `/keys` | API 金鑰 |
+| `/playground` | 串流測試 |
+| `/models` | 模型 |
+| `/logs` | 請求紀錄 |
+| `/docs` | 快速開始 |
+| `/Developer` | 轉址到 `/` |
+| `/Developer/ai-api/*` | 轉址到對應新路徑(舊深連結相容) |
 
 ## 部署注意
 
