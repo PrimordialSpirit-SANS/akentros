@@ -44,12 +44,18 @@ test("inference and developer surfaces keep separate authentication contracts", 
   const developerPaths = Object.entries(specification.paths).filter(([path]) =>
     path.startsWith("/api/ai/developer/"),
   );
-  assert.equal(developerPaths.length, 6);
+  // SN-3 fix:developer management authentication is cookie-only; the
+  // previously advertised (never implemented) SessionBearer scheme was removed.
+  // SN-16 fix: the Playground account-mode chat endpoint is now declared too.
+  assert.equal(developerPaths.length, 7);
   for (const [, pathItem] of developerPaths) {
     for (const operation of Object.values(pathItem as Record<string, any>)) {
-      assert.deepEqual(operation.security, [{ SessionBearer: [] }, { SessionCookie: [] }]);
+      if ((operation as any).security) {
+        assert.deepEqual((operation as any).security, [{ SessionCookie: [] }]);
+      }
     }
   }
+  assert.equal("SessionBearer" in specification.components.securitySchemes, false);
 });
 
 test("API key secrets are confined to create and rotate mutation responses", () => {

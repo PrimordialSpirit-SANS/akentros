@@ -418,10 +418,35 @@ test("settle ledger entries track the real balance across the refund", async () 
   assert.equal(String(credit.balance_after), String(userRow.rows[0].balance_usd_micros));
 });
 
-test("zero reported cost cannot settle a non-zero reservation", async () => {
-  // WHERE 的零成本守衛以 CAST 綁定比較:actual=0 且 reserved>0 的結算是
-  // 資料異常,必須以 invalid_billing_state 拒絕,而不是靜默全額退款。
-  // (守衛參數以 TEXT 綁定,未 CAST 時 TEXT 恆大於 0,守衛形同死碼。)
+test("zero reported cost settles a non-zero reservation when the provider explicitly reports 0/0", async () => {
+  // FN-6 fix:provider 來源的明確 0/0 usage(快取命中等良性零成本回應)
+  // 允許結算——charged=0、全額退款,不再以 invalid_billing_state 拒絕而
+  // 隔離一小時。守衛的 CAST 綁定比較保持不變。
+  const { query, user, apiKeyId } = await billingFixture();
+  const store = createAkentrosBillingStore(query);
+  const reserved = await store.reserve(reservation({ userId: user.id, apiKeyId }));
+  await store.markDispatched(reserved.requestId);
+
+  const settled = await store.settle({
+    requestId: reserved.requestId,
+    actualCostMicros: 0,
+    inputTokens: 0,
+    outputTokens: 0,
+    usageSource: "provider",
+    totalLatencyMs: 5,
+  });
+  assert.equal(settled.reservationState, "settled");
+  assert.equal(Number(settled.chargedCostMicros), 0);
+  assert.equal(Number(settled.refundedCostMicros), Number(reserved.reservedCostMicros));
+
+  // 全額退款回到用戶餘額;保留單已結算,點數不再佔用。
+  const userRow = await query(`SELECT balance_usd_micros FROM users WHERE id = ?`, [user.id]);
+  assert.equal(Number(userRow.rows[0].balance_usd_micros), user.balance_usd_micros);
+});
+
+test("zero reported cost from estimated sources still cannot settle a non-zero reservation", async () => {
+  // 守衛對 estimated 來源的 0 成本結算照舊拒絕:估計值本就不該為 0,
+  // 該情境維持資料異常判定,交由對帳流程隔離處理。
   const { query, user, apiKeyId } = await billingFixture();
   const store = createAkentrosBillingStore(query);
   const reserved = await store.reserve(reservation({ userId: user.id, apiKeyId }));
@@ -433,19 +458,16 @@ test("zero reported cost cannot settle a non-zero reservation", async () => {
       actualCostMicros: 0,
       inputTokens: 0,
       outputTokens: 0,
-      usageSource: "provider",
+      usageSource: "estimated",
       totalLatencyMs: 5,
     }),
     (error: any) => error.status === 409 && error.code === "invalid_billing_state",
   );
 
-  // 保留單維持原狀,點數仍在保留中(交由對帳流程處理)。
   const stateRow = await query(`SELECT state FROM ai_billing_reservations WHERE request_id = ?`, [
     reserved.requestId,
   ]);
   assert.equal(String(stateRow.rows[0].state), "reserved");
-  const userRow = await query(`SELECT balance_usd_micros FROM users WHERE id = ?`, [user.id]);
-  assert.equal(Number(userRow.rows[0].balance_usd_micros), user.balance_usd_micros - 8);
 });
 
 test("provider failure refunds the reservation before dispatch is refunded too", async () => {

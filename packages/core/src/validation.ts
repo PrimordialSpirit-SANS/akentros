@@ -292,11 +292,15 @@ export function validateBackendPricing(config: Record<string, any>) {
         `${routePath}.priority`,
         "must be an integer from 0 to 10000",
       );
+      // FN-5 fix:timeout 上限從 300000 收緊至 240000。保留單 TTL 為固定
+      // 5 分鐘(300s);attempt 結算緩衝 15s。240s + 15s = 255s < 300s,
+      // 消除「首次 attempt 結束時刻 ≥ 保留單過期時刻」的結算/對帳窄窗 race
+      // (現行出廠值皆 60/120s,不受影響)。
       push(
         errors,
-        isPositiveInteger(route.timeout_ms) && route.timeout_ms >= 1000 && route.timeout_ms <= 300000,
+        isPositiveInteger(route.timeout_ms) && route.timeout_ms >= 1000 && route.timeout_ms <= 240000,
         `${routePath}.timeout_ms`,
-        "must be an integer from 1000 to 300000",
+        "must be an integer from 1000 to 240000",
       );
       push(errors, typeof route.enabled === "boolean", `${routePath}.enabled`, "must be boolean");
       if (route.enabled === true) enabledRoutes += 1;

@@ -153,7 +153,7 @@ npx wrangler deploy          # secrets 以 wrangler secret put 設定
 | `AKENTROS_ADMIN_STARTING_CREDITS_USD` | 選配 | 管理員初始餘額(預設 $500.00) |
 | `AKENTROS_DISABLE_REGISTRATION` | 選配 | 設 `true` 關閉公開註冊 |
 | `AKENTROS_SIGNUP_ANTI_ENUMERATION` | 選配 | 防帳號枚舉(預設開啟):不論信箱是否已註冊,一律回同形 202 受理訊息(狀態碼、主體、cookie 完全一致)、不發 session、不回 user,回應時間與成功路徑等化;僅內部可達的私有部署可設 `false` 還原「新註冊 201 自動登入/重複 409 `email_taken`」UX |
-| `AKENTROS_TRUST_PROXY` | 選配 | 信任反向代理的宣告:設 `true` 表示 gateway 前方有會「覆寫」標頭的受信賴代理(如 Cloudflare、nginx)。此時登入/註冊限流改以 `cf-connecting-ip` 判定用戶端 IP,且 pre-auth 同源檢查改以 `x-forwarded-proto`/`x-forwarded-host` 重建自身來源(TLS 終止代理後 `c.req.url` 仍是 http:,瀏覽器 Origin 卻是 https:,需標頭才能正確判同源)。未設定的 Node 自架一律以不可偽造的 socket 位址/URL 為準,標頭不採信。Cloudflare Workers 部署一律以標頭為準 |
+| `AKENTROS_TRUST_PROXY` | 選配 | 信任反向代理的宣告:設 `true` 表示 gateway 前方有會「覆寫」標頭的受信賴代理(如 Cloudflare、nginx)。此時登入/註冊限流以 `cf-connecting-ip` 判定用戶端 IP,其次 `x-forwarded-for` **最後一值**(SN-2 fix:不設 `cf-connecting-ip` 的 nginx 類代理此前會退化為全站共用單一限流桶,60 次/15 分鐘即鎖死所有登入);pre-auth 同源檢查改以 `x-forwarded-proto`/`x-forwarded-host` 的最後一值重建自身來源(TLS 終止代理後 `c.req.url` 仍是 http:,瀏覽器 Origin 卻是 https:,需標頭才能正確判同源)。未設定的 Node 自架一律以不可偽造的 socket 位址/URL 為準,標頭不採信;身分完全退化時輸出 `akentros_auth_rate_limit_identity_degraded` 告警。**反向代理部署必須設 `AKENTROS_TRUST_PROXY=true` 並要求代理覆寫身分標頭**(nginx:`proxy_set_header cf-connecting-ip $remote_addr;` 或正確附加 `X-Forwarded-For`),否則全站共用代理 IP 的限流桶。Cloudflare Workers 部署一律以標頭為準 |
 | `FRONTEND_ORIGINS` | 建議 | 允許帶 cookie 的 console 來源(CSV) |
 | `OPENROUTER_API_KEY_1` … | 選配 | 供應商上游金鑰,見 `docs/PROVIDERS.md` |
 

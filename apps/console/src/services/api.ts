@@ -2,7 +2,10 @@
 // 原始平台在此提供 JWT 會話、CSRF 與外部 API base;本獨立版以同源 cookie session
 // 加上環境變數設定重現相同契約。離線示範模式由 demoApi.ts 以 fetch 攔截實現。
 
-const API_BASE = (import.meta.env.VITE_AKENTROS_API_BASE ?? "/api").replace(/\/+$/, "");
+// FN-10 fix:`??` 換成 `||` —— 環境變數設為空字串時(對照 .env.example
+// 「留空時使用同源的 /api」),`??` 不會放行 fallback,所有請求打到錯誤的
+// /auth/* 路徑;`||` 讓空字串正確退回同源 /api。
+const API_BASE = (import.meta.env.VITE_AKENTROS_API_BASE || "/api").replace(/\/+$/, "");
 
 function readCookie(name: string): string | null {
   const match = document.cookie.match(new RegExp(`(?:^|;\\s*)${name}=([^;]*)`));

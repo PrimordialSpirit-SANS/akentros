@@ -1,3 +1,7 @@
 # SPA fallback:BrowserRouter 的深連結(如 /keys、/requests)由 index.html 接手;
 # 實際存在的靜態檔(assets/brand/data)優先於本規則。
-/*    /index.html   200
+# SN-14 fix:/api/* 優先匹配 404 —— SPA fallback 原本把同源 API 路徑偽裝成
+# 200 HTML 回應,誤導整合者(總覽頁展示的 endpoint 會指向壞端點)。沒有
+# Pages Functions/反向代理的同源 API 就應該明確地不存在。
+/api/*    /api-404.html    404
+/*        /index.html       200

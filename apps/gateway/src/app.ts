@@ -61,6 +61,10 @@ export function createApp(env: AkentrosRuntimeEnv = {}) {
     );
   });
 
+  // SN-7 fix:AKENTROS_ENABLED fail-closed 閘門原本只涵蓋 /api/ai/*,
+  // 服務轉暗時註冊(含每帳號贈點)仍開放 —— 濫用面。auth 端點一律納入
+  // 閘門管轄:未啟用時與 API 相同回 404,不暴露存在。
+  app.use("/api/auth/*", createAkentrosGate(env));
   app.route("/api/auth", authRoutes);
 
   app.use("/api/ai/*", createAkentrosGate(env));
