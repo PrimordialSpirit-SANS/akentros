@@ -144,8 +144,83 @@ export function renderAkentrosPrometheus({ dbUp }: { dbUp: boolean }) {
 
 // /metrics 探針:與 /healthz 相同立場——不屬於 AKENTROS_ENABLED fail-closed
 // 閘門,但只在 Node 進入點掛載,Workers 部署不暴露。回傳 Hono 相容 handler。
+//
+// SN-1 fix:/metrics 輸出含端點量、token 用量、消費金額等業務敏感指標,
+// 且每次 scrape 觸發一次 DB 探測;原實作無認證、無限流。存取規則:
+// 1. AKENTROS_METRICS_TOKEN 已設 → 要求 Authorization: Bearer <token>
+//    (常數時間比對);不符回 401。
+// 2. 未設 token → 僅放行 loopback 來源(本地開發 127.0.0.1 維持可用);
+//    其餘回 404(不暴露端點存在)。對外部署必須設 token 或由反向代理
+//    遮蔽 /metrics 路徑(部署文件同步要求)。
+// 3. 每來源位址每 60 秒最多 12 次 scrape,超過回 429 —— 阻止高頻 scrape
+//    作為免認證的 DB 負載源。
+const LOOPBACK_ADDRESSES = new Set(["127.0.0.1", "::1", "::ffff:127.0.0.1"]);
+const METRICS_SCRAPE_WINDOW_MS = 60_000;
+const METRICS_SCRAPE_MAX_PER_WINDOW = 12;
+const metricsScrapeWindows = new Map<string, { windowStart: number; count: number }>();
+
+export type AkentrosMetricsAccessVerdict = "allow" | "unauthorized" | "forbidden" | "rate_limited";
+
+export function evaluateMetricsAccess(input: {
+  token?: string;
+  remoteAddr?: string;
+  authorization?: string;
+  now?: number;
+}): AkentrosMetricsAccessVerdict {
+  const token = String(input?.token || "").trim();
+  const remoteAddr = String(input?.remoteAddr || "").trim();
+  const authorization = String(input?.authorization || "").trim();
+  if (token) {
+    const expected = `Bearer ${token}`;
+    if (authorization.length !== expected.length) return "unauthorized";
+    let diff = 0;
+    for (let index = 0; index < expected.length; index += 1) {
+      diff |= authorization.charCodeAt(index) ^ expected.charCodeAt(index);
+    }
+    if (diff !== 0) return "unauthorized";
+  } else if (!LOOPBACK_ADDRESSES.has(remoteAddr)) {
+    return "forbidden";
+  }
+  const now = Number.isFinite(input?.now) ? Number(input?.now) : Date.now();
+  const key = remoteAddr || "unknown";
+  const bucket = metricsScrapeWindows.get(key);
+  if (!bucket || now - bucket.windowStart >= METRICS_SCRAPE_WINDOW_MS) {
+    if (metricsScrapeWindows.size > 4096) metricsScrapeWindows.clear();
+    metricsScrapeWindows.set(key, { windowStart: now, count: 1 });
+    return "allow";
+  }
+  bucket.count += 1;
+  if (bucket.count > METRICS_SCRAPE_MAX_PER_WINDOW) return "rate_limited";
+  return "allow";
+}
+
+const METRICS_ERROR_BODIES: Record<AkentrosMetricsAccessVerdict, { status: number; code: string }> = {
+  allow: { status: 200, code: "" },
+  unauthorized: { status: 401, code: "metrics_token_required" },
+  forbidden: { status: 404, code: "not_found" },
+  rate_limited: { status: 429, code: "metrics_rate_limited" },
+};
+
 export function akentrosMetricsHandler(probeDatabase: () => Promise<boolean>) {
-  return async (c: { header: (name: string, value: string) => void }) => {
+  return async (c: {
+    header: (name: string, value: string) => void;
+    req?: { header: (name: string) => string | undefined };
+    env?: Record<string, unknown>;
+  }) => {
+    const env = (c as { env?: Record<string, unknown> }).env;
+    const verdict = evaluateMetricsAccess({
+      token: String((env?.AKENTROS_METRICS_TOKEN as string | undefined) || ""),
+      remoteAddr: String((env?.AKENTROS_REMOTE_ADDR as string | undefined) || ""),
+      authorization: c.req?.header?.("authorization") || "",
+    });
+    if (verdict !== "allow") {
+      const { status, code } = METRICS_ERROR_BODIES[verdict];
+      c.header("Cache-Control", "no-store");
+      return new Response(JSON.stringify({ error: "Metrics access is protected.", code }), {
+        status,
+        headers: { "content-type": "application/json" },
+      });
+    }
     const dbUp = await probeDatabase().catch(() => false);
     c.header("Cache-Control", "no-store");
     return new Response(renderAkentrosPrometheus({ dbUp }), {

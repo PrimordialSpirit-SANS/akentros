@@ -37,6 +37,7 @@ function formatReplayTtl(seconds: number | undefined): string {
 
 export function KeysPage() {
   const [keys, setKeys] = React.useState<AkentrosApiKey[]>([]);
+  const loadAbortRef = React.useRef<AbortController | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState("");
   const [name, setName] = React.useState("Production");
@@ -51,14 +52,22 @@ export function KeysPage() {
   const [pendingRevoke, setPendingRevoke] = React.useState<AkentrosApiKey | null>(null);
 
   const reload = React.useCallback(async () => {
+    // FN-9 fix:載入更多/快速操作時舊回應後到會覆寫新結果;以 AbortController
+    // 取消舊請求,abort 是預期行為,不進錯誤。
+    loadAbortRef.current?.abort();
+    const controller = new AbortController();
+    loadAbortRef.current = controller;
     setLoading(true);
     setError("");
     try {
-      setKeys(await listAkentrosKeys());
+      const loaded = await listAkentrosKeys(controller.signal);
+      if (controller.signal.aborted) return;
+      setKeys(loaded);
     } catch (cause) {
+      if ((cause as Error)?.name === "AbortError") return;
       setError((cause as Error).message);
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted) setLoading(false);
     }
   }, []);
 

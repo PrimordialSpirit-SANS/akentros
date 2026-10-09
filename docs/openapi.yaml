@@ -164,7 +164,6 @@ paths:
       operationId: listAkentrosKeys
       summary: List API key metadata
       security:
-        - SessionBearer: []
         - SessionCookie: []
       responses:
         '200':
@@ -183,7 +182,6 @@ paths:
       summary: Create an API key
       description: The `api_key` secret appears in this response exactly once.
       security:
-        - SessionBearer: []
         - SessionCookie: []
       parameters:
         - $ref: '#/components/parameters/CsrfToken'
@@ -216,7 +214,6 @@ paths:
       summary: Atomically rotate an API key
       description: The old secret is revoked immediately; the new secret appears once.
       security:
-        - SessionBearer: []
         - SessionCookie: []
       parameters:
         - $ref: '#/components/parameters/KeyId'
@@ -241,7 +238,6 @@ paths:
       operationId: revokeAkentrosKey
       summary: Revoke an API key
       security:
-        - SessionBearer: []
         - SessionCookie: []
       parameters:
         - $ref: '#/components/parameters/KeyId'
@@ -254,13 +250,45 @@ paths:
         '403':
           $ref: '#/components/responses/ManagementError'
 
+  /api/ai/developer/chat/completions:
+    post:
+      tags: [Developer]
+      operationId: createAkentrosDeveloperChatCompletion
+      summary: Playground chat completion on the account session
+      description: >-
+        Console Playground (account mode) endpoint. Same pipeline and
+        per-key RPM/in-flight admission as the public face, but authenticates
+        with the console session and an ephemeral session credential instead
+        of a long-lived API key. SN-16 fix: previously implemented but missing
+        from this contract.
+      security:
+        - SessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CsrfToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatCompletionRequest'
+      responses:
+        '200':
+          description: The chat completion response (same shape as the public face).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatCompletionResponse'
+        '401':
+          $ref: '#/components/responses/ManagementError'
+        '403':
+          $ref: '#/components/responses/ManagementError'
+
   /api/ai/developer/usage/summary:
     get:
       tags: [Developer]
       operationId: getAkentrosUsageSummary
       summary: Get balance, 30-day usage, and monthly free-model quotas
       security:
-        - SessionBearer: []
         - SessionCookie: []
       responses:
         '200':
@@ -285,7 +313,6 @@ paths:
         internal request identifiers are never returned. Compatibility fields use
         the Akentros service identity and requested public model only.
       security:
-        - SessionBearer: []
         - SessionCookie: []
       parameters:
         - $ref: '#/components/parameters/Cursor'
@@ -332,7 +359,6 @@ paths:
       operationId: getAkentrosRequest
       summary: Get sanitized request details
       security:
-        - SessionBearer: []
         - SessionCookie: []
       parameters:
         - name: requestId
@@ -364,14 +390,15 @@ components:
       type: http
       scheme: bearer
       bearerFormat: sk-akentros-live_...
-    SessionBearer:
-      type: http
-      scheme: bearer
-      bearerFormat: JWT
     SessionCookie:
       type: apiKey
       in: cookie
       name: akentros_token
+      description: >-
+        Session authentication is cookie-only. The gateway never reads the
+        Authorization header for management endpoints (SN-3 fix: the previously
+        advertised SessionBearer scheme was never implemented and has been
+        removed; spec-generated SDKs must send the session cookie).
 
   headers:
     XRequestId:

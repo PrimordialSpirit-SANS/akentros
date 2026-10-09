@@ -153,11 +153,42 @@ test("PG dialect: billing reserve, settle and refund track the ledger chain", as
   assert.equal(String(rowsOf(userRow)[0].balance_usd_micros), "999997");
 });
 
-test("PG dialect: zero reported cost cannot settle a non-zero reservation", async () => {
+test("PG dialect: zero reported cost settles when the provider explicitly reports 0/0", async () => {
+  // FN-6 fix:provider 來源的 0/0 usage 允許結算(charged=0、全額退款);
+  // estimated 來源的 0 維持拒絕。PG 方言與 SQLite 走同一份守衛 SQL。
   const { query, userId, apiKeyId } = await pgFixture();
   const store = createAkentrosBillingStore(query);
   const reserved = await store.reserve({
     requestId: "req_pg_zero",
+    userId,
+    apiKeyId,
+    idempotencyKey: null,
+    requestFingerprint: fingerprint,
+    publicModel: "akentros-test-model",
+    pricingRevision: "pricing-v1",
+    reservedCostMicros: "8",
+    expiresAt: "2030-01-01T00:00:00.000Z",
+  });
+  await store.markDispatched(reserved.requestId);
+  const settled = await store.settle({
+    requestId: reserved.requestId,
+    actualCostMicros: 0,
+    inputTokens: 0,
+    outputTokens: 0,
+    usageSource: "provider",
+    totalLatencyMs: 1,
+  });
+  assert.equal(settled.reservationState, "settled");
+  assert.equal(Number(settled.chargedCostMicros), 0);
+  assert.equal(Number(settled.refundedCostMicros), 8);
+});
+
+test("PG dialect: zero reported cost from estimated sources cannot settle a non-zero reservation", async () => {
+  // 守衛對 estimated 來源的 0 成本照舊拒絕(資料異常,交由對帳隔離)。
+  const { query, userId, apiKeyId } = await pgFixture();
+  const store = createAkentrosBillingStore(query);
+  const reserved = await store.reserve({
+    requestId: "req_pg_zero_est",
     userId,
     apiKeyId,
     idempotencyKey: null,
@@ -174,7 +205,7 @@ test("PG dialect: zero reported cost cannot settle a non-zero reservation", asyn
       actualCostMicros: 0,
       inputTokens: 0,
       outputTokens: 0,
-      usageSource: "provider",
+      usageSource: "estimated",
       totalLatencyMs: 1,
     }),
     (error: any) => error.status === 409 && error.code === "invalid_billing_state",

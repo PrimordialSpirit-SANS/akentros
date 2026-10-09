@@ -647,6 +647,9 @@ export function createAkentrosBillingStore(query: AkentrosQuery): AkentrosBillin
         // WHERE 的零成本守衛(? > 0)同受 TEXT 綁定影響:未 CAST 時 TEXT 恆
         // 大於 0,守衛形同死碼——非零保留單以 actual=0 結算會靜默全額退款。
         // CAST 後才真正攔下這種異常結算(零保留單走 reserved_usd_micros = 0)。
+        // FN-6 fix:上游以 provider 來源明確回報 0/0 usage 時(快取命中等
+        // 良性零成本回應)允許結算:charged=0、全額退款,不再誤判為計量
+        // 異常而 503+隔離一小時。守衛對 estimated 來源照舊拒絕。
         const transitioned = await query(
           `
           UPDATE ai_billing_reservations
@@ -655,10 +658,25 @@ export function createAkentrosBillingStore(query: AkentrosQuery): AkentrosBillin
               refunded_usd_micros = CAST(reserved_usd_micros - ${dialect.min}(CAST(? AS BIGINT), reserved_usd_micros) AS BIGINT),
               settled_at = ?, updated_at = ?
           WHERE request_id = ? AND state = 'reserved'
-            AND (CAST(? AS BIGINT) > 0 OR reserved_usd_micros = 0)
+            AND (
+              CAST(? AS BIGINT) > 0
+              OR reserved_usd_micros = 0
+              OR (CAST(? AS BIGINT) = 0 AND ? = 'provider' AND CAST(? AS BIGINT) = 0 AND CAST(? AS BIGINT) = 0)
+            )
           RETURNING id, ai_request_id, user_id, state, reserved_usd_micros, charged_usd_micros, refunded_usd_micros
         `,
-          [actualCostMicros, actualCostMicros, now, now, requestId, actualCostMicros],
+          [
+            actualCostMicros,
+            actualCostMicros,
+            now,
+            now,
+            requestId,
+            actualCostMicros,
+            actualCostMicros,
+            usageSource,
+            inputTokens,
+            outputTokens,
+          ],
         );
         const transition: any = rows(transitioned)[0];
         if (!transition) return null;

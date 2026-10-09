@@ -9,6 +9,7 @@ import { serve } from "@hono/node-server";
 import dotenv from "dotenv";
 import { createApp } from "./app.ts";
 import type { AkentrosRuntimeEnv } from "./types.ts";
+import { assertAkentrosConfigBundleAtStartup } from "./utils/configGuard.ts";
 import { dbQuery, installNodeAkentrosDbAdapter } from "./utils/db.ts";
 import { logAkentrosEvent } from "./utils/logger.ts";
 import { runAkentrosMaintenance } from "./utils/maintenance.ts";
@@ -53,6 +54,8 @@ function socketRemoteAddress(incoming: unknown): string {
 
 // Hono app 只建一次:每個請求重建整個 app(路由註冊、中介層組裝)只是
 // 配置與 GC 的浪費。env 為 process.env 的活引用,設定仍即時生效。
+// FN-7 fix:啟動時強制驗證設定檔(原本只有測試會驗證),壞設定 fail-fast。
+assertAkentrosConfigBundleAtStartup();
 const app = createApp(env);
 
 // /metrics 是 Node 拓撲限定的維運端點(Prometheus 文字格式):程序內計數器

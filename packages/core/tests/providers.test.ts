@@ -450,6 +450,73 @@ test("Anthropic tool-use streams surface tool call deltas and a tool_calls finis
   assert.equal(finishChunk.choices[0].finish_reason, "tool_calls");
 });
 
+// FN-1 fix: Anthropic content block indexes are block positions, but OpenAI
+// clients assemble tool_calls by ordinal. A text block before the tool calls
+// must not punch holes into the emitted tool_calls.index sequence.
+test("Anthropic tool-use streams map block indexes to dense tool-call ordinals", async () => {
+  const encoder = new TextEncoder();
+  const anthropicStream = new ReadableStream({
+    start(controller) {
+      const events = [
+        'event: message_start\ndata: {"type":"message_start","message":{"id":"msg_fn1","usage":{"input_tokens":7}}}',
+        // Block 0 is a plain text block ("let me look that up"), the tool_use
+        // blocks consume block indexes 1 and 2.
+        'event: content_block_start\ndata: {"type":"content_block_start","index":0,"content_block":{"type":"text"}}',
+        'event: content_block_delta\ndata: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Let me look that up."}}',
+        'event: content_block_stop\ndata: {"type":"content_block_stop","index":0}',
+        'event: content_block_start\ndata: {"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"toolu_a","name":"lookup"}}',
+        'event: content_block_delta\ndata: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\\"q\\":"}}',
+        'event: content_block_delta\ndata: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"\\"akentros\\"}"}}',
+        'event: content_block_stop\ndata: {"type":"content_block_stop","index":1}',
+        'event: content_block_start\ndata: {"type":"content_block_start","index":2,"content_block":{"type":"tool_use","id":"toolu_b","name":"search"}}',
+        'event: content_block_delta\ndata: {"type":"content_block_delta","index":2,"delta":{"type":"input_json_delta","partial_json":"{\\"k\\":2}"}}',
+        'event: content_block_stop\ndata: {"type":"content_block_stop","index":2}',
+        'event: message_delta\ndata: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":6}}',
+        'event: message_stop\ndata: {"type":"message_stop"}',
+      ];
+      for (const event of events) controller.enqueue(encoder.encode(`${event}\n\n`));
+      controller.close();
+    },
+  });
+  const result = await invokeProviderRoute({
+    route: { provider: "anthropic", upstream_model: "claude-test-model", timeout_ms: 1000 },
+    pool: requireProviderPool("anthropic-production"),
+    credential: { provider: "anthropic", secrets: { api_key: "anthropic-test-secret" } },
+    body: { messages: [{ role: "user", content: "hello" }], stream: true },
+    fetchImpl: async () =>
+      new Response(anthropicStream, {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      }),
+  });
+  const chunks: any[] = [];
+  for await (const event of parseSseStream(result.response.body)) {
+    if (event.data === "[DONE]") break;
+    chunks.push(JSON.parse(event.data));
+  }
+  result.dispose();
+  const toolDeltas = chunks.flatMap((chunk) => chunk.choices?.[0]?.delta?.tool_calls || []);
+  // Block indexes 1 and 2 must map to OpenAI ordinals 0 and 1 — dense, no hole.
+  assert.deepEqual(toolDeltas[0], {
+    index: 0,
+    id: "toolu_a",
+    type: "function",
+    function: { name: "lookup", arguments: "" },
+  });
+  assert.deepEqual(toolDeltas[1], { index: 0, function: { arguments: '{"q":' } });
+  assert.deepEqual(toolDeltas[2], { index: 0, function: { arguments: '"akentros"}' } });
+  assert.deepEqual(toolDeltas[3], {
+    index: 1,
+    id: "toolu_b",
+    type: "function",
+    function: { name: "search", arguments: "" },
+  });
+  assert.deepEqual(toolDeltas[4], { index: 1, function: { arguments: '{"k":2}' } });
+  // Text deltas must keep flowing alongside the tool ordinals.
+  const textDelta = chunks.find((chunk) => typeof chunk.choices?.[0]?.delta?.content === "string");
+  assert.equal(textDelta.choices[0].delta.content, "Let me look that up.");
+});
+
 test("Anthropic midstream errors surface as usage-unknown provider failures", async () => {
   const encoder = new TextEncoder();
   const anthropicStream = new ReadableStream({

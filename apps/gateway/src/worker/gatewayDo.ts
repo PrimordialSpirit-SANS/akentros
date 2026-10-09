@@ -1,6 +1,7 @@
 import { createApp } from "../app.ts";
 import type { AkentrosRuntimeEnv } from "../types.ts";
 import { ensureAkentrosSchemaReady, seedAkentrosAdminFromEnv } from "../utils/bootstrap.ts";
+import { assertAkentrosConfigBundleAtStartup } from "../utils/configGuard.ts";
 import { installAkentrosDbAdapter } from "../utils/db.ts";
 import { runAkentrosMaintenance } from "../utils/maintenance.ts";
 import type { AkentrosDoState } from "./doDb.ts";
@@ -28,6 +29,9 @@ export class AkentrosGateway {
     this.state = state as AkentrosDoState;
     this.env = env;
     installAkentrosDbAdapter(createDoAkentrosDbAdapter(this.state));
+    // FN-7 fix:DO 建構(即 Worker 拓撲的啟動)時驗證設定檔,與
+    // nodeServer.ts 對齊;壞設定直接拋出,DO 拒絕帶病上線。
+    assertAkentrosConfigBundleAtStartup();
     this.app = createApp(this.env);
   }
 

@@ -204,19 +204,35 @@ test("same-origin check honors x-forwarded-* only when a proxy is explicitly tru
   // 宣告信任代理(承諾前方代理會覆寫 x-forwarded-*):以標頭重建自身來源,
   // 同源請求放行,通過閘門後由內容驗證回 400。
   assert.equal((await post({ ...base, AKENTROS_TRUST_PROXY: "true" }, proxiedOrigin)).status, 400);
-  // 代理鏈的逗號清單取第一個值。
+  // SN-6 fix:代理鏈的逗號清單取最後一值(append 模式代理把觀察值附加在
+  // 尾端,首值是客戶端可注入側)。攻擊者注入的首值不得誤導同源重建。
   assert.equal(
     (
       await post(
         { ...base, AKENTROS_TRUST_PROXY: "true" },
         {
-          "x-forwarded-proto": "https, http",
-          "x-forwarded-host": "console.example.com, internal.proxy",
+          "x-forwarded-proto": "http, https",
+          "x-forwarded-host": "client-injected.example, console.example.com",
           Origin: "https://console.example.com",
         },
       )
     ).status,
     400,
+  );
+  // 反向:攻擊者把偽值放在可注入側,受信代理的觀察值在尾端主導重建;
+  // 若尾端觀察與 Origin 不同源 → 403。
+  assert.equal(
+    (
+      await post(
+        { ...base, AKENTROS_TRUST_PROXY: "true" },
+        {
+          "x-forwarded-proto": "https",
+          "x-forwarded-host": "console.example.com, other.internal",
+          Origin: "https://console.example.com",
+        },
+      )
+    ).status,
+    403,
   );
   // 標頭不成形(壞 host)時退回 socket URL → 非同源 → 403,不會誤放行。
   assert.equal(
@@ -283,12 +299,37 @@ test("registration can be disabled per deployment", async () => {
 });
 
 test("session token verification fails closed on weak configuration", async () => {
-  const response = await aiRequest("/api/auth/me", { JWT_SECRET: "too-short" });
+  // SN-7 fix 後 auth 端點也在 AKENTROS_ENABLED 閘門管轄內,測試需明確啟用。
+  const response = await aiRequest("/api/auth/me", { AKENTROS_ENABLED: "true", JWT_SECRET: "too-short" });
   assert.equal(response.status, 503);
   assert.equal(((await response.json()) as any).code, "auth_configuration_unavailable");
 
-  const anonymous = await aiRequest("/api/auth/me", { JWT_SECRET: SECRET });
+  const anonymous = await aiRequest("/api/auth/me", { AKENTROS_ENABLED: "true", JWT_SECRET: SECRET });
   assert.equal(anonymous.status, 401);
+});
+
+test("auth endpoints stay behind the AKENTROS_ENABLED fail-closed gate (SN-7)", async () => {
+  // 服務轉暗時,註冊(含每帳號贈點)不再開放:與 /api/ai/* 一律回 404。
+  const register = await aiRequest(
+    "/api/auth/register",
+    { JWT_SECRET: SECRET },
+    {
+      method: "POST",
+      body: JSON.stringify({ email: "gated@example.com", password: "LongPassword123!" }),
+      headers: { "Content-Type": "application/json" },
+    },
+  );
+  assert.equal(register.status, 404);
+  const login = await aiRequest(
+    "/api/auth/login",
+    { JWT_SECRET: SECRET },
+    {
+      method: "POST",
+      body: JSON.stringify({ email: "gated@example.com", password: "LongPassword123!" }),
+      headers: { "Content-Type": "application/json" },
+    },
+  );
+  assert.equal(login.status, 404);
 });
 
 test("auth rate limit identity uses the socket address unless a proxy is explicitly trusted", async () => {
