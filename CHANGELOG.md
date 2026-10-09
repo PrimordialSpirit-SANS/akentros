@@ -8,6 +8,34 @@ versioning follows [SemVer](https://semver.org/).
 
 ### Added
 
+- **Serverless PostgreSQL support across deployment platforms.** Setting
+  `DATABASE_URL` to a `postgres://` string now works beyond long-lived
+  servers: the adapter layer picks a driver per environment.
+  `*.neon.tech` hosts (or an explicit `AKENTROS_PG_WS_PROXY`) select a
+  Neon-compatible **WebSocket driver** (`db.pg.serverless.ts`) that runs a
+  genuine interactive PG session — `BEGIN`/`COMMIT`, `FOR UPDATE` row locks
+  and `pg_advisory_xact_lock` all execute statement-by-statement, so the
+  billing invariants are identical to the TCP adapter; HTTP-only batch
+  drivers are deliberately not used because the money path needs
+  read-then-decide transactions. Everything else uses the TCP `pg` pool,
+  hardened for serverless: remote hosts infer `sslmode=require` semantics
+  automatically (URL params honored, `AKENTROS_PG_SSL=disable|require|
+  verify-full` overrides, loopback/private/unix-socket hosts stay plaintext),
+  pools default to one connection per instance on Vercel/Netlify/Lambda/
+  Workers runtimes, pools are cached on `globalThis` to survive hot reloads,
+  and idle-client errors are logged instead of crashing the process.
+  `AKENTROS_PG_DRIVER=pg-pool|neon` forces a driver (unknown values fail
+  fast). On Cloudflare Workers, a `DATABASE_URL` secret or a new `HYPERDRIVE`
+  binding switches the entry off the Durable Object into a PG runtime that
+  runs the Hono app directly (migrations on cold boot are serialized by a
+  transaction-scoped advisory lock; cron calls maintenance without the DO
+  hop); the default DO-SQLite topology is unchanged. PG adapter chunks are
+  code-split and only loaded in PG mode, so DO deployments keep their cold
+  start. Per-platform recipes (Vercel, Netlify, Render, Workers+Hyperdrive,
+  Node VPS) are documented in `docs/DEPLOYMENT.md` (Topology C); the shared
+  adapter factory and selection/SSL/pool logic are pinned by the new
+  `pgServerless.test.ts`.
+
 - **OpenAI-compatible embeddings endpoint.** `POST /api/ai/v1/embeddings`
   serves text embeddings for models whose pricing capabilities declare
   `embeddings` (new catalog entries `akentros/text-embedding-3-small` at

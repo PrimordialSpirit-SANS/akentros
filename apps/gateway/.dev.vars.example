@@ -16,6 +16,25 @@ AKENTROS_HOST=127.0.0.1
 # 資料庫(Node):改用 PostgreSQL 時,把 DATABASE_URL 設為 postgres:// 連線字串
 # (AKENTROS_DB_PATH 即不生效;migrate 與 server 會自動切換到 PG adapter)。
 # DATABASE_URL=postgres://user:password@localhost:5432/akentros
+#
+# PG 驅動自動選擇(無伺服器支援,見 docs/DEPLOYMENT.md 的 Topology C):
+#   - 主機為 *.neon.tech,或設有 AKENTROS_PG_WS_PROXY → Neon 相容 WebSocket
+#     無伺服器驅動(邊緣 runtime / Workers / 函式環境皆可,交易語意與 TCP 完全一致);
+#   - 其餘 → TCP pg 連線池(Node VPS、Render、Vercel/Netlify Node 函式;
+#     Workers 部署若設有 HYPERDRIVE 綁定則走 Hyperdrive 通道)。
+# 連線池上限:無伺服器函式環境(Vercel/Netlify/Lambda/Workers)預設每實例 1 條,
+# 常駐程序預設 10;TLS:遠端主機自動 require(連線字串 sslmode 優先)。
+# 驅動總開關:auto(預設)| pg-pool | neon(別名 pg/tcp 與 neon-ws/serverless)。
+AKENTROS_PG_DRIVER=
+# TLS 模式覆寫:disable | require | verify-full(預設 auto,見上)。
+AKENTROS_PG_SSL=
+# 自架 pg-gateway/supavisor 相容的 WebSocket 閘道(靜態 host[:port][/path],
+# 或含 {host} 的模板,如 pg-gateway.{host}:5432);設定即改用 neon 驅動。
+AKENTROS_PG_WS_PROXY=
+# WS 閘道是否走 wss(預設 true;僅閘道位於 TLS 終結之後的本地開發設 false)。
+AKENTROS_PG_WS_SECURE=
+# PG 連線池上限覆寫。
+AKENTROS_PG_POOL_MAX=
 
 # 以下兩個密鑰請使用獨立、密碼學隨機的值(建議 openssl rand -hex 32)。
 # JWT_SECRET:登入會話 cookie(akentros_token)的簽名金鑰。

@@ -29,6 +29,17 @@
   "triggers": {
     "crons": ["*/30 * * * *"]
   },
+  // PostgreSQL 模式(選配,預設 DO-SQLite 不受影響):
+  //   方式一(Hyperdrive,推薦給 TCP PG):建立 Hyperdrive 後取消註解,
+  //     Worker 進入點偵測到 HYPERDRIVE 綁定即改跑 PG runtime(不經 DO),
+  //     pg adapter 以綁定的本地通道連線,TLS 由 Hyperdrive 對外代管。
+  //   方式二(Neon 直連):以 `wrangler secret put DATABASE_URL` 設定
+  //     Neon pooled 連線字串(*.neon.tech 自動選用 WebSocket 無伺服器驅動)。
+  // 遷移可在 Node 端預跑(npm run migrate),或由 PG runtime 在首次請求前
+  // 以 advisory lock 串行化自動套用。詳見 docs/DEPLOYMENT.md Topology C。
+  // "hyperdrive": [
+  //   { "binding": "HYPERDRIVE", "id": "<hyperdrive-id>" }
+  // ],
   "vars": {
     // fail-closed 開關:僅 true 時啟用 /api/ai/* 與 /api/auth/*。SN-15 fix:
     // 範本預設改為 "false",與自身註解(部署後先以 404 驗證路由存在性,

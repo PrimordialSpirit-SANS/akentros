@@ -6,9 +6,9 @@ default when migrating or deploying Akentros.
 
 ## 0. Supported deployment topologies (read first)
 
-Akentros supports two gateway topologies. Both run the same Hono app and the
-same versioned SQLite schema; they differ only in the database adapter and
-the maintenance scheduler.
+Akentros supports three gateway topologies. All run the same Hono app and the
+same versioned schema (SQLite dialect for A/B, PostgreSQL dialect for C); they
+differ only in the database adapter and the maintenance scheduler.
 
 ### Topology A: Node server (self-hosted, reference topology)
 
@@ -58,6 +58,10 @@ requests and cron triggers:
 - Schema migrations + admin seed run automatically inside the DO before the
   first request (same code path as `npm run migrate`,
   `src/utils/bootstrap.ts`); `npm run migrate` is Node-only and not needed.
+- PostgreSQL on Workers is also supported via the **PG runtime** (see Topology
+  C, "Cloudflare Workers" subsection): setting a `DATABASE_URL` secret or
+  adding a `HYPERDRIVE` binding switches the entry off the Durable Object
+  path; the default DO topology is unchanged otherwise.
 
 Deploy:
 
@@ -105,15 +109,123 @@ Workers-specific caveats:
     `http://127.0.0.1:8787/api` with the Vite dev server on
     `localhost:5173` (see `apps/console/vite.config.ts`).
 
+### Topology C: Serverless platforms (PostgreSQL)
+
+**Set `DATABASE_URL` to a `postgres://` connection string and the gateway
+switches to PostgreSQL** — on any platform, from a long-lived VPS to
+per-invocation functions. The engine is dialect-complete (BIGINT identity
+keys, `FOR UPDATE` row locks, `pg_advisory_xact_lock` admission control), so
+billing/limit invariants do not depend on SQLite's single-writer model. Pick
+the driver per platform; `npm run migrate` auto-switches to the PG dialect.
+
+Driver selection (`AKENTROS_PG_DRIVER=auto`, the default):
+
+| Condition | Driver | Adapter |
+| --- | --- | --- |
+| Host is `*.neon.tech` | Neon-compatible WebSocket | `db.pg.serverless.ts` |
+| `AKENTROS_PG_WS_PROXY` is set (self-hosted pg-gateway / supavisor) | Neon-compatible WebSocket | `db.pg.serverless.ts` |
+| `HYPERDRIVE` binding present (Workers) | TCP `pg` via Hyperdrive | `db.pg.ts` |
+| Everything else (VPS, Render, Vercel/Netlify Node functions) | TCP `pg` pool | `db.pg.ts` |
+
+`AKENTROS_PG_DRIVER=pg-pool|neon` forces a driver (aliases: `pg`, `tcp`,
+`neon-ws`, `serverless`); unknown values fail fast at startup. TLS is
+inferred: remote hosts get `sslmode=require` semantics automatically (URL
+`sslmode`/`ssl` params are honored; `AKENTROS_PG_SSL=disable|require|
+verify-full` overrides), while loopback/private/unix-socket hosts stay
+plaintext. Pool size defaults to 1 connection per instance on serverless
+runtimes (Vercel, Netlify, Lambda, Workers isolates) and 10 on long-lived
+processes; `AKENTROS_PG_POOL_MAX` overrides both.
+
+Why a WebSocket driver: HTTP-only PG drivers batch whole transactions into one
+request and cannot run Akentros's interactive money path (`SELECT … FOR UPDATE`
+then decide then settle). The Neon-compatible driver runs a genuine
+interactive PG session over WebSocket — `BEGIN`/`COMMIT`, row locks and
+advisory locks all work statement-by-statement, identical to the TCP adapter.
+
+**Vercel / Netlify (functions, Node or Edge runtime)**
+
+1. Create a Neon project (or any PG behind a Neon-compatible WS gateway) and
+   copy the **pooled** connection string (host containing `-pooler`) as
+   `DATABASE_URL` — the `*.neon.tech` host auto-selects the WebSocket driver,
+   which works in both Node and Edge functions.
+2. Set `JWT_SECRET`, `AKENTROS_API_KEY_PEPPER`, `AKENTROS_ENABLED=true`,
+   `FRONTEND_ORIGINS` and provider keys as environment variables.
+3. Run migrations once from anywhere with DB network access (CI job or
+   laptop): `npm run migrate`.
+4. Run the gateway as a function wrapping `apps/gateway/src/nodeServer.ts`'s
+   `createApp` pattern (or deploy the Node server in a container). Health:
+   `GET /healthz`.
+
+Non-Neon PG on functions (Supabase, RDS, self-hosted behind a gateway):
+either use the platform's connection pooler over TCP (`pg-pool` driver, Node
+runtime only) or put a pg-gateway/supavisor WebSocket proxy in front and set
+`AKENTROS_PG_WS_PROXY` (works on Edge too).
+
+**Render (persistent service)**
+
+Render services are long-lived processes — the default TCP `pg` pool works
+as-is. Point `DATABASE_URL` at Render Postgres (internal hostname stays
+plaintext by the private-host rule; external hostnames get TLS automatically).
+`npm run migrate` in the build or a one-off job, then start the Node server.
+
+**Cloudflare Workers (PG runtime)**
+
+Setting a `DATABASE_URL` secret **or** adding a Hyperdrive binding switches
+`src/worker.ts` off the Durable Object: the Hono app runs directly on the
+Worker with a PG adapter, and cron calls `runAkentrosMaintenance` without the
+DO hop. Two connection modes:
+
+- **Hyperdrive (recommended for TCP PG):** create a Hyperdrive binding and
+  add it to `wrangler.jsonc`:
+
+  ```jsonc
+  "hyperdrive": [
+    { "binding": "HYPERDRIVE", "id": "<hyperdrive-id>" }
+  ]
+  ```
+
+  The binding's local channel replaces the connection string (TLS to origin
+  is managed by Hyperdrive). `nodejs_compat` is already enabled.
+- **Neon direct (no extra binding):** set `DATABASE_URL` to the Neon pooled
+  string; the WebSocket driver connects over the native `WebSocket` API.
+
+Migrations on the PG runtime run automatically before the first request per
+isolate, serialized by a transaction-scoped advisory lock; you may still
+pre-apply them with `npm run migrate` from Node. Notes: `/metrics` is
+Node-topology-only (use Cloudflare observability); `/internal/maintenance`
+stays edge-blocked and is reachable only via the cron trigger.
+
+**Node.js VPS (Topology A with PostgreSQL)**
+
+Unchanged from Topology A — just set `DATABASE_URL`. The TCP pool (default
+max 10) is right for a long-lived process; TLS is automatic for remote hosts.
+
+**Connection-budget guidance**
+
+- Prefer pooled endpoints (Neon `-pooler`, Supabase pooler, RDS Proxy,
+  PgBouncer in transaction mode) — serverless platforms multiply instances,
+  and each instance holds a small pool (default 1 on functions).
+- The `pg` driver's `pool.on("error")` is wired to structured logging; idle
+  client disconnects (Neon suspend, provider restarts) no longer crash the
+  process.
+- Pools are cached on `globalThis`, so dev-server hot reloads and isolate
+  reloads reuse connections instead of leaking them.
+
 ## 1. Required configuration
 
-The gateway uses one SQLite database file (Topology A) or the DO's built-in
-SQLite storage (Topology B), one session secret and one API-key pepper.
-Configure these in the environment (`.dev.vars` for local, real env vars for
-production, `wrangler secret put` on Workers):
+The gateway uses one SQLite database file (Topology A), the DO's built-in
+SQLite storage (Topology B), or one PostgreSQL database (Topology C) — plus
+one session secret and one API-key pepper. Configure these in the environment
+(`.dev.vars` for local, real env vars for production, `wrangler secret put`
+on Workers):
 
 - `AKENTROS_DB_PATH` - SQLite file path (default `./akentros.db`, relative to
   `apps/gateway/`)
+- `DATABASE_URL` - PostgreSQL connection string (Topology C); unset or
+  non-`postgres://` means SQLite
+- `AKENTROS_PG_DRIVER` / `AKENTROS_PG_SSL` / `AKENTROS_PG_WS_PROXY` /
+  `AKENTROS_PG_WS_SECURE` / `AKENTROS_PG_POOL_MAX` - driver & connection
+  tuning (Topology C; see section 0 / `.dev.vars.example`)
 - `JWT_SECRET` (at least 32 random bytes; signs the console session cookie)
 - `AKENTROS_API_KEY_PEPPER` (at least 32 random bytes)
 - `AKENTROS_ENABLED=true` - fail-closed gate for `/api/ai/*` and `/api/auth/*`
@@ -139,7 +251,11 @@ npm run migrate    # applies pending migrations, seeds the admin account
 The migration runner is idempotent; it records each applied version in
 `akentros_ai_schema_migrations` and refuses to serve (fail-closed readiness
 check in `aiSchema.ts`) until the recorded version matches
-`AKENTROS_SCHEMA_VERSION`.
+`AKENTROS_SCHEMA_VERSION`. With `DATABASE_URL` set, the same command applies
+the PostgreSQL dialect (the version history is recorded per engine). On the
+Workers PG runtime, migrations run automatically before the first request
+per isolate, serialized by a transaction-scoped advisory lock — pre-running
+`npm run migrate` from Node is still the recommended release step.
 
 ## 3. Smoke test after deploy
 

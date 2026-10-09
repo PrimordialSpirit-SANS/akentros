@@ -1,6 +1,6 @@
 # Akentros Gateway
 
-**English.** Akentros Gateway is a self-hosted, OpenAI-compatible AI gateway: USD-based billing, multi-provider pooling with automatic failover, `sk-akentros-*` API keys, and a built-in Traditional-Chinese developer console. Core (`packages/core`) is a portable TypeScript library; the gateway runs as a plain Node.js server on SQLite (no external database) **or on Cloudflare Workers inside a Durable Object**; the console is a React + Vite app deployable to Cloudflare Pages.
+**English.** Akentros Gateway is a self-hosted, OpenAI-compatible AI gateway: USD-based billing, multi-provider pooling with automatic failover, `sk-akentros-*` API keys, and a built-in Traditional-Chinese developer console. Core (`packages/core`) is a portable TypeScript library; the gateway runs as a plain Node.js server on SQLite (no external database), on PostgreSQL — from a long-lived VPS to serverless platforms (Neon's WebSocket driver, Cloudflare Hyperdrive) — **or on Cloudflare Workers inside a Durable Object**; the console is a React + Vite app deployable to Cloudflare Pages.
 
 ```bash
 cp apps/gateway/.dev.vars.example apps/gateway/.dev.vars   # fill in secrets
@@ -14,7 +14,7 @@ See [Quick start](#快速開始) below, [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)
 
 ---
 
-**Akentros Gateway** 是一個可完全自架的 OpenAI 相容 AI 閘道:以「美元」直接計費(內部微美元整數結算),後方串接多家模型供應商(自動選路、健康狀態、故障轉移),並附帶繁體中文開發者控制台。資料庫使用 SQLite 單檔(Node 22 內建 `node:sqlite`,免裝任何資料庫服務)。整個系統由三個部分組成,全部 TypeScript:
+**Akentros Gateway** 是一個可完全自架的 OpenAI 相容 AI 閘道:以「美元」直接計費(內部微美元整數結算),後方串接多家模型供應商(自動選路、健康狀態、故障轉移),並附帶繁體中文開發者控制台。資料庫預設為 SQLite 單檔(Node 22 內建 `node:sqlite`,免裝任何資料庫服務),亦可切換 PostgreSQL——從常駐 VPS 到無伺服器平台(Neon WebSocket 驅動、Vercel/Netlify 函式、Cloudflare Hyperdrive)皆可。整個系統由三個部分組成,全部 TypeScript:
 
 | 目錄 | 說明 |
 | --- | --- |
@@ -27,6 +27,7 @@ See [Quick start](#快速開始) below, [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)
 - **OpenAI 相容 API**:`GET /api/ai/v1/models`、`POST /api/ai/v1/chat/completions`(支援 SSE 串流、`Idempotency-Key` 冪等)、`POST /api/ai/v1/embeddings`(文字向量,僅計輸入 token),任何 OpenAI SDK 指向 `baseURL` 即可使用。**冪等語意**:OpenAI 對已完成的冪等鍵會「重放原始回應」;Akentros 預設不落地 prompt/completion,已完成鍵重送回 `409 idempotent_request_replayed`(附原始 `X-Request-Id`)。需要 OpenAI 式重放的場景,可在金鑰上 opt-in(`idempotency_replay_ttl_seconds`,最長 7 天):成功回應(JSON 與 SSE)落地該時限,完成鍵重送且請求體一致時直接重放(`X-Akentros-Idempotent-Replay: true`),不再執行、不再計費;時限屆滿後綁定自動釋放,同鍵同體重送視為全新請求重新執行並重新落地(TTL 是重放窗口,不是金鑰的死刑,與 OpenAI 生命週期一致);超過 2MB 落地上限的回應改存墓碑標記,時限內同鍵重送回可分辨的 `409 idempotency_replay_not_stored`(不重放、不重新執行、不雙重扣費),時限過後同樣釋放;進行中鍵回 `409 idempotent_request_in_progress`、同鍵不同請求體回 `409 idempotency_conflict`(見 `docs/openapi.yaml` 的 `Idempotency-Key` 參數說明)。
 - **美元計費**:內部以微美元整數結算(無浮點誤差),請求前「預留」消費上限、完成後依實際 usage 結算、差額自動退回;全流程冪等、可重跑、可對帳。
 - **多供應商池**:37 條 credential 設定(openrouter、cloudflare-workers-ai、qwencloud、openai、anthropic、groq…),加權輪詢、健康冷卻、in-flight lease、自動 fallback;secret 只存環境變數名稱,資料庫僅存 opaque credential ID。
+- **無伺服器 PostgreSQL**:`DATABASE_URL` 指向 PG 時,驅動依環境自動選擇——TCP `pg` 連線池(Node VPS、Render、Vercel/Netlify Node 函式,遠端主機自動 TLS、無伺服器環境每實例一條連線)或 Neon 相容 WebSocket 驅動(`*.neon.tech` 自動啟用;邊緣 runtime、Cloudflare Workers 直連,支援自架 `AKENTROS_PG_WS_PROXY` 閘道);Workers 另可經 Hyperdrive 綁定走 TCP。兩種驅動共用同一套互動式交易語意(`FOR UPDATE` 行鎖、`pg_advisory_xact_lock`),計費不變式不因拓撲妥協。詳見 `docs/DEPLOYMENT.md` 的 Topology C。
 - **API 金鑰管理**:`sk-akentros-live_/sk-akentros-test_` 金鑰、只顯示一次、pepper-HMAC digest 落庫;可設定過期時間、模型白名單、RPM、最大併發與美元消費上限。金鑰級 RPM/併發由資料庫交易內原子計數強制;登入與金鑰管理的 IP 限流同樣以 SQLite 固定窗口計數(單程序全域生效),資料庫不可用時降級為 in-process 記憶體視窗。
 - **內建帳號系統**:註冊/登入(JWT cookie + CSRF 雙提交,pre-auth 端點另以 Origin/Referer 檢查擋 login CSRF)、migrate 時可種子管理員、新戶送點、可關閉公開註冊。
 - **開發者控制台**:總覽、金鑰、串流測試(逐字渲染、usage 統計)、模型目錄(含免費額度)、請求紀錄與單筆詳情;提供 `?demo=1` 離線示範模式。
@@ -144,7 +145,12 @@ npx wrangler deploy          # secrets 以 wrangler secret put 設定
 | --- | --- | --- |
 | `AKENTROS_DB_PATH` | 建議 | SQLite 資料庫檔案路徑(預設 `./akentros.db`,相對 `apps/gateway/`;相對路徑一律以此目錄為基準,不受啟動目錄影響) |
 | `AKENTROS_HOST` / `HOST` | 選配 | Node 自架的綁定位址(預設 `127.0.0.1` 僅接上 loopback;反向代理、容器等需對外時明確設為 `0.0.0.0` 或特定介面位址) |
-| `DATABASE_URL` | 選配 | 設為 `postgres://…`(或 `postgresql://…`)時,Node 自架部署改用 PostgreSQL(`npm run migrate` 同樣自動切換);未設或非 PG scheme 時走 SQLite。限流與 schema 檢查一律優先使用已安裝的資料庫 adapter,連線失敗才降級 |
+| `DATABASE_URL` | 選配 | 設為 `postgres://…`(或 `postgresql://…`)時改用 PostgreSQL(`npm run migrate` 同樣自動切換);未設或非 PG scheme 時走 SQLite。驅動自動選擇:`*.neon.tech` 主機或設有 `AKENTROS_PG_WS_PROXY` 時走 Neon 相容 WebSocket 無伺服器驅動,其餘走 TCP `pg` 連線池(Workers 部署可改設 Hyperdrive 綁定,見 `docs/DEPLOYMENT.md` Topology B/C)。限流與 schema 檢查一律優先使用已安裝的資料庫 adapter,連線失敗才降級 |
+| `AKENTROS_PG_DRIVER` | 選配 | PG 驅動總開關:`auto`(預設,依 URL 特徵自動選)| `pg-pool`(TCP `pg`,含 Hyperdrive)| `neon`(Neon 相容 WebSocket 無伺服器驅動;別名 `neon-ws`/`serverless`)。無效值 fail-fast |
+| `AKENTROS_PG_SSL` | 選配 | TLS 模式:`disable` \| `require` \| `verify-full`;預設 `auto`——沿用連線字串的 `sslmode`,遠端主機自動 `require`(不驗證),localhost/內網/unix socket 不加密 |
+| `AKENTROS_PG_WS_PROXY` | 選配 | 自架 pg-gateway/supavisor 相容的 WebSocket 閘道位址(靜態 `host[:port][/path]` 或含 `{host}` 的模板);設定即改用 neon 驅動 |
+| `AKENTROS_PG_WS_SECURE` | 選配 | WS 閘道是否走 `wss`(預設 `true`;僅閘道位於 TLS 終結之後的本地開發場景設 `false`) |
+| `AKENTROS_PG_POOL_MAX` | 選配 | PG 連線池上限(無伺服器函式環境預設每實例 1 條,常駐程序預設 10) |
 | `JWT_SECRET` | ✅ | 會話 cookie 簽名金鑰(≥32 bytes) |
 | `AKENTROS_API_KEY_PEPPER` | ✅ | API 金鑰 HMAC pepper(≥32 bytes) |
 | `AKENTROS_ENABLED` | 建議 | fail-closed 開關;僅 `true` 時啟用 `/api/ai/*` |
