@@ -7,6 +7,7 @@ import {
   createRateLimit,
   resetRateLimitsForTests,
 } from "../src/middleware/rateLimit.ts";
+import { akentrosAuthRateLimitIdentity } from "../src/routes/auth.ts";
 
 function appWithLimiter(options: any) {
   const app = new Hono();
@@ -135,4 +136,65 @@ test("middleware degrades to memory limiter when the database is unavailable", a
   assert.equal(first.status, 200);
   const second = await injectApp.request("/");
   assert.equal(second.status, 429);
+});
+
+// SEC-02 fix:無 socket 位址、未開 AKENTROS_TRUST_PROXY、卻帶 cf-connecting-ip
+// 是「自行嵌入 createApp()」的部署(測試殼、邊車)才會走到的退化分支 ——
+// 正式進入點(nodeServer 注入 AKENTROS_REMOTE_ADDR、Workers 由 Cloudflare
+// 覆寫標頭)不會踩到。行為保留(以標頭值為身份計數),但必須對運維發出
+// 一次性 akentros_auth_rate_limit_identity_untrusted_header 告警,拓撲
+// 不得再隱形。
+test("untrusted cf-connecting-ip fallback counts per header value and warns exactly once (SEC-02)", async () => {
+  resetRateLimitsForTests();
+  const warnings: string[] = [];
+  const originalWarn = console.warn;
+  console.warn = (line: unknown) => {
+    warnings.push(String(line));
+  };
+  try {
+    const app = new Hono();
+    // 模擬未經 nodeServer.ts/worker.ts 整合的嵌入部署:env 存在但沒有
+    // AKENTROS_REMOTE_ADDR,也未宣告 AKENTROS_TRUST_PROXY。
+    app.use("*", async (c: any, next: any) => {
+      c.env = {};
+      await next();
+    });
+    app.use(
+      "*",
+      createRateLimit({
+        keyPrefix: "sec02",
+        windowMs: 60_000,
+        max: 2,
+        keyGenerator: akentrosAuthRateLimitIdentity,
+      }),
+    );
+    app.get("/", (c: any) => c.json({ ok: true }));
+
+    // 以標頭值為身份計數:同一假 IP 額滿後 429,換一個假 IP 即是新身份。
+    const first = await app.request("/", { headers: { "cf-connecting-ip": "10.9.8.7" } });
+    assert.equal(first.status, 200);
+    const second = await app.request("/", { headers: { "cf-connecting-ip": "10.9.8.7" } });
+    assert.equal(second.status, 200);
+    const blocked = await app.request("/", { headers: { "cf-connecting-ip": "10.9.8.7" } });
+    assert.equal(blocked.status, 429, "the spoofable header value is the counting identity");
+    const other = await app.request("/", { headers: { "cf-connecting-ip": "10.9.8.6" } });
+    assert.equal(other.status, 200, "a different header value is a different identity");
+
+    // 直接驗證身份函式回傳標頭值(而非 "local" 共享桶)。
+    const identity = akentrosAuthRateLimitIdentity({
+      req: { header: (name: string) => (name === "cf-connecting-ip" ? "203.0.113.9" : "") },
+      env: {},
+    } as any);
+    assert.equal(identity, "203.0.113.9");
+
+    // 一次性告警:多次請求只發出一次,且攔截不到其它退化成因的告警重複。
+    const untrusted = warnings.filter((line) =>
+      line.includes("akentros_auth_rate_limit_identity_untrusted_header"),
+    );
+    assert.equal(untrusted.length, 1, "exactly one one-time untrusted-header warning");
+    assert.match(untrusted[0] || "", /spoofable cf-connecting-ip/);
+    assert.match(untrusted[0] || "", /AKENTROS_TRUST_PROXY/);
+  } finally {
+    console.warn = originalWarn;
+  }
 });

@@ -21,6 +21,7 @@
     "dev:worker": "npm run dev:worker --workspace @akentros/gateway",
     "deploy:worker": "npm run deploy:worker --workspace @akentros/gateway",
     "migrate": "npm run migrate --workspace @akentros/gateway",
+    "revoke-sessions": "npm run revoke:sessions --workspace @akentros/gateway",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "start:gateway": "node apps/gateway/src/nodeServer.ts"

@@ -69,6 +69,20 @@ export async function authenticateToken(c: AkentrosContext, next: AkentrosNext) 
     );
   }
 
+  // SEC-01 fix:會話 epoch 比對 —— 伺服端會話撤銷機制。JWT 簽發時把當時的
+  // users.session_epoch 簽入固定 claim epv;帳號 epoch 前進(撤銷全部會話
+  // /未來的改密碼、管理員封鎖)後,舊 token 一律 401。舊 token(無 epv)
+  // 視為 0:過渡期不自動登出既有用戶。
+  if ((payload.epv ?? 0) !== user.sessionEpoch) {
+    return c.json(
+      {
+        error: "Your session is no longer valid. Please sign in again.",
+        code: "session_revoked",
+      },
+      401,
+    );
+  }
+
   c.set("user", user);
   await next();
 }
@@ -232,7 +246,13 @@ const authLimiter = createRateLimit({
 //    不同的假 IP 即可完全繞過限流(無限暴力嘗試密碼、洗註冊附贈點數)。
 // 3. Workers/DO 部署:流量一律經 Cloudflare 代理,標頭由其附加、用戶端
 //    帶入的同名標頭會被覆蓋,且 runtime 內拿不到 socket 位址 → 以標頭為準。
-// 4. 都拿不到(本地 IPC、Unix socket)併入 "local" 共享桶,並對運維發出
+// 4. SEC-02 fix:無 socket 位址、未開 trust proxy、卻帶 cf-connecting-ip ——
+//    只有自行嵌入 createApp() 的部署(測試殼、邊車、未來新進入點)會走到
+//    這條路。保留「以標頭為身份」的現行行為(改落 "local" 共享桶會重演
+//    SN-2 修復前的全站鎖死問題),但補一次性告警
+//    akentros_auth_rate_limit_identity_untrusted_header,讓運維對此拓撲
+//    不再完全不可見。
+// 5. 都拿不到(本地 IPC、Unix socket)併入 "local" 共享桶,並對運維發出
 //    一次性告警(每種退化成因只記一次,避免刷屏)。
 let authRateLimitDegradedNotified = false;
 export function akentrosAuthRateLimitIdentity(c: AkentrosContext): string {
@@ -246,7 +266,19 @@ export function akentrosAuthRateLimitIdentity(c: AkentrosContext): string {
   } else if (remote) {
     return remote;
   }
-  if (cfIp && !akentrosTrustProxyEnabled(c)) return cfIp;
+  if (cfIp && !akentrosTrustProxyEnabled(c)) {
+    // SEC-02 fix:此分支過去靜默採用可偽造的 cf-connecting-ip,且繞過
+    // akentros_auth_rate_limit_identity_degraded 一次性告警(告警只在落回
+    // "local" 共享桶時觸發),自行嵌入 createApp() 的部署對運維完全不可見。
+    // 保留現行行為,補上同樣的一次性告警語意。
+    if (!authRateLimitDegradedNotified) {
+      authRateLimitDegradedNotified = true;
+      logAkentrosEvent("warn", "akentros_auth_rate_limit_identity_untrusted_header", {
+        hint: "rate limiting is using the spoofable cf-connecting-ip header because no socket address was injected and AKENTROS_TRUST_PROXY is unset; integrate via nodeServer.ts/worker.ts or set AKENTROS_TRUST_PROXY=true behind a trusted proxy.",
+      });
+    }
+    return cfIp;
+  }
   if (!authRateLimitDegradedNotified) {
     authRateLimitDegradedNotified = true;
     logAkentrosEvent("warn", "akentros_auth_rate_limit_identity_degraded", {
@@ -275,7 +307,7 @@ function requireJwtSecret(env: AkentrosRuntimeEnv): string | null {
   return secret.length >= 32 ? secret : null;
 }
 
-function issueSession(c: AkentrosContext, env: AkentrosRuntimeEnv, userId: string) {
+function issueSession(c: AkentrosContext, env: AkentrosRuntimeEnv, user: AkentrosAccount) {
   const secret = requireJwtSecret(env);
   if (!secret) {
     return c.json(
@@ -286,22 +318,26 @@ function issueSession(c: AkentrosContext, env: AkentrosRuntimeEnv, userId: strin
       503,
     );
   }
-  return signAkentrosJwt({ sub: userId }, secret, AKENTROS_SESSION_TTL_SECONDS).then((jwt) => {
-    setCookie(c, AKENTROS_SESSION_COOKIE, jwt, {
-      httpOnly: true,
-      sameSite: "Lax",
-      secure: isSecureRequest(c),
-      path: "/",
-      maxAge: AKENTROS_SESSION_TTL_SECONDS,
-    });
-    setCookie(c, AKENTROS_CSRF_COOKIE, randomBytesHex(32), {
-      httpOnly: false,
-      sameSite: "Lax",
-      secure: isSecureRequest(c),
-      path: "/",
-      maxAge: AKENTROS_SESSION_TTL_SECONDS,
-    });
-  });
+  // epv 簽入簽發當下的帳號會話 epoch(SEC-01):authenticateToken 每請求
+  // 與 users.session_epoch 比對,撤銷後舊 token 立即失效。
+  return signAkentrosJwt({ sub: user.id, epv: user.sessionEpoch }, secret, AKENTROS_SESSION_TTL_SECONDS).then(
+    (jwt) => {
+      setCookie(c, AKENTROS_SESSION_COOKIE, jwt, {
+        httpOnly: true,
+        sameSite: "Lax",
+        secure: isSecureRequest(c),
+        path: "/",
+        maxAge: AKENTROS_SESSION_TTL_SECONDS,
+      });
+      setCookie(c, AKENTROS_CSRF_COOKIE, randomBytesHex(32), {
+        httpOnly: false,
+        sameSite: "Lax",
+        secure: isSecureRequest(c),
+        path: "/",
+        maxAge: AKENTROS_SESSION_TTL_SECONDS,
+      });
+    },
+  );
 }
 
 function registrationDisabled(env: AkentrosRuntimeEnv): boolean {
@@ -483,7 +519,7 @@ authRoutes.post("/register", async (c: AkentrosContext) => {
     // 防枚舉模式下不自動登入,受理後請使用者以註冊憑證登入(前端已支援此流程)。
     return acceptedSignupResponse(c);
   }
-  await issueSession(c, c.env, user.id);
+  await issueSession(c, c.env, user);
   return c.json({ user: publicUser(user) }, 201);
 });
 
@@ -510,7 +546,7 @@ authRoutes.post("/login", async (c: AkentrosContext) => {
     return c.json({ error: "Email or password is incorrect.", code: "invalid_credentials" }, 401);
   }
 
-  await issueSession(c, c.env, user.id);
+  await issueSession(c, c.env, user);
   return c.json({ user: publicUser(user) });
 });
 

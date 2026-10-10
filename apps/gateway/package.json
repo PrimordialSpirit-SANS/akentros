@@ -7,6 +7,7 @@
   "license": "MIT",
   "scripts": {
     "migrate": "node scripts/migrateAkentros.ts",
+    "revoke:sessions": "node scripts/revokeAkentrosSessions.ts",
     "typecheck": "tsc --noEmit",
     "test": "node --test \"tests/*.test.ts\"",
     "start": "node src/nodeServer.ts",

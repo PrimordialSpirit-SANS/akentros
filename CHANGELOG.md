@@ -6,6 +6,52 @@ versioning follows [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Security
+
+- **Server-side session revocation via session epochs (SEC-01, schema v4).**
+  The 7-day stateless `akentros_token` JWT had no server-side kill switch:
+  logout only deleted the browser cookie, a stolen token stayed valid until
+  expiry, and the only global off-switch was rotating `JWT_SECRET` (which
+  logs out every user). Schema migration v4 adds `users.session_epoch`
+  (default 0; tokens issued before the upgrade carry no `epv` claim and are
+  treated as epoch 0, so existing sessions survive the upgrade). The JWT
+  contract gains exactly one fixed claim — `epv` — bound to the account's
+  epoch at signing time (still no arbitrary claims; malformed `epv` values
+  invalidate the whole token), and `authenticateToken` rejects tokens whose
+  `epv` diverges from `users.session_epoch` with `401 session_revoked`.
+  Revoking is `UPDATE users SET session_epoch = session_epoch + 1`, exposed
+  as `node apps/gateway/scripts/revokeAkentrosSessions.ts --all | --id <user>
+  | --email <addr>` (also `npm run revoke:sessions -- --all` from
+  `apps/gateway`; the script applies v4
+  idempotently first, and the same `revokeAkentrosSessions` util is the hook
+  for the future change-password / admin-block flows). Bootstrap order
+  changed: `ensureUsersSchema` now runs before the versioned migrations
+  (v4 ALTERs `users`, mirroring how v1's partial indexes depend on
+  `ledger_entries` existing). Pinned by the v3→v4 upgrade test in
+  `packages/core/tests/schema-migration.test.ts` and the epoch
+  mismatch / match / legacy-token cases in
+  `apps/gateway/tests/sessionEpoch.test.ts`.
+- **Untrusted-header rate-limit identity branch now warns (SEC-02).** When
+  no socket address is injected and `AKENTROS_TRUST_PROXY` is unset, the
+  auth rate limiter falls back to the spoofable `cf-connecting-ip` header
+  (behavior kept: falling back to the shared `"local"` bucket would
+  reintroduce the SN-2 site-wide lockout). That branch previously bypassed
+  the one-time `akentros_auth_rate_limit_identity_degraded` alert —
+  embedders of `createApp()` (test harnesses, sidecars) were invisible to
+  operators. It now emits the one-time
+  `akentros_auth_rate_limit_identity_untrusted_header` warning with an
+  integration hint; pinned by `apps/gateway/tests/rateLimit.test.ts`.
+- **Fixed-window rate-limit boundary documented (SEC-03, accepted).** The
+  fixed-window counter allows up to `2 × max` requests across a window
+  boundary (60/15 min login limit → theoretical 120 in seconds). With the
+  8-character password minimum and PBKDF2-SHA256 at 600k iterations this
+  does not weaken the brute-force defense target; eliminating it would
+  need a multi-row sliding-window store plus a new forward-only migration.
+  Documented as a known boundary in the header of
+  `apps/gateway/src/middleware/rateLimit.ts` and in
+  `docs/DEPLOYMENT.md` (new "Session revocation" and "Rate-limit window
+  boundary" subsections).
+
 ### Added
 
 - **Serverless PostgreSQL support across deployment platforms.** Setting

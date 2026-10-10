@@ -20,6 +20,8 @@ export interface AkentrosAccount {
   is_banned: boolean;
   is_flagged: boolean;
   restricted_services: unknown;
+  /** 帳號會話 epoch(SEC-01):JWT 的 epv claim 簽發時綁定此值,撤銷即 +1。 */
+  sessionEpoch: number;
 }
 
 // PBKDF2-SHA256。格式:pbkdf2$<iterations>$<salt_hex>$<hash_hex>
@@ -84,6 +86,9 @@ function serializeAccount(row: any): AkentrosAccount {
     is_banned: Boolean(row.is_banned),
     is_flagged: Boolean(row.is_flagged),
     restricted_services: row.restricted_services,
+    // v4 遷移前的舊資料列不會出現在運行路徑(bootstrap 先跑遷移),
+    // 保險起見仍以 0 兜底 —— 與「無 epv 的舊 token 視為 0」對齊。
+    sessionEpoch: Number(row.session_epoch ?? 0),
   };
 }
 
@@ -219,4 +224,40 @@ export async function upsertAdminUser(
     balanceUsdMicros: options.balanceUsdMicros,
   });
   return { created: true };
+}
+
+// ── 伺服端會話撤銷(SEC-01 fix)────────────────────────────────────────
+// akentros_token 是 7 天無狀態 JWT,登出只刪 cookie、token 本身到期前持續
+// 有效。session_epoch(v4 遷移)是唯一伺服端作廢手段:epoch + 1 後,該帳號
+// 所有已簽發 JWT 的 epv 比對不一致 → authenticateToken 401,無需輪替
+// JWT_SECRET(代價是全員登出)。目前以管理指令的形式提供(scripts/
+// revokeAkentrosSessions.ts);未來改密碼、管理員封鎖帳號時直接複用此
+// 函式。
+export type AkentrosSessionRevocationTarget = { all: true } | { userId: string } | { email: string };
+
+export async function revokeAkentrosSessions(
+  env: AkentrosRuntimeEnv,
+  target: AkentrosSessionRevocationTarget,
+): Promise<{ revoked: number }> {
+  const updatedAt = new Date().toISOString();
+  let sql: string;
+  let params: (string | number)[];
+  if ("userId" in target) {
+    if (!/^[1-9][0-9]*$/.test(target.userId)) {
+      throw new TypeError(`Invalid user id for session revocation: ${target.userId}`);
+    }
+    sql = `UPDATE users SET session_epoch = session_epoch + 1, updated_at = ? WHERE id = ? RETURNING id`;
+    params = [updatedAt, target.userId];
+  } else if ("email" in target) {
+    sql = `UPDATE users SET session_epoch = session_epoch + 1, updated_at = ? WHERE email = ? RETURNING id`;
+    params = [updatedAt, target.email.trim().toLowerCase()];
+  } else if ("all" in target && target.all === true) {
+    sql = `UPDATE users SET session_epoch = session_epoch + 1, updated_at = ? RETURNING id`;
+    params = [updatedAt];
+  } else {
+    // 非法輸入 fail-fast:寧可拒絕也不誤傷(空物件不得被當成 --all)。
+    throw new TypeError("revokeAkentrosSessions requires one of: { all: true }, { userId }, { email }.");
+  }
+  const result = await dbQuery(env, sql, params);
+  return { revoked: Array.isArray(result?.rows) ? result.rows.length : 0 };
 }

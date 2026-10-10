@@ -244,6 +244,10 @@ on Workers):
 Migrations are versioned in `packages/core/src/schemaMigration.ts` (SQLite
 dialect; the version history resets at v1 for the SQLite engine):
 
+- v1 — canonical runtime schema; v2 — distributed IP rate-limit windows;
+  v3 — idempotent replay store; v4 — `users.session_epoch` for
+  server-side session revocation (SEC-01).
+
 ```bash
 npm run migrate    # applies pending migrations, seeds the admin account
 ```
@@ -255,7 +259,59 @@ check in `aiSchema.ts`) until the recorded version matches
 the PostgreSQL dialect (the version history is recorded per engine). On the
 Workers PG runtime, migrations run automatically before the first request
 per isolate, serialized by a transaction-scoped advisory lock — pre-running
-`npm run migrate` from Node is still the recommended release step.
+`npm run migrate` from Node is still the recommended release step. v4 adds
+`users.session_epoch` (default 0); tokens issued before the upgrade carry no
+`epv` claim and are treated as epoch 0, so existing console sessions survive
+the upgrade.
+
+### Session revocation (SEC-01)
+
+The console session cookie is a 7-day stateless JWT; logout only deletes the
+browser cookie. `users.session_epoch` (schema v4) is the server-side kill
+switch: every issued token binds the account's current epoch in the fixed
+`epv` claim, and `authenticateToken` rejects the token with
+`401 session_revoked` once the epochs diverge — without rotating
+`JWT_SECRET` (which would log out every user at once).
+
+```bash
+# From the repo root (same pattern as section 4's reconcile script):
+node apps/gateway/scripts/revokeAkentrosSessions.ts --all                 # every account (global incident response)
+node apps/gateway/scripts/revokeAkentrosSessions.ts --id 42               # one account by id
+node apps/gateway/scripts/revokeAkentrosSessions.ts --email user@example.com   # one account by email
+
+# Or from apps/gateway/ (flags forward cleanly from the workspace directly):
+npm run revoke:sessions -- --all
+```
+
+The script reads the same `.dev.vars` / `DATABASE_URL` environment as
+`npm run migrate` (paths are anchored to `apps/gateway`, so any cwd works) and
+applies the v4 migration idempotently first. Affected users simply sign
+in again and receive a session on the new epoch. The same hook is where a
+future change-password or admin block flow should revoke sessions. Note:
+prefer the direct `node` invocations above when scripting — routing flags
+through the root-level `npm run revoke-sessions -- …` alias drops them (npm
+consumes `--email` and friends as its own config while forwarding to the
+workspace). On the
+Workers Durable Object topology, run the equivalent SQL directly against the
+DO's SQLite:
+
+```sql
+UPDATE users SET session_epoch = session_epoch + 1;  -- all accounts
+UPDATE users SET session_epoch = session_epoch + 1 WHERE email = 'user@example.com';
+```
+
+### Rate-limit window boundary (SEC-03, documented, accepted)
+
+Login/registration rate limiting uses a fixed-window counter (60 attempts per
+15 minutes per identity, by default). Known boundary of that design: a single
+identity can pass up to `2 × max` requests within seconds when the requests
+straddle a window boundary. The brute-force defense target is therefore
+"≤ 2 × max attempts per window"; with the 8-character password minimum and
+PBKDF2-SHA256 at 600k iterations, this does not weaken the defense target.
+Eliminating it would require a sliding-window store (multi-row
+`identity × window_start` upserts plus a new forward-only migration); the
+cost is judged disproportionate to the risk. See the header of
+`apps/gateway/src/middleware/rateLimit.ts`.
 
 ## 3. Smoke test after deploy
 

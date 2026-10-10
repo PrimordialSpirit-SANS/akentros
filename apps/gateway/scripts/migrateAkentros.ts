@@ -7,8 +7,11 @@ import { closePostgresClients, installNodeAkentrosDbAdapter } from "../src/utils
 // 遷移流程(與 Workers DO 首次啟動共用 ensureAkentrosSchemaReady/
 // seedAkentrosAdminFromEnv,見 src/utils/bootstrap.ts):
 //   1. point_transactions(AI 計費流水的平台層底表)
-//   2. Akentros schema(版本化遷移)
-//   3. users(內建帳號系統)+ 可選管理員種子(ADMIN_EMAIL / ADMIN_PASSWORD)
+//   2. users(內建帳號系統)—— 先於版本化遷移:v4 對 users 做
+//      ALTER ADD COLUMN session_epoch(SEC-01 會話撤銵)
+//   3. Akentros schema(版本化遷移)+ 可選管理員種子(ADMIN_EMAIL/
+//      ADMIN_PASSWORD)
+// 會話撤銷的管理指令:scripts/revokeAkentrosSessions.ts。
 
 dotenv.config({
   path: fileURLToPath(new URL("../.dev.vars", import.meta.url)),
