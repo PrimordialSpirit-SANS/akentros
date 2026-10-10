@@ -273,6 +273,174 @@ test("chat preparation rejects pathologically nested tool parameters as 400 requ
   );
 });
 
+// ECO-01:response_format 分型處理 —— text 靜默放行(不轉發)、
+// json_object / json_schema 依模型能力旗標(json_mode / structured_outputs)
+// 決定透傳或 400 unsupported_feature(param 為 response_format)、
+// 非法形狀回一般 400。
+test("response_format accepts text, gates structured outputs by model capability", async () => {
+  // {type:"text"} 成功且不轉發上游(靜默等同未指定,即使預設 SDK 帶入也不踩雷)。
+  const textRequest = await prepareAkentrosChatRequest({
+    body: body({ response_format: { type: "text" } }),
+    aiKey: aiKey(),
+  });
+  assert.equal("response_format" in textRequest.body, false);
+
+  // 能力未開啟的模型(claude 系,json_mode/structured_outputs 皆 false):
+  // json_object 與 json_schema 都是可分辨的 400 unsupported_feature。
+  await assert.rejects(
+    prepareAkentrosChatRequest({
+      body: body({
+        model: "akentros/claude-haiku-4-5",
+        response_format: { type: "json_object" },
+      }),
+      aiKey: aiKey(),
+    }),
+    (error: any) =>
+      error.status === 400 && error.code === "unsupported_feature" && error.param === "response_format",
+  );
+  await assert.rejects(
+    prepareAkentrosChatRequest({
+      body: body({
+        model: "akentros/claude-haiku-4-5",
+        response_format: { type: "json_schema", json_schema: { name: "out", schema: { type: "object" } } },
+      }),
+      aiKey: aiKey(),
+    }),
+    (error: any) =>
+      error.status === 400 && error.code === "unsupported_feature" && error.param === "response_format",
+  );
+
+  // 非物件形狀與未知 type 回一般 400(與 unsupported_feature 可分辨)。
+  await assert.rejects(
+    prepareAkentrosChatRequest({
+      body: body({ response_format: "json" }),
+      aiKey: aiKey(),
+    }),
+    (error: any) =>
+      error.status === 400 && error.param === "response_format" && error.code === "invalid_request",
+  );
+  await assert.rejects(
+    prepareAkentrosChatRequest({
+      body: body({ response_format: { type: "yaml" } }),
+      aiKey: aiKey(),
+    }),
+    (error: any) =>
+      error.status === 400 &&
+      error.code === "invalid_request" &&
+      /must be one of text, json_object, or json_schema/.test(error.message),
+  );
+
+  // 能力開啟的模型(json_mode + structured_outputs 皆 true):原樣透傳。
+  const jsonObjectRequest = await prepareAkentrosChatRequest({
+    body: body({ response_format: { type: "json_object" } }),
+    aiKey: aiKey(),
+  });
+  assert.deepEqual(jsonObjectRequest.body.response_format, { type: "json_object" });
+  const jsonSchemaRequest = await prepareAkentrosChatRequest({
+    body: body({
+      response_format: {
+        type: "json_schema",
+        json_schema: {
+          name: "calendar_event",
+          description: "A calendar event",
+          schema: { type: "object", properties: { name: { type: "string" } }, required: ["name"] },
+          strict: true,
+        },
+      },
+    }),
+    aiKey: aiKey(),
+  });
+  assert.deepEqual(jsonSchemaRequest.body.response_format, {
+    type: "json_schema",
+    json_schema: {
+      name: "calendar_event",
+      description: "A calendar event",
+      schema: { type: "object", properties: { name: { type: "string" } }, required: ["name"] },
+      strict: true,
+    },
+  });
+
+  // json_object 僅接受 {type} 形狀;json_schema 缺 name/schema 回 400。
+  await assert.rejects(
+    prepareAkentrosChatRequest({
+      body: body({ response_format: { type: "json_object", extra: true } }),
+      aiKey: aiKey(),
+    }),
+    (error: any) => error.status === 400 && error.param === "response_format",
+  );
+  await assert.rejects(
+    prepareAkentrosChatRequest({
+      body: body({ response_format: { type: "json_schema", json_schema: { schema: { type: "object" } } } }),
+      aiKey: aiKey(),
+    }),
+    (error: any) => error.status === 400 && error.param === "response_format",
+  );
+
+  // 指紋涵蓋整個 body:僅差 response_format 的兩個同鍵請求指紋必須不同,
+  // 冪等衝突語意與其他欄位一致。
+  const plain = await prepareAkentrosChatRequest({
+    body: body(),
+    aiKey: aiKey(),
+    idempotencyKey: "rf-key",
+  });
+  const structured = await prepareAkentrosChatRequest({
+    body: body({ response_format: { type: "json_object" } }),
+    aiKey: aiKey(),
+    idempotencyKey: "rf-key",
+  });
+  assert.notEqual(plain.reservation.requestFingerprint, structured.reservation.requestFingerprint);
+});
+
+// ECO-02:對閘道中立、可安全忽略的 OpenAI 參數(user/store/metadata/
+// service_tier)接受後丟棄 —— 請求成功且上游請求體不含這些欄位;
+// 語意相關的欄位(logprobs 等)維持 400 且錯誤指名欄位。
+test("neutral OpenAI parameters are tolerated and dropped before upstream dispatch", async () => {
+  const tolerated = await prepareAkentrosChatRequest({
+    body: body({
+      user: "user-123",
+      store: true,
+      metadata: { origin: "migration" },
+      service_tier: "auto",
+    }),
+    aiKey: aiKey(),
+  });
+  assert.equal("user" in tolerated.body, false);
+  assert.equal("store" in tolerated.body, false);
+  assert.equal("metadata" in tolerated.body, false);
+  assert.equal("service_tier" in tolerated.body, false);
+  assert.doesNotMatch(JSON.stringify(tolerated.body), /user-123|migration|service_tier/);
+
+  // 明確不納入容忍清單的欄位:回 400 unsupported_parameter 且 param 指名。
+  for (const field of ["logprobs", "top_logprobs", "parallel_tool_calls", "functions", "function_call"]) {
+    await assert.rejects(
+      prepareAkentrosChatRequest({
+        body: body({ [field]: true }),
+        aiKey: aiKey(),
+      }),
+      (error: any) => error.status === 400 && error.code === "unsupported_parameter" && error.param === field,
+    );
+  }
+});
+
+// ECO-05:n>1 維持不支援,但錯誤改為明確的 unsupported_feature 並給出
+// 替代做法;形狀不合法仍回一般 400;n=1 照常透傳。
+test("n beyond one returns a distinguishable unsupported_feature error", async () => {
+  await assert.rejects(
+    prepareAkentrosChatRequest({ body: body({ n: 3 }), aiKey: aiKey() }),
+    (error: any) =>
+      error.status === 400 &&
+      error.code === "unsupported_feature" &&
+      error.param === "n" &&
+      /send separate requests/.test(error.message),
+  );
+  await assert.rejects(
+    prepareAkentrosChatRequest({ body: body({ n: 0 }), aiKey: aiKey() }),
+    (error: any) => error.status === 400 && error.param === "n" && error.code === "invalid_request",
+  );
+  const single = await prepareAkentrosChatRequest({ body: body({ n: 1 }), aiKey: aiKey() });
+  assert.equal(single.body.n, 1);
+});
+
 // FN-3 fix: assistant tool-call turns must not smuggle structured content
 // past the string|null contract; null content stays valid and is forwarded as null.
 test("chat preparation enforces string-or-null content on assistant tool-call turns", async () => {

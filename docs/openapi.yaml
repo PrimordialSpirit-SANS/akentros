@@ -6,6 +6,26 @@ info:
     Akentros text-only OpenAI-compatible inference surface and signed-in developer
     management surface. Public inference routes use Akentros API keys; developer
     routes use the existing Akentros session and CSRF policy.
+
+    OpenAI API compatibility matrix (see README for the friendly version):
+
+    | OpenAI endpoint | Supported |
+    | --- | --- |
+    | `GET /api/ai/v1/models` | Yes |
+    | `POST /api/ai/v1/chat/completions` | Yes (SSE streaming, tools, capability-gated structured outputs) |
+    | `POST /api/ai/v1/embeddings` | Yes (text input only) |
+    | `POST /api/ai/v1/responses` | No |
+    | legacy /completions (`POST /api/ai/v1/completions`) | No (deprecated upstream; not planned) |
+    | `/audio/*` (speech, transcription) | No |
+    | `/images/*` (generations, edits, variations) | No |
+    | `/moderations` | No |
+    | `/files` / `/batches` | No |
+    | `/realtime` | No |
+
+    Requests to unsupported endpoints return 404 `route_not_found`; requests
+    that use unsupported OpenAI parameters return 400 `unsupported_parameter`
+    (or `unsupported_feature` when the parameter names a real OpenAI capability
+    Akentros does not expose), so callers can distinguish gaps from mistakes.
 servers:
   - url: /
     description: Current Akentros API origin
@@ -673,6 +693,51 @@ components:
           type: integer
           minimum: 1
           maximum: 1
+          description: |
+            Only n=1 is supported. Requests with n>1 are rejected with a 400
+            `unsupported_feature` error; send separate requests instead.
+        response_format:
+          description: |
+            `text` is accepted and silently treated as the default (never
+            forwarded). `json_object` requires the model's `json_mode`
+            capability; `json_schema` requires `structured_outputs`; both are
+            forwarded verbatim to OpenAI-compatible upstreams when enabled and
+            rejected with 400 `unsupported_feature` (param `response_format`)
+            otherwise.
+          oneOf:
+            - type: object
+              additionalProperties: false
+              required: [type]
+              properties:
+                type:
+                  const: text
+            - type: object
+              additionalProperties: false
+              required: [type]
+              properties:
+                type:
+                  const: json_object
+            - type: object
+              additionalProperties: false
+              required: [type, json_schema]
+              properties:
+                type:
+                  const: json_schema
+                json_schema:
+                  type: object
+                  additionalProperties: false
+                  required: [name, schema]
+                  properties:
+                    name:
+                      type: string
+                      minLength: 1
+                      maxLength: 64
+                    description:
+                      type: string
+                    strict:
+                      type: boolean
+                    schema:
+                      type: object
         stream_options:
           type: object
           additionalProperties: false

@@ -166,7 +166,14 @@ export function validateBackendPricing(config: Record<string, any>) {
     );
     push(errors, model.owned_by === "akentros", `${path}.owned_by`, "must equal akentros");
 
-    const capabilityKeys = ["chat_completions", "streaming", "tools", "json_mode", "vision"];
+    const capabilityKeys = [
+      "chat_completions",
+      "streaming",
+      "tools",
+      "json_mode",
+      "structured_outputs",
+      "vision",
+    ];
     // embeddings 是選填 capability:僅 embeddings 模型(如 text-embedding-3-*)
     // 需要宣告;既有 chat 模型不加此鍵,避免整份定價文件的無謂改動。
     if (hasExactKeys(errors, model.capabilities, `${path}.capabilities`, capabilityKeys, ["embeddings"])) {

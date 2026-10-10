@@ -38,6 +38,14 @@ const PUBLIC_REQUEST_FIELDS = new Set([
   "response_format",
 ]);
 const PUBLIC_FINISH_REASONS = new Set(["stop", "length", "content_filter", "tool_calls"]);
+// ECO-02:對閘道中立、可安全忽略的 OpenAI 參數(user 追蹤標識、store、
+// metadata、service_tier 等 SDK 常見預設欄位):接受後丟棄,不轉發、不進
+// 指紋 —— 指紋針對 sanitised 後的 upstream body 計算,容忍欄位自然不在
+// 其中,同鍵同體重放語意維持不變(與 LiteLLM/one-api 的「未知參數預設
+// 忽略」對齊)。語意相關的欄位(logprobs、top_logprobs、parallel_tool_calls、
+// functions、function_call)刻意不納入:靜默忽略會改變回應或行為,維持
+// 400 並讓錯誤訊息指名欄位。
+const TOLERATED_IGNORED_FIELDS = new Set(["user", "store", "metadata", "service_tier"]);
 const PUBLIC_AKENTROS_ERROR_CODES = new Set([
   "invalid_request",
   "invalid_json",
@@ -74,6 +82,10 @@ const MAX_PROVIDER_ATTEMPTS = 8;
 const MAX_TOOL_CALL_ARGUMENTS_CHARS = 256 * 1024;
 // tools[].function.parameters 為任意 JSON Schema;序列化長度上限同上。
 const MAX_TOOL_PARAMETERS_JSON_CHARS = 64 * 1024;
+// ECO-01:response_format 的 json_schema.schema 與 tools 的 parameters
+// 同為任意 JSON Schema,沿用同一組大小/深度防護,避免合法請求體內塞入
+// 超大 schema 拖累指紋計算與上游轉發。
+const MAX_RESPONSE_FORMAT_SCHEMA_JSON_CHARS = MAX_TOOL_PARAMETERS_JSON_CHARS;
 // Recursive JSON.stringify throws RangeError beyond ~4.4k nesting levels; far
 // below that we reject with a 400 instead of letting serialization explode in
 // validateTools, token estimation, or the upstream fetch body.
@@ -327,6 +339,111 @@ function validateToolChoice(value: any, tools: any[]) {
   return { type: "function", function: { name: value.function.name } };
 }
 
+// ECO-01:response_format 的分型處理。
+// - text:OpenAI 預設值,靜默等同未指定(不轉發、不拒絕)。
+// - json_object(JSON mode):需模型 capabilities.json_mode,僅接受
+//   {type:"json_object"} 形狀,以 {type:"json_object"} 轉發。
+// - json_schema(structured outputs):需模型 capabilities.structured_outputs,
+//   驗證 {type, json_schema:{name, description?, schema, strict?}} 形狀與
+//   大小/深度上限後原樣轉發給 OpenAI 相容上游(Anthropic Messages API
+//   無 response_format,能力旗標一律 false,在此就會被擋下)。
+// - 其餘形狀(非物件、缺 type、未知 type):400 指名 response_format。
+// 能力未開啟時回 400 unsupported_feature(param 為 response_format),
+// 錯誤與「形狀不合法」可分辨,遷移者能立即定位是能力問題還是請求問題。
+function validateResponseFormat(value: unknown, model: any) {
+  if (value === undefined) return undefined;
+  const type = isObject(value) ? value.type : undefined;
+  if (type === "text") {
+    // text 即預設行為:不轉發、不拒絕,靜默等同未指定。
+    return undefined;
+  }
+  if (type === "json_object") {
+    if (model.capabilities.json_mode !== true) {
+      throw invalidRequest(
+        "JSON mode (response_format json_object) is not enabled for this Akentros model.",
+        "response_format",
+        "unsupported_feature",
+      );
+    }
+    if (Object.keys(value).some((key) => key !== "type")) {
+      throw invalidRequest(
+        "response_format with type json_object must only contain the type field.",
+        "response_format",
+      );
+    }
+    return { type: "json_object" };
+  }
+  if (type === "json_schema") {
+    if (model.capabilities.structured_outputs !== true) {
+      throw invalidRequest(
+        "Structured outputs are not enabled for this Akentros model.",
+        "response_format",
+        "unsupported_feature",
+      );
+    }
+    const jsonSchema = value.json_schema;
+    if (
+      !isObject(jsonSchema) ||
+      typeof jsonSchema.name !== "string" ||
+      jsonSchema.name.length < 1 ||
+      jsonSchema.name.length > 64 ||
+      !isObject(jsonSchema.schema) ||
+      Object.keys(jsonSchema).some((key) => !["name", "description", "schema", "strict"].includes(key))
+    ) {
+      throw invalidRequest(
+        "response_format.json_schema must be an object with a name and a JSON Schema.",
+        "response_format",
+      );
+    }
+    if (jsonSchema.description !== undefined && typeof jsonSchema.description !== "string") {
+      throw invalidRequest("response_format.json_schema.description must be a string.", "response_format");
+    }
+    if (jsonSchema.strict !== undefined && typeof jsonSchema.strict !== "boolean") {
+      throw invalidRequest("response_format.json_schema.strict must be a boolean.", "response_format");
+    }
+    if (maxJsonDepth(jsonSchema.schema) > MAX_REQUEST_JSON_DEPTH) {
+      throw invalidRequest(
+        "response_format.json_schema.schema exceeds the supported nesting depth.",
+        "response_format",
+        "request_too_complex",
+      );
+    }
+    let serializedSchema: string;
+    try {
+      serializedSchema = JSON.stringify(jsonSchema.schema) ?? "";
+    } catch (error) {
+      if (error instanceof RangeError) {
+        throw invalidRequest(
+          "response_format.json_schema.schema exceeds the supported nesting depth.",
+          "response_format",
+          "request_too_complex",
+        );
+      }
+      throw error;
+    }
+    if (serializedSchema.length > MAX_RESPONSE_FORMAT_SCHEMA_JSON_CHARS) {
+      throw invalidRequest(
+        "response_format.json_schema.schema exceeds the supported size.",
+        "response_format",
+        "request_too_large",
+      );
+    }
+    return {
+      type: "json_schema",
+      json_schema: {
+        name: jsonSchema.name,
+        ...(jsonSchema.description !== undefined ? { description: jsonSchema.description } : {}),
+        schema: jsonSchema.schema,
+        ...(jsonSchema.strict !== undefined ? { strict: jsonSchema.strict } : {}),
+      },
+    };
+  }
+  throw invalidRequest(
+    "response_format.type must be one of text, json_object, or json_schema.",
+    "response_format",
+  );
+}
+
 function replayError(reserved: { status?: string; requestId: string }) {
   const inProgress = reserved.status === "dispatched" || reserved.status === "reserved";
   const error = new AkentrosError(
@@ -512,7 +629,12 @@ export async function prepareAkentrosChatRequest({
   idempotencyKey?: string | null;
 }) {
   if (!isObject(body)) throw invalidRequest("The request body must be a JSON object.");
-  const unsupportedField = Object.keys(body).find((field) => !PUBLIC_REQUEST_FIELDS.has(field));
+  // ECO-02:白名單外的欄位回 400 unsupported_parameter;但對閘道中立、
+  // 可安全忽略的 OpenAI 參數(TOLERATED_IGNORED_FIELDS)接受後丟棄,
+  // 不轉發、不進指紋,讓 SDK 預設呼叫與常見使用者程式碼不再踩雷。
+  const unsupportedField = Object.keys(body).find(
+    (field) => !PUBLIC_REQUEST_FIELDS.has(field) && !TOLERATED_IGNORED_FIELDS.has(field),
+  );
   if (unsupportedField) {
     throw invalidRequest(
       `The parameter '${unsupportedField}' is not supported by Akentros.`,
@@ -551,13 +673,8 @@ export async function prepareAkentrosChatRequest({
       "unsupported_feature",
     );
   }
-  if (body.response_format !== undefined) {
-    throw invalidRequest(
-      "response_format is not enabled for this Akentros model.",
-      "response_format",
-      "unsupported_feature",
-    );
-  }
+  // ECO-01:response_format 分型處理(見 validateResponseFormat)。
+  const responseFormat = validateResponseFormat(body.response_format, model);
   const messages = validateMessages(body.messages);
   const usesTools =
     body.tools !== undefined ||
@@ -617,7 +734,23 @@ export async function prepareAkentrosChatRequest({
     body.seed === undefined
       ? undefined
       : integer(body.seed, "seed", { minimum: -2147483648, maximum: 2147483647 });
-  const n = body.n === undefined ? undefined : integer(body.n, "n", { minimum: 1, maximum: 1 });
+  // ECO-05:維持僅支援 n=1(最小方案),但錯誤改為明確的 unsupported_feature
+  // 並直接告訴遷移者替代做法;形狀不合法(非正整數)仍回一般 400。
+  let n: number | undefined;
+  if (body.n !== undefined) {
+    const parsed = Number(body.n);
+    if (!Number.isSafeInteger(parsed) || parsed < 1) {
+      throw invalidRequest("n must be a positive integer.", "n");
+    }
+    if (parsed > 1) {
+      throw invalidRequest(
+        "Multiple choices (n>1) are not supported; send separate requests.",
+        "n",
+        "unsupported_feature",
+      );
+    }
+    n = parsed;
+  }
   const stop = body.stop === undefined ? undefined : validateStop(body.stop);
   const streamOptions = validateStreamOptions(body.stream_options, stream);
   const chatTemplateKwargs = validateChatTemplateKwargs(body.chat_template_kwargs, modelId);
@@ -637,6 +770,7 @@ export async function prepareAkentrosChatRequest({
     ...(n !== undefined ? { n } : {}),
     ...(stop !== undefined ? { stop } : {}),
     ...(chatTemplateKwargs ? { chat_template_kwargs: chatTemplateKwargs } : {}),
+    ...(responseFormat !== undefined ? { response_format: responseFormat } : {}),
     ...(tools ? { tools } : {}),
     ...(toolChoice !== undefined ? { tool_choice: toolChoice } : {}),
   };

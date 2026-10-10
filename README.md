@@ -34,6 +34,25 @@ See [Quick start](#快速開始) below, [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)
 - **維運探針與結構化日誌**:`GET /healthz` 回報程序與資料庫狀態(200 ok / 503 degraded),供負載平衡與監控探測;Node 自架拓撲另提供 `GET /metrics`(Prometheus 文字格式:請求數、延遲、token 用量、消費金額,`AKENTROS_METRICS_ENABLED=false` 可關閉);內部日誌以單行 JSON 輸出,可直接交由 Cloudflare observability、journald 等採集。
 - **契約測試護欄**:openapi.yaml、前後端 catalog、路由與安全不變式都有測試釘死,漂移即擋建置。Biome lint/format 與 `npm audit`(high 以上)同樣在 CI 強制。
 
+### OpenAI 端點相容性矩陣
+
+自 LiteLLM / one-api 遷移前,先對照本表(權威清單以 `docs/openapi.yaml` 的 `info.description` 為準,契約測試釘死兩邊一致):
+
+| OpenAI 端點 | 支援 | 備註 |
+| --- | :---: | --- |
+| `GET /v1/models` | ✅ | |
+| `POST /v1/chat/completions` | ✅ | SSE 串流、工具呼叫、`response_format`(`text` 放行;`json_object`/`json_schema` 依模型能力旗標 `json_mode`/`structured_outputs` 透傳) |
+| `POST /v1/embeddings` | ✅ | 僅文字輸入,僅計輸入 token |
+| `POST /v1/responses` | ❌ | 新 SDK 預設介面;尚不支援 |
+| legacy `POST /v1/completions` | ❌ | 已汰換格式,明確不支援 |
+| `/v1/audio/*`(語音/轉錄) | ❌ | 非 token 計費模型,未規劃 |
+| `/v1/images/*`(生成/編輯/變體) | ❌ | 非 token 計費模型,未規劃 |
+| `/v1/moderations` | ❌ | |
+| `/v1/files`、`/v1/batches` | ❌ | |
+| `/v1/realtime` | ❌ | |
+
+參數面對策:SDK 預設呼叫可直接使用;`user`、`store`、`metadata`、`service_tier` 等對閘道中立的參數接受後丟棄(不轉發、不報錯);`logprobs`、`parallel_tool_calls` 等語意相關參數回 `400 unsupported_parameter` 並指名欄位;`n>1` 回 `400 unsupported_feature` 並提示改送獨立請求。
+
 ## 架構
 
 ```mermaid

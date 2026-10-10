@@ -40,7 +40,6 @@ test("inference and developer surfaces keep separate authentication contracts", 
     const operation: any = Object.values(specification.paths[path])[0];
     assert.deepEqual(operation.security, [{ AkentrosKey: [] }]);
   }
-
   const developerPaths = Object.entries(specification.paths).filter(([path]) =>
     path.startsWith("/api/ai/developer/"),
   );
@@ -56,6 +55,40 @@ test("inference and developer surfaces keep separate authentication contracts", 
     }
   }
   assert.equal("SessionBearer" in specification.components.securitySchemes, false);
+});
+
+// ECO-04 P1:公開推理面「支援哪些 OpenAI 端點」以契約釘死,防止未來
+// 無聲漂移 —— 路徑集新增或移除端點時,此測試與 README 相容性矩陣必須
+// 同步更新,遷移者永遠有一份權威清單可查。
+const EXPECTED_PUBLIC_INFERENCE_PATHS = [
+  "/api/ai/v1/models",
+  "/api/ai/v1/chat/completions",
+  "/api/ai/v1/embeddings",
+];
+
+test("the public inference surface exposes exactly the documented endpoints", () => {
+  const publicPaths = Object.keys(specification.paths).filter((path) => path.startsWith("/api/ai/v1/"));
+  assert.deepEqual(publicPaths, EXPECTED_PUBLIC_INFERENCE_PATHS);
+  // 契約描述必須載明不支援的 OpenAI 端點,與 README 相容性矩陣一致。
+  const description: string = specification.info.description;
+  for (const endpoint of EXPECTED_PUBLIC_INFERENCE_PATHS) {
+    assert.ok(description.includes(endpoint), `${endpoint} missing from info.description`);
+  }
+  for (const unsupported of [
+    "/responses",
+    "/audio",
+    "/images",
+    "/moderations",
+    "/files",
+    "/batches",
+    "/realtime",
+    "legacy /completions",
+  ]) {
+    assert.ok(
+      description.includes(unsupported),
+      `info.description must explicitly list ${unsupported} as unsupported`,
+    );
+  }
 });
 
 test("API key secrets are confined to create and rotate mutation responses", () => {
@@ -88,6 +121,7 @@ test("chat contracts reject undeclared routing controls while preserving public 
     "model",
     "n",
     "presence_penalty",
+    "response_format",
     "seed",
     "stop",
     "stream",
@@ -97,6 +131,15 @@ test("chat contracts reject undeclared routing controls while preserving public 
     "tools",
     "top_p",
   ]);
+  // ECO-01:response_format 契約為分型 oneOf(text / json_object / json_schema)，
+  // 能力閘門的描述必須同時在 description 與各分支的 const 上可判讀。
+  assert.equal(request.properties.response_format.oneOf.length, 3);
+  assert.deepEqual(
+    request.properties.response_format.oneOf.map((branch: any) => branch.properties.type.const),
+    ["text", "json_object", "json_schema"],
+  );
+  assert.match(request.properties.response_format.description, /json_mode/);
+  assert.match(request.properties.response_format.description, /structured_outputs/);
   for (const internalField of ["provider", "route", "transforms", "upstream_model"]) {
     assert.equal(internalField in request.properties, false);
   }

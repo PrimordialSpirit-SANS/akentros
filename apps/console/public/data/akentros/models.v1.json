@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "pricing_revision": "2026-09-19.1",
-  "updated_at": "2026-09-19",
+  "pricing_revision": "2026-10-11.1",
+  "updated_at": "2026-10-11",
   "billing_disclaimer": "點數依實際輸入與輸出 Token 計算，每次請求至少扣 1 點。",
   "models": [
     {
