@@ -454,9 +454,14 @@ export async function handleAkentrosChatCompletions(
       },
     });
   } catch (error) {
-    if (admissionAcquired && prepared?.requestId) {
-      await releaseAdmissionOnce();
-    }
+    // ECO-ADJ-1(SN-10 迴歸修補):驗證失敗(prepare 拋出、prepared 未定)
+    // 也必須釋放 admission 租約。原條件僅在 prepared?.requestId 存在時釋放,
+    // 導致每個 400 驗證失敗都洩漏一個 in-flight 租約 —— 金鑰在
+    // max_in_flight 次無效請求後被鎖 429,直到 5 分鐘租約 TTL。遷移者的
+    // SDK 常態攜帶被拒參數(logprobs 等),此洩漏把「可分辨的 400」劣化
+    // 成「鎖死 5 分鐘」。releaseAdmissionOnce 自身冪等(admissionAcquired
+    // 檢查),成功路徑的重複呼叫是 no-op。
+    await releaseAdmissionOnce();
     const safe = publicProviderError(error);
     const errorRequestId = (error as { requestId?: string })?.requestId;
     return sendOpenAiError(c, safe, errorRequestId || prepared?.requestId || c.get("aiRequestId") || "");
@@ -690,9 +695,14 @@ export async function handleAkentrosResponses(
       },
     });
   } catch (error) {
-    if (admissionAcquired && prepared?.requestId) {
-      await releaseAdmissionOnce();
-    }
+    // ECO-ADJ-1(SN-10 迴歸修補):驗證失敗(prepare 拋出、prepared 未定)
+    // 也必須釋放 admission 租約。原條件僅在 prepared?.requestId 存在時釋放,
+    // 導致每個 400 驗證失敗都洩漏一個 in-flight 租約 —— 金鑰在
+    // max_in_flight 次無效請求後被鎖 429,直到 5 分鐘租約 TTL。遷移者的
+    // SDK 常態攜帶被拒參數(logprobs 等),此洩漏把「可分辨的 400」劣化
+    // 成「鎖死 5 分鐘」。releaseAdmissionOnce 自身冪等(admissionAcquired
+    // 檢查),成功路徑的重複呼叫是 no-op。
+    await releaseAdmissionOnce();
     const safe = publicProviderError(error);
     const errorRequestId = (error as { requestId?: string })?.requestId;
     return sendOpenAiError(c, safe, errorRequestId || prepared?.requestId || c.get("aiRequestId") || "");
@@ -782,9 +792,14 @@ export async function handleAkentrosEmbeddings(
       await releaseAdmissionOnce();
     }
   } catch (error) {
-    if (admissionAcquired && prepared?.requestId) {
-      await releaseAdmissionOnce();
-    }
+    // ECO-ADJ-1(SN-10 迴歸修補):驗證失敗(prepare 拋出、prepared 未定)
+    // 也必須釋放 admission 租約。原條件僅在 prepared?.requestId 存在時釋放,
+    // 導致每個 400 驗證失敗都洩漏一個 in-flight 租約 —— 金鑰在
+    // max_in_flight 次無效請求後被鎖 429,直到 5 分鐘租約 TTL。遷移者的
+    // SDK 常態攜帶被拒參數(logprobs 等),此洩漏把「可分辨的 400」劣化
+    // 成「鎖死 5 分鐘」。releaseAdmissionOnce 自身冪等(admissionAcquired
+    // 檢查),成功路徑的重複呼叫是 no-op。
+    await releaseAdmissionOnce();
     const safe = publicProviderError(error);
     const errorRequestId = (error as { requestId?: string })?.requestId;
     return sendOpenAiError(c, safe, errorRequestId || prepared?.requestId || c.get("aiRequestId") || "");
