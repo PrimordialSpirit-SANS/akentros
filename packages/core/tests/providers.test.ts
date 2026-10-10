@@ -262,6 +262,70 @@ test("Anthropic maps every OpenAI tool_choice mode to its Messages API equivalen
   assert.deepEqual(named.tool_choice, { type: "tool", name: "lookup" });
 });
 
+// ECO-03:user 訊息的 content parts 轉換:https:// image_url → Anthropic
+// url source block;data:image/…;base64 → base64 source block(media_type 解
+// 析);text parts 照常成為 text blocks。未知 part 形狀防禦性跳過。
+test("Anthropic requests convert OpenAI vision content parts into image source blocks", () => {
+  const pool = requireProviderPool("anthropic-production");
+  const credential = resolveProviderCredential(pool, pool.credentials[0], {
+    ANTHROPIC_API_KEY_1: "anthropic-test-secret",
+  });
+  const request = buildProviderRequest({
+    route: { provider: "anthropic", upstream_model: "claude-test-model" },
+    pool,
+    credential,
+    body: {
+      model: "akentros/claude-sonnet-5",
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "text", text: "這兩張圖差在哪?" },
+            { type: "image_url", image_url: { url: "https://example.com/before.png" } },
+            { type: "image_url", image_url: { url: "data:image/jpeg;base64,/9j/4AAQ" } },
+          ],
+        },
+      ],
+      max_completion_tokens: 128,
+    },
+  });
+  const payload = JSON.parse(request.init.body);
+  assert.equal(payload.messages.length, 1);
+  assert.deepEqual(payload.messages[0], {
+    role: "user",
+    content: [
+      { type: "text", text: "這兩張圖差在哪?" },
+      { type: "image", source: { type: "url", url: "https://example.com/before.png" } },
+      {
+        type: "image",
+        source: { type: "base64", media_type: "image/jpeg", data: "/9j/4AAQ" },
+      },
+    ],
+  });
+
+  // 防禦性轉換:未知 part 類型跳過而非崩潰;非法 data URL(非 base64)
+  // 不產生 image block,但 text parts 仍完整送達。
+  const defensive = buildProviderRequest({
+    route: { provider: "anthropic", upstream_model: "claude-test-model" },
+    pool,
+    credential,
+    body: {
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "text", text: "keep me" },
+            { type: "video_url", video_url: { url: "https://example.com/clip.mp4" } },
+            { type: "image_url", image_url: { url: "data:image/png,not-base64" } },
+          ],
+        },
+      ],
+    },
+  });
+  const defensivePayload = JSON.parse(defensive.init.body);
+  assert.deepEqual(defensivePayload.messages[0].content, [{ type: "text", text: "keep me" }]);
+});
+
 test("Anthropic JSON responses are normalized into the OpenAI completion shape", async () => {
   const result = await invokeProviderRoute({
     route: { provider: "anthropic", upstream_model: "claude-test-model", timeout_ms: 1000 },

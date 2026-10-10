@@ -128,6 +128,7 @@ test("Hono exposes the public Akentros inference routes", () => {
     "GET /models",
     "POST /chat/completions",
     "POST /embeddings",
+    "POST /responses",
   ]);
   assert.match(read("apps/gateway/src/app.ts"), /app\.route\(['"]\/api\/ai\/v1['"],\s*aiPublicRoutes\)/);
 });

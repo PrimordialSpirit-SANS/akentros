@@ -1,11 +1,14 @@
 import {
   createAkentrosInferenceRuntime,
+  createAkentrosResponsesStreamBridge,
   listPublicAkentrosModels,
   measureStreamChunkOutputChars,
   normalizeStreamChunk,
   prepareAkentrosChatRequest,
   prepareAkentrosEmbeddingsRequest,
+  prepareAkentrosResponsesRequest,
   publicProviderError,
+  publicResponsesObject,
 } from "@akentros/core/inference";
 import { BACKEND_PRICING } from "@akentros/core/pricing";
 import { AkentrosProviderError } from "@akentros/core/providers";
@@ -55,6 +58,7 @@ function setPublicHeaders(c: AkentrosContext, requestId: string) {
 function publicEndpointLabel(path: string) {
   if (path.endsWith("/chat/completions")) return "chat.completions";
   if (path.endsWith("/embeddings")) return "embeddings";
+  if (path.endsWith("/responses")) return "responses";
   if (path.endsWith("/models")) return "models";
   return "other";
 }
@@ -450,9 +454,14 @@ export async function handleAkentrosChatCompletions(
       },
     });
   } catch (error) {
-    if (admissionAcquired && prepared?.requestId) {
-      await releaseAdmissionOnce();
-    }
+    // ECO-ADJ-1(SN-10 迴歸修補):驗證失敗(prepare 拋出、prepared 未定)
+    // 也必須釋放 admission 租約。原條件僅在 prepared?.requestId 存在時釋放,
+    // 導致每個 400 驗證失敗都洩漏一個 in-flight 租約 —— 金鑰在
+    // max_in_flight 次無效請求後被鎖 429,直到 5 分鐘租約 TTL。遷移者的
+    // SDK 常態攜帶被拒參數(logprobs 等),此洩漏把「可分辨的 400」劣化
+    // 成「鎖死 5 分鐘」。releaseAdmissionOnce 自身冪等(admissionAcquired
+    // 檢查),成功路徑的重複呼叫是 no-op。
+    await releaseAdmissionOnce();
     const safe = publicProviderError(error);
     const errorRequestId = (error as { requestId?: string })?.requestId;
     return sendOpenAiError(c, safe, errorRequestId || prepared?.requestId || c.get("aiRequestId") || "");
@@ -461,6 +470,251 @@ export async function handleAkentrosChatCompletions(
 
 aiPublicRoutes.post("/chat/completions", requireAiScope("chat:completions"), (c: AkentrosContext) =>
   handleAkentrosChatCompletions(c),
+);
+
+// ECO-04 P2:/responses → chat/completions 橋接。請求面由
+// prepareAkentrosResponsesRequest 轉換(input/instructions/stream 子集),
+// 執行與計費完全共用 chat 管線(reserve→settle→refund,endpoint 標
+// `responses`);非串流回應包回 Responses 的 response 物件,串流將公開
+// chat chunk 橋接為 Responses SSE 事件序列(response.created →
+// response.output_text.delta → response.completed)。既有僅有
+// chat:completions scope 的金鑰向後相容放行(與 embeddings 同立場)。
+export async function handleAkentrosResponses(
+  c: AkentrosContext,
+  aiKeyOrResolver: MaybeKeyOrResolver = c.get("aiKey"),
+) {
+  if (!c.get("aiRequestId")) {
+    c.set("aiRequestId", newRequestId());
+  }
+  setPublicHeaders(c, c.get("aiRequestId") || "");
+  let prepared: any;
+  let streamContext: any;
+  let admissionAcquired = false;
+  let admissionRequestId: string | null = null;
+  let admissionReleasePromise: Promise<unknown> | null = null;
+  const releaseAdmissionOnce = () => {
+    if (!admissionAcquired || !admissionRequestId) return Promise.resolve();
+    if (!admissionReleasePromise) {
+      const leasedId = admissionRequestId;
+      admissionReleasePromise = releaseAkentrosApiLimit(c.env, leasedId)
+        .catch(() => {})
+        .finally(() => {
+          admissionAcquired = false;
+        });
+    }
+    return admissionReleasePromise;
+  };
+  try {
+    const aiKey = typeof aiKeyOrResolver === "function" ? await aiKeyOrResolver() : aiKeyOrResolver;
+    if (!aiKey) {
+      throw new AkentrosError("Akentros authentication is unavailable.", {
+        status: 503,
+        type: "service_unavailable",
+        code: "authentication_unavailable",
+      });
+    }
+    // 與 chat 相同:admission 提到 body 緩衝與 replay 檢查之前。
+    const provisionalId = newRequestId();
+    await acquireAkentrosApiLimit(c.env, {
+      apiKeyId: aiKey.id,
+      requestId: provisionalId,
+      rpmLimit: aiKey.rpm_limit,
+      maxInFlight: aiKey.max_in_flight,
+      leaseTtlMs: 5 * 60_000,
+    });
+    admissionAcquired = true;
+    admissionRequestId = provisionalId;
+    prepared = await prepareAkentrosResponsesRequest({
+      body: await readPublicJsonObject(c),
+      aiKey,
+      idempotencyKey: c.req.header("idempotency-key") || null,
+    });
+    c.set("aiRequestId", prepared.requestId);
+    setPublicHeaders(c, prepared.requestId);
+    const replay = await replayForPrepared(c.env, aiKey, prepared);
+    if (replay) {
+      await releaseAdmissionOnce();
+      return replayToResponse(c, replay);
+    }
+    if (c.req.raw.signal.aborted) {
+      throw new AkentrosProviderError("The client disconnected before dispatch.", {
+        category: "client_disconnected",
+        fallbackAllowed: false,
+      });
+    }
+    const runtime = runtimeFor(c.env);
+
+    if (!prepared.stream) {
+      try {
+        const result = await runtime.executeJson(prepared, { signal: c.req.raw.signal });
+        // 橋接包裝:chat completion → Responses 的 response 物件。
+        const responseBody = publicResponsesObject(result.body, prepared);
+        await saveReplayForPrepared(c.env, aiKey, prepared, "application/json", JSON.stringify(responseBody));
+        return c.json(responseBody);
+      } finally {
+        await releaseAdmissionOnce();
+      }
+    }
+
+    const providerAbortController = new AbortController();
+    const requestSignal = c.req.raw.signal;
+    const abortFromRequest = () =>
+      providerAbortController.abort(requestSignal.reason || new Error("client_disconnected"));
+    if (requestSignal.aborted) abortFromRequest();
+    else requestSignal.addEventListener("abort", abortFromRequest, { once: true });
+    try {
+      streamContext = await runtime.openStream(prepared, { signal: providerAbortController.signal });
+    } catch (error) {
+      requestSignal.removeEventListener("abort", abortFromRequest);
+      throw error;
+    }
+    const encoder = new TextEncoder();
+    let cancelled = false;
+    const replayFrames: string[] = [];
+    // Responses SSE 以 `event:` + `data:` 雙行編頓;橋接狀態機把已正規化的
+    // chat chunk 翻譯為事件序列,結束時補齊 done 序列與 response.completed。
+    const bridge = createAkentrosResponsesStreamBridge(prepared);
+    const frameOf = (frame: { event: string; data: any }) =>
+      `event: ${frame.event}\ndata: ${JSON.stringify(frame.data)}\n\n`;
+    const stream = new ReadableStream({
+      async start(controller) {
+        let usage = null;
+        let sawDone = false;
+        try {
+          for await (const event of streamContext.events) {
+            if (event.data === "[DONE]") {
+              sawDone = true;
+              break;
+            }
+            let upstream: any;
+            try {
+              upstream = JSON.parse(event.data);
+            } catch (cause) {
+              throw new AkentrosProviderError("The model stream contained invalid JSON.", {
+                provider: "unknown",
+                category: "invalid_provider_response",
+                fallbackAllowed: false,
+                responseStarted: true,
+                usageUnknown: true,
+                cause,
+              });
+            }
+            const chunk = normalizeStreamChunk(upstream, prepared);
+            if (chunk.usage) {
+              usage = chunk.usage;
+              streamContext.receivedUsage = usage;
+            }
+            // 與 chat 相同:逐 chunk 累計輸出長度供缺 usage 時的保守結算。
+            streamContext.estimatedOutputChars =
+              (streamContext.estimatedOutputChars || 0) + measureStreamChunkOutputChars(chunk);
+            for (const frame of bridge.translate(chunk)) {
+              const encoded = frameOf(frame);
+              replayFrames.push(encoded);
+              controller.enqueue(encoder.encode(encoded));
+            }
+          }
+          if (!sawDone) {
+            throw new AkentrosProviderError("The model stream ended unexpectedly.", {
+              provider: "unknown",
+              category: "stream_interrupted",
+              fallbackAllowed: false,
+              responseStarted: true,
+              usageUnknown: true,
+            });
+          }
+          await runtime.finalizeStream(streamContext, usage);
+          for (const frame of bridge.finalize()) {
+            const encoded = frameOf(frame);
+            replayFrames.push(encoded);
+            controller.enqueue(encoder.encode(encoded));
+          }
+          if (replayFrames.length > 0) {
+            await saveReplayForPrepared(c.env, aiKey, prepared, "text/event-stream", replayFrames.join(""));
+          }
+        } catch (error) {
+          try {
+            await runtime.failStream(streamContext, error);
+          } catch {
+            // The original stream failure remains the public error.
+          }
+          // 串流中途失敗:以 Responses 協定的 error 事件在頻內回報(已開始
+          // 的串流不能改狀態碼),計費結算由 failStream 依 usage 處理。
+          if (!cancelled) {
+            const safe = publicProviderError(error);
+            const envelope = openAiErrorBody(
+              safe instanceof AkentrosError
+                ? safe
+                : new AkentrosError("Akentros streaming was interrupted.", {
+                    status: 503,
+                    type: "server_error",
+                    code: "service_unavailable",
+                  }),
+            );
+            controller.enqueue(
+              encoder.encode(
+                `event: error\ndata: ${JSON.stringify({ type: "error", error: envelope.error })}\n\n`,
+              ),
+            );
+          }
+        } finally {
+          requestSignal.removeEventListener("abort", abortFromRequest);
+          await releaseAdmissionOnce();
+          if (!cancelled) controller.close();
+        }
+      },
+      async cancel(reason) {
+        cancelled = true;
+        providerAbortController.abort(
+          Object.assign(new Error("client_disconnected"), {
+            cause: reason,
+          }),
+        );
+        try {
+          await runtime.failStream(
+            streamContext,
+            Object.assign(new Error("client_disconnected"), {
+              code: "client_disconnected",
+              usageUnknown: true,
+              cause: reason,
+            }),
+          );
+        } catch {
+          // Cancellation cannot change a closed client connection.
+        }
+        requestSignal.removeEventListener("abort", abortFromRequest);
+        await releaseAdmissionOnce();
+      },
+    });
+    return new Response(stream, {
+      status: 200,
+      headers: {
+        "content-type": "text/event-stream; charset=utf-8",
+        "cache-control": "no-store, no-transform",
+        "x-request-id": prepared.requestId,
+        "x-akentros-pricing-revision": BACKEND_PRICING.revision,
+      },
+    });
+  } catch (error) {
+    // ECO-ADJ-1(SN-10 迴歸修補):驗證失敗(prepare 拋出、prepared 未定)
+    // 也必須釋放 admission 租約。原條件僅在 prepared?.requestId 存在時釋放,
+    // 導致每個 400 驗證失敗都洩漏一個 in-flight 租約 —— 金鑰在
+    // max_in_flight 次無效請求後被鎖 429,直到 5 分鐘租約 TTL。遷移者的
+    // SDK 常態攜帶被拒參數(logprobs 等),此洩漏把「可分辨的 400」劣化
+    // 成「鎖死 5 分鐘」。releaseAdmissionOnce 自身冪等(admissionAcquired
+    // 檢查),成功路徑的重複呼叫是 no-op。
+    await releaseAdmissionOnce();
+    const safe = publicProviderError(error);
+    const errorRequestId = (error as { requestId?: string })?.requestId;
+    return sendOpenAiError(c, safe, errorRequestId || prepared?.requestId || c.get("aiRequestId") || "");
+  }
+}
+
+aiPublicRoutes.post(
+  "/responses",
+  // 既有金鑰僅有 chat:completions 時向後相容放行(與 embeddings 同立場);
+  // 新金鑰由 AKENTROS_DEFAULT_SCOPES 直接取得 responses。
+  requireAnyAiScope("responses", "chat:completions"),
+  (c: AkentrosContext) => handleAkentrosResponses(c),
 );
 
 // embeddings 無串流路徑,流程與 chat 的非串流分支相同:準備(含保留單)→
@@ -538,9 +792,14 @@ export async function handleAkentrosEmbeddings(
       await releaseAdmissionOnce();
     }
   } catch (error) {
-    if (admissionAcquired && prepared?.requestId) {
-      await releaseAdmissionOnce();
-    }
+    // ECO-ADJ-1(SN-10 迴歸修補):驗證失敗(prepare 拋出、prepared 未定)
+    // 也必須釋放 admission 租約。原條件僅在 prepared?.requestId 存在時釋放,
+    // 導致每個 400 驗證失敗都洩漏一個 in-flight 租約 —— 金鑰在
+    // max_in_flight 次無效請求後被鎖 429,直到 5 分鐘租約 TTL。遷移者的
+    // SDK 常態攜帶被拒參數(logprobs 等),此洩漏把「可分辨的 400」劣化
+    // 成「鎖死 5 分鐘」。releaseAdmissionOnce 自身冪等(admissionAcquired
+    // 檢查),成功路徑的重複呼叫是 no-op。
+    await releaseAdmissionOnce();
     const safe = publicProviderError(error);
     const errorRequestId = (error as { requestId?: string })?.requestId;
     return sendOpenAiError(c, safe, errorRequestId || prepared?.requestId || c.get("aiRequestId") || "");

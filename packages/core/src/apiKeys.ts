@@ -1,7 +1,14 @@
 import { parseUsdToMicros, usdMicrosToDecimalString } from "./pricing.ts";
 
 const AKENTROS_API_KEY_PATTERN = /^sk-akentros-(live|test)_[A-Za-z0-9_-]{40,}$/;
-export const AKENTROS_DEFAULT_SCOPES = Object.freeze(["chat:completions", "embeddings", "models:read"]);
+// ECO-04 P2:新金鑰直接取得 responses(/responses 橋接端點);僅有
+// chat:completions 的既有金鑰由端點層向後相容放行。
+export const AKENTROS_DEFAULT_SCOPES = Object.freeze([
+  "chat:completions",
+  "embeddings",
+  "responses",
+  "models:read",
+]);
 export const AKENTROS_MAX_ACTIVE_KEYS = 10;
 export const AKENTROS_MIN_KEY_TTL_MS = 60 * 60 * 1000;
 

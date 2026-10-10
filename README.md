@@ -24,7 +24,7 @@ See [Quick start](#快速開始) below, [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)
 
 ## 功能特性
 
-- **OpenAI 相容 API**:`GET /api/ai/v1/models`、`POST /api/ai/v1/chat/completions`(支援 SSE 串流、`Idempotency-Key` 冪等)、`POST /api/ai/v1/embeddings`(文字向量,僅計輸入 token),任何 OpenAI SDK 指向 `baseURL` 即可使用。**冪等語意**:OpenAI 對已完成的冪等鍵會「重放原始回應」;Akentros 預設不落地 prompt/completion,已完成鍵重送回 `409 idempotent_request_replayed`(附原始 `X-Request-Id`)。需要 OpenAI 式重放的場景,可在金鑰上 opt-in(`idempotency_replay_ttl_seconds`,最長 7 天):成功回應(JSON 與 SSE)落地該時限,完成鍵重送且請求體一致時直接重放(`X-Akentros-Idempotent-Replay: true`),不再執行、不再計費;時限屆滿後綁定自動釋放,同鍵同體重送視為全新請求重新執行並重新落地(TTL 是重放窗口,不是金鑰的死刑,與 OpenAI 生命週期一致);超過 2MB 落地上限的回應改存墓碑標記,時限內同鍵重送回可分辨的 `409 idempotency_replay_not_stored`(不重放、不重新執行、不雙重扣費),時限過後同樣釋放;進行中鍵回 `409 idempotent_request_in_progress`、同鍵不同請求體回 `409 idempotency_conflict`(見 `docs/openapi.yaml` 的 `Idempotency-Key` 參數說明)。
+- **OpenAI 相容 API**:`GET /api/ai/v1/models`、`POST /api/ai/v1/chat/completions`(支援 SSE 串流、`Idempotency-Key` 冪等)、`POST /api/ai/v1/embeddings`(文字向量,僅計輸入 token)、`POST /api/ai/v1/responses`(新 SDK 預設介面的橋接子集,詳見下方相容性矩陣),任何 OpenAI SDK 指向 `baseURL` 即可使用。**冪等語意**:OpenAI 對已完成的冪等鍵會「重放原始回應」;Akentros 預設不落地 prompt/completion,已完成鍵重送回 `409 idempotent_request_replayed`(附原始 `X-Request-Id`)。需要 OpenAI 式重放的場景,可在金鑰上 opt-in(`idempotency_replay_ttl_seconds`,最長 7 天):成功回應(JSON 與 SSE)落地該時限,完成鍵重送且請求體一致時直接重放(`X-Akentros-Idempotent-Replay: true`),不再執行、不再計費;時限屆滿後綁定自動釋放,同鍵同體重送視為全新請求重新執行並重新落地(TTL 是重放窗口,不是金鑰的死刑,與 OpenAI 生命週期一致);超過 2MB 落地上限的回應改存墓碑標記,時限內同鍵重送回可分辨的 `409 idempotency_replay_not_stored`(不重放、不重新執行、不雙重扣費),時限過後同樣釋放;進行中鍵回 `409 idempotent_request_in_progress`、同鍵不同請求體回 `409 idempotency_conflict`(見 `docs/openapi.yaml` 的 `Idempotency-Key` 參數說明)。
 - **美元計費**:內部以微美元整數結算(無浮點誤差),請求前「預留」消費上限、完成後依實際 usage 結算、差額自動退回;全流程冪等、可重跑、可對帳。
 - **多供應商池**:37 條 credential 設定(openrouter、cloudflare-workers-ai、qwencloud、openai、anthropic、groq…),加權輪詢、健康冷卻、in-flight lease、自動 fallback;secret 只存環境變數名稱,資料庫僅存 opaque credential ID。
 - **無伺服器 PostgreSQL**:`DATABASE_URL` 指向 PG 時,驅動依環境自動選擇——TCP `pg` 連線池(Node VPS、Render、Vercel/Netlify Node 函式,遠端主機自動 TLS、無伺服器環境每實例一條連線)或 Neon 相容 WebSocket 驅動(`*.neon.tech` 自動啟用;邊緣 runtime、Cloudflare Workers 直連,支援自架 `AKENTROS_PG_WS_PROXY` 閘道);Workers 另可經 Hyperdrive 綁定走 TCP。兩種驅動共用同一套互動式交易語意(`FOR UPDATE` 行鎖、`pg_advisory_xact_lock`),計費不變式不因拓撲妥協。詳見 `docs/DEPLOYMENT.md` 的 Topology C。
@@ -33,6 +33,25 @@ See [Quick start](#快速開始) below, [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)
 - **開發者控制台**:總覽、金鑰、串流測試(逐字渲染、usage 統計)、模型目錄(含免費額度)、請求紀錄與單筆詳情;提供 `?demo=1` 離線示範模式。
 - **維運探針與結構化日誌**:`GET /healthz` 回報程序與資料庫狀態(200 ok / 503 degraded),供負載平衡與監控探測;Node 自架拓撲另提供 `GET /metrics`(Prometheus 文字格式:請求數、延遲、token 用量、消費金額,`AKENTROS_METRICS_ENABLED=false` 可關閉);內部日誌以單行 JSON 輸出,可直接交由 Cloudflare observability、journald 等採集。
 - **契約測試護欄**:openapi.yaml、前後端 catalog、路由與安全不變式都有測試釘死,漂移即擋建置。Biome lint/format 與 `npm audit`(high 以上)同樣在 CI 強制。
+
+### OpenAI 端點相容性矩陣
+
+自 LiteLLM / one-api 遷移前,先對照本表(權威清單以 `docs/openapi.yaml` 的 `info.description` 為準,契約測試釘死兩邊一致):
+
+| OpenAI 端點 | 支援 | 備註 |
+| --- | :---: | --- |
+| `GET /v1/models` | ✅ | |
+| `POST /v1/chat/completions` | ✅ | SSE 串流、工具呼叫、`response_format`(`text` 放行;`json_object`/`json_schema` 依模型能力旗標 `json_mode`/`structured_outputs` 透傳) |
+| `POST /v1/embeddings` | ✅ | 僅文字輸入,僅計輸入 token |
+| `POST /v1/responses` | ✅ | 橋接子集:`model`/`input`(含 vision 的 `input_text`/`input_image`)/`instructions`/`stream`/`max_output_tokens`/`temperature`/`top_p`,內部走 chat 管線計費,包回 Responses 物件與 `response.*` SSE 事件;`background`、`previous_response_id`、`tools` 等進階功能回 `400 unsupported_feature` |
+| legacy `POST /v1/completions` | ❌ | 已汰換格式,明確不支援 |
+| `/v1/audio/*`(語音/轉錄) | ❌ | 非 token 計費模型,未規劃 |
+| `/v1/images/*`(生成/編輯/變體) | ❌ | 非 token 計費模型,未規劃 |
+| `/v1/moderations` | ❌ | |
+| `/v1/files`、`/v1/batches` | ❌ | |
+| `/v1/realtime` | ❌ | |
+
+參數面對策:SDK 預設呼叫可直接使用;`user`、`store`、`metadata`、`service_tier` 等對閘道中立的參數接受後丟棄(不轉發、不報錯);`logprobs`、`parallel_tool_calls` 等語意相關參數回 `400 unsupported_parameter` 並指名欄位;`n>1` 回 `400 unsupported_feature` 並提示改送獨立請求。`/v1/responses` 的 `input` 支援字串或訊息陣列(含 vision 模型的 `input_image` parts)。
 
 ## 架構
 

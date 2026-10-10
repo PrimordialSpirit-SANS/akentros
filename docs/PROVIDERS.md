@@ -38,10 +38,38 @@ secret or `.dev.vars` binding listed below.
   `system` parameter, tool results into user `tool_result` blocks, assistant
   tool calls into `tool_use` blocks, folds consecutive same-role turns, maps
   `tool_choice` (`required` → `any`), and drops unsupported fields
-  (`seed`, `n`, penalties, `stream_options`). `temperature` wins over `top_p`
-  because Anthropic rejects the combination. Responses and SSE streams are
-  normalized back into the OpenAI completion/chunk shapes, including
-  `thinking` → `reasoning` text and `tool_use` → `tool_calls`.
+  (`seed`, `n`, penalties, `stream_options`, `response_format` — the
+  Messages API has no response_format, so `json_mode` and
+  `structured_outputs` stay false for Anthropic models). `temperature` wins
+  over `top_p` because Anthropic rejects the combination. Vision `image_url`
+  parts are converted into image source blocks (`https://` → url source,
+  `data:image/...;base64` → base64 source with the parsed media type).
+  Responses and SSE streams are normalized back into the OpenAI
+  completion/chunk shapes, including `thinking` → `reasoning` text and
+  `tool_use` → `tool_calls`.
+- **response_format / structured outputs.** `response_format: text` is
+  silently accepted and never forwarded. `json_object` and `json_schema` are
+  forwarded verbatim to OpenAI-compatible upstreams **only** for models whose
+  catalog capabilities enable them (`json_mode` / `structured_outputs`);
+  others return 400 `unsupported_feature` before dispatch. Current flags per
+  upstream (verify against provider docs when bumping the catalog):
+  - `structured_outputs: true` — `openai`, `google`, `xai` (documented
+    `response_format: json_schema` support on their OpenAI-compatible
+    surfaces).
+  - `json_mode: true` — the above plus `deepseek` (JSON Output), `moonshot`
+    and `qwencloud` (documented `response_format: json_object`).
+  - `false` for `anthropic` (no response_format on the Messages API), `zhipu`
+    and `cloudflare-workers-ai` (no explicit public documentation; flip after
+    live verification).
+- **Vision input.** Models with `capabilities.vision: true` accept user
+  message `image_url` parts (`https://` or `data:image/` sources only).
+  OpenAI-compatible upstreams receive the parts verbatim; Anthropic gets
+  converted image source blocks; Cloudflare Workers AI models are text-only
+  (vision stays false). Each image part adds a conservative flat 1,000 tokens
+  to the input estimate.
+- **Multiple choices.** `n > 1` is rejected with 400 `unsupported_feature`
+  across the whole public surface (single-choice contract); send separate
+  requests instead.
 
 ## Models and Akentros prices
 

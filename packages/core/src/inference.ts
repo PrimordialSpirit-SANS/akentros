@@ -38,6 +38,14 @@ const PUBLIC_REQUEST_FIELDS = new Set([
   "response_format",
 ]);
 const PUBLIC_FINISH_REASONS = new Set(["stop", "length", "content_filter", "tool_calls"]);
+// ECO-02:對閘道中立、可安全忽略的 OpenAI 參數(user 追蹤標識、store、
+// metadata、service_tier 等 SDK 常見預設欄位):接受後丟棄,不轉發、不進
+// 指紋 —— 指紋針對 sanitised 後的 upstream body 計算,容忍欄位自然不在
+// 其中,同鍵同體重放語意維持不變(與 LiteLLM/one-api 的「未知參數預設
+// 忽略」對齊)。語意相關的欄位(logprobs、top_logprobs、parallel_tool_calls、
+// functions、function_call)刻意不納入:靜默忽略會改變回應或行為,維持
+// 400 並讓錯誤訊息指名欄位。
+const TOLERATED_IGNORED_FIELDS = new Set(["user", "store", "metadata", "service_tier"]);
 const PUBLIC_AKENTROS_ERROR_CODES = new Set([
   "invalid_request",
   "invalid_json",
@@ -74,6 +82,10 @@ const MAX_PROVIDER_ATTEMPTS = 8;
 const MAX_TOOL_CALL_ARGUMENTS_CHARS = 256 * 1024;
 // tools[].function.parameters 為任意 JSON Schema;序列化長度上限同上。
 const MAX_TOOL_PARAMETERS_JSON_CHARS = 64 * 1024;
+// ECO-01:response_format 的 json_schema.schema 與 tools 的 parameters
+// 同為任意 JSON Schema,沿用同一組大小/深度防護,避免合法請求體內塞入
+// 超大 schema 拖累指紋計算與上游轉發。
+const MAX_RESPONSE_FORMAT_SCHEMA_JSON_CHARS = MAX_TOOL_PARAMETERS_JSON_CHARS;
 // Recursive JSON.stringify throws RangeError beyond ~4.4k nesting levels; far
 // below that we reject with a 400 instead of letting serialization explode in
 // validateTools, token estimation, or the upstream fetch body.
@@ -203,7 +215,61 @@ function validateFunctionCall(
   return { name: value.name, arguments: value.arguments };
 }
 
-function validateMessages(messages: unknown): any[] {
+// ECO-03:vision 輸入的 content parts 上限。每 part 文字 ≤100k(沿用純文字
+// 訊息上限)、URL ≤8k、parts ≤64,總體沿用 HTTP 層 32MB body 上限。
+const MAX_MESSAGE_CONTENT_PARTS = 64;
+const MAX_IMAGE_URL_CHARS = 8 * 1024;
+// 每個 image part 以固定保守值計入輸入 token 估計(起跳 1,000;URL 位元組
+// 已在 JSON 序列化估計內,此值補上「圖片本體」未被 URL 長度反映的成本),
+// 依解析度精化留待後續。預留額邏輯沿用,確保不高估不足額。
+const IMAGE_PART_ESTIMATED_INPUT_TOKENS = 1_000;
+
+// ECO-03:vision 能力開啟的模型,user 訊息 content 可為 parts 陣列
+// ({type:"text"} 與 {type:"image_url"} 混合)。image_url 只接受 https://
+// 與 data:image/ 基底,防 file:// 等奇怪 scheme 直接透傳上游。
+function validateContentParts(value: unknown, label: string): any[] {
+  if (!Array.isArray(value) || value.length === 0 || value.length > MAX_MESSAGE_CONTENT_PARTS) {
+    throw invalidRequest(
+      `Message content parts must contain between 1 and ${MAX_MESSAGE_CONTENT_PARTS} items.`,
+      label,
+    );
+  }
+  return value.map((part: any, index: number) => {
+    const partLabel = `${label}.${index}`;
+    if (isObject(part) && part.type === "text") {
+      if (Object.keys(part).some((key) => key !== "type" && key !== "text")) {
+        throw invalidRequest("Text parts must only contain the type and text fields.", partLabel);
+      }
+      if (typeof part.text !== "string" || part.text.length === 0 || part.text.length > 100_000) {
+        throw invalidRequest("Text parts must contain 1-100000 characters.", `${partLabel}.text`);
+      }
+      return { type: "text", text: part.text };
+    }
+    if (isObject(part) && part.type === "image_url") {
+      if (
+        Object.keys(part).some((key) => key !== "type" && key !== "image_url") ||
+        !isObject(part.image_url) ||
+        Object.keys(part.image_url).some((key) => key !== "url")
+      ) {
+        throw invalidRequest("Image parts must only contain an image_url object with a url.", partLabel);
+      }
+      const url = part.image_url.url;
+      if (typeof url !== "string" || url.length === 0 || url.length > MAX_IMAGE_URL_CHARS) {
+        throw invalidRequest("Image URLs must contain 1-8192 characters.", `${partLabel}.image_url.url`);
+      }
+      if (!url.startsWith("https://") && !url.startsWith("data:image/")) {
+        throw invalidRequest(
+          "Image URLs must use https:// or data:image/ sources.",
+          `${partLabel}.image_url.url`,
+        );
+      }
+      return { type: "image_url", image_url: { url } };
+    }
+    throw invalidRequest("Message content parts must be text or image_url items.", partLabel);
+  });
+}
+
+function validateMessages(messages: unknown, { vision = false }: { vision?: boolean } = {}): any[] {
   if (!Array.isArray(messages) || messages.length === 0 || messages.length > 256) {
     throw invalidRequest("messages must contain between 1 and 256 items.", "messages");
   }
@@ -223,18 +289,30 @@ function validateMessages(messages: unknown): any[] {
         throw invalidRequest("Tool messages require a valid tool_call_id.", `${label}.tool_call_id`);
     } else if (message.tool_call_id !== undefined)
       throw invalidRequest("tool_call_id is only valid for tool messages.", `${label}.tool_call_id`);
+    let content: any;
     if (hasToolCalls) {
       // Assistant tool-call turns may carry null content (or a short string of
       // interleaved text), but never structured content parts — the public
-      // contract declares content as string|null for every role.
+      // contract declares content as string|null for every non-user role.
       if (message.content !== undefined && message.content !== null && typeof message.content !== "string")
         throw invalidRequest("Message content must be a string or null.", `${label}.content`);
-    } else if (typeof message.content !== "string" || message.content.length === 0)
+      content = message.content === undefined || message.content === null ? null : message.content;
+    } else if (Array.isArray(message.content)) {
+      // ECO-03:content parts 僅開放給 vision 能力模型上的 user 訊息
+      // (視覺輸入的實際載體);其餘角色維持 string|null 契約。
+      if (message.role !== "user" || !vision) {
+        throw invalidRequest("Message content must be a string or null.", `${label}.content`);
+      }
+      content = validateContentParts(message.content, `${label}.content`);
+    } else if (typeof message.content !== "string" || message.content.length === 0) {
       throw invalidRequest(
         "Messages require non-empty text content or assistant tool calls.",
         `${label}.content`,
       );
-    if (typeof message.content === "string" && message.content.length > 100_000) {
+    } else {
+      content = message.content;
+    }
+    if (typeof content === "string" && content.length > 100_000) {
       throw invalidRequest("A message exceeds the supported text length.", `messages.${index}.content`);
     }
     if (message.tool_calls !== undefined && message.role !== "assistant")
@@ -246,8 +324,7 @@ function validateMessages(messages: unknown): any[] {
       : undefined;
     return {
       role: message.role,
-      content:
-        hasToolCalls && (message.content === undefined || message.content === null) ? null : message.content,
+      content,
       ...(toolCalls ? { tool_calls: toolCalls } : {}),
       ...(message.role === "tool" ? { tool_call_id: message.tool_call_id } : {}),
     };
@@ -325,6 +402,117 @@ function validateToolChoice(value: any, tools: any[]) {
   if (!tools.some((tool) => tool.function.name === value.function.name))
     throw invalidRequest("tool_choice references a function not present in tools.", "tool_choice");
   return { type: "function", function: { name: value.function.name } };
+}
+
+// ECO-01:response_format 的分型處理。
+// - text:OpenAI 預設值,靜默等同未指定(不轉發、不拒絕)。
+// - json_object(JSON mode):需模型 capabilities.json_mode,僅接受
+//   {type:"json_object"} 形狀,以 {type:"json_object"} 轉發。
+// - json_schema(structured outputs):需模型 capabilities.structured_outputs,
+//   驗證 {type, json_schema:{name, description?, schema, strict?}} 形狀與
+//   大小/深度上限後原樣轉發給 OpenAI 相容上游(Anthropic Messages API
+//   無 response_format,能力旗標一律 false,在此就會被擋下)。
+// - 其餘形狀(非物件、缺 type、未知 type):400 指名 response_format。
+// 能力未開啟時回 400 unsupported_feature(param 為 response_format),
+// 錯誤與「形狀不合法」可分辨,遷移者能立即定位是能力問題還是請求問題。
+function validateResponseFormat(value: unknown, model: any) {
+  if (value === undefined) return undefined;
+  if (!isObject(value)) {
+    throw invalidRequest(
+      "response_format.type must be one of text, json_object, or json_schema.",
+      "response_format",
+    );
+  }
+  const type = value.type;
+  if (type === "text") {
+    // text 即預設行為:不轉發、不拒絕,靜默等同未指定。
+    return undefined;
+  }
+  if (type === "json_object") {
+    if (model.capabilities.json_mode !== true) {
+      throw invalidRequest(
+        "JSON mode (response_format json_object) is not enabled for this Akentros model.",
+        "response_format",
+        "unsupported_feature",
+      );
+    }
+    if (Object.keys(value).some((key) => key !== "type")) {
+      throw invalidRequest(
+        "response_format with type json_object must only contain the type field.",
+        "response_format",
+      );
+    }
+    return { type: "json_object" };
+  }
+  if (type === "json_schema") {
+    if (model.capabilities.structured_outputs !== true) {
+      throw invalidRequest(
+        "Structured outputs are not enabled for this Akentros model.",
+        "response_format",
+        "unsupported_feature",
+      );
+    }
+    const jsonSchema: unknown = value.json_schema;
+    if (
+      !isObject(jsonSchema) ||
+      typeof jsonSchema.name !== "string" ||
+      jsonSchema.name.length < 1 ||
+      jsonSchema.name.length > 64 ||
+      !isObject(jsonSchema.schema) ||
+      Object.keys(jsonSchema).some((key) => !["name", "description", "schema", "strict"].includes(key))
+    ) {
+      throw invalidRequest(
+        "response_format.json_schema must be an object with a name and a JSON Schema.",
+        "response_format",
+      );
+    }
+    if (jsonSchema.description !== undefined && typeof jsonSchema.description !== "string") {
+      throw invalidRequest("response_format.json_schema.description must be a string.", "response_format");
+    }
+    if (jsonSchema.strict !== undefined && typeof jsonSchema.strict !== "boolean") {
+      throw invalidRequest("response_format.json_schema.strict must be a boolean.", "response_format");
+    }
+    if (maxJsonDepth(jsonSchema.schema) > MAX_REQUEST_JSON_DEPTH) {
+      throw invalidRequest(
+        "response_format.json_schema.schema exceeds the supported nesting depth.",
+        "response_format",
+        "request_too_complex",
+      );
+    }
+    let serializedSchema: string;
+    try {
+      serializedSchema = JSON.stringify(jsonSchema.schema) ?? "";
+    } catch (error) {
+      if (error instanceof RangeError) {
+        throw invalidRequest(
+          "response_format.json_schema.schema exceeds the supported nesting depth.",
+          "response_format",
+          "request_too_complex",
+        );
+      }
+      throw error;
+    }
+    if (serializedSchema.length > MAX_RESPONSE_FORMAT_SCHEMA_JSON_CHARS) {
+      throw invalidRequest(
+        "response_format.json_schema.schema exceeds the supported size.",
+        "response_format",
+        "request_too_large",
+      );
+    }
+    return {
+      type: "json_schema",
+      json_schema: {
+        name: jsonSchema.name,
+        ...(jsonSchema.description !== undefined ? { description: jsonSchema.description } : {}),
+        schema: jsonSchema.schema,
+        ...(jsonSchema.strict !== undefined ? { strict: jsonSchema.strict } : {}),
+      },
+    };
+  }
+  throw invalidRequest(
+    "response_format.type must be one of text, json_object, or json_schema.",
+    "response_format",
+  );
 }
 
 function replayError(reserved: { status?: string; requestId: string }) {
@@ -511,8 +699,29 @@ export async function prepareAkentrosChatRequest({
   aiKey: any;
   idempotencyKey?: string | null;
 }) {
+  // ECO-04 P2:/responses 橋接共用同一套 chat 準備邏輯,僅 endpoint 標籤
+  // 不同(計費、指紋與請求紀錄都要能分辨回應是哪個公開端點來的)。
+  return prepareAkentrosChatBody({ body, aiKey, idempotencyKey, endpoint: "chat.completions" });
+}
+
+async function prepareAkentrosChatBody({
+  body,
+  aiKey,
+  idempotencyKey = null,
+  endpoint = "chat.completions",
+}: {
+  body: any;
+  aiKey: any;
+  idempotencyKey?: string | null;
+  endpoint?: string;
+}) {
   if (!isObject(body)) throw invalidRequest("The request body must be a JSON object.");
-  const unsupportedField = Object.keys(body).find((field) => !PUBLIC_REQUEST_FIELDS.has(field));
+  // ECO-02:白名單外的欄位回 400 unsupported_parameter;但對閘道中立、
+  // 可安全忽略的 OpenAI 參數(TOLERATED_IGNORED_FIELDS)接受後丟棄,
+  // 不轉發、不進指紋,讓 SDK 預設呼叫與常見使用者程式碼不再踩雷。
+  const unsupportedField = Object.keys(body).find(
+    (field) => !PUBLIC_REQUEST_FIELDS.has(field) && !TOLERATED_IGNORED_FIELDS.has(field),
+  );
   if (unsupportedField) {
     throw invalidRequest(
       `The parameter '${unsupportedField}' is not supported by Akentros.`,
@@ -551,14 +760,10 @@ export async function prepareAkentrosChatRequest({
       "unsupported_feature",
     );
   }
-  if (body.response_format !== undefined) {
-    throw invalidRequest(
-      "response_format is not enabled for this Akentros model.",
-      "response_format",
-      "unsupported_feature",
-    );
-  }
-  const messages = validateMessages(body.messages);
+  // ECO-01:response_format 分型處理(見 validateResponseFormat)。
+  const responseFormat = validateResponseFormat(body.response_format, model);
+  // ECO-03:vision 能力開啟的模型,user 訊息可攜帶混合 text/image_url parts。
+  const messages = validateMessages(body.messages, { vision: model.capabilities.vision === true });
   const usesTools =
     body.tools !== undefined ||
     body.tool_choice !== undefined ||
@@ -617,7 +822,23 @@ export async function prepareAkentrosChatRequest({
     body.seed === undefined
       ? undefined
       : integer(body.seed, "seed", { minimum: -2147483648, maximum: 2147483647 });
-  const n = body.n === undefined ? undefined : integer(body.n, "n", { minimum: 1, maximum: 1 });
+  // ECO-05:維持僅支援 n=1(最小方案),但錯誤改為明確的 unsupported_feature
+  // 並直接告訴遷移者替代做法;形狀不合法(非正整數)仍回一般 400。
+  let n: number | undefined;
+  if (body.n !== undefined) {
+    const parsed = Number(body.n);
+    if (!Number.isSafeInteger(parsed) || parsed < 1) {
+      throw invalidRequest("n must be a positive integer.", "n");
+    }
+    if (parsed > 1) {
+      throw invalidRequest(
+        "Multiple choices (n>1) are not supported; send separate requests.",
+        "n",
+        "unsupported_feature",
+      );
+    }
+    n = parsed;
+  }
   const stop = body.stop === undefined ? undefined : validateStop(body.stop);
   const streamOptions = validateStreamOptions(body.stream_options, stream);
   const chatTemplateKwargs = validateChatTemplateKwargs(body.chat_template_kwargs, modelId);
@@ -637,12 +858,25 @@ export async function prepareAkentrosChatRequest({
     ...(n !== undefined ? { n } : {}),
     ...(stop !== undefined ? { stop } : {}),
     ...(chatTemplateKwargs ? { chat_template_kwargs: chatTemplateKwargs } : {}),
+    ...(responseFormat !== undefined ? { response_format: responseFormat } : {}),
     ...(tools ? { tools } : {}),
     ...(toolChoice !== undefined ? { tool_choice: toolChoice } : {}),
   };
   let estimatedInputTokens: number;
   try {
-    estimatedInputTokens = estimateInputTokens({ messages, ...(tools ? { tools } : {}) });
+    // ECO-03:image part 另以固定保守值計入(URL 位元組已在序列化估計內),
+    // 預留額不因圖片未被 URL 長度反映而低估。
+    const imagePartCount = messages.reduce(
+      (count: number, message: any) =>
+        count +
+        (Array.isArray(message.content)
+          ? message.content.filter((part: any) => part?.type === "image_url").length
+          : 0),
+      0,
+    );
+    estimatedInputTokens =
+      estimateInputTokens({ messages, ...(tools ? { tools } : {}) }) +
+      imagePartCount * IMAGE_PART_ESTIMATED_INPUT_TOKENS;
   } catch (error) {
     if (error instanceof RangeError)
       throw invalidRequest(
@@ -679,7 +913,7 @@ export async function prepareAkentrosChatRequest({
   const id = requestId();
   const snapshot = createBillingSnapshot(modelId);
   const fingerprint = await createAkentrosRequestFingerprint({
-    endpoint: "chat.completions",
+    endpoint,
     body: upstreamBody,
   });
 
@@ -688,7 +922,7 @@ export async function prepareAkentrosChatRequest({
     created: Math.floor(Date.now() / 1000),
     modelId,
     model,
-    endpoint: "chat.completions",
+    endpoint,
     routes: listCandidateRoutes(model),
     body: upstreamBody,
     stream,
@@ -700,7 +934,7 @@ export async function prepareAkentrosChatRequest({
       apiKeyId: String(aiKey.id),
       idempotencyKey: normalizedIdempotencyKey,
       requestFingerprint: fingerprint,
-      endpoint: "chat.completions",
+      endpoint,
       stream,
       publicModel: modelId,
       pricingRevision: snapshot.pricing_revision,
@@ -709,6 +943,198 @@ export async function prepareAkentrosChatRequest({
       expiresAt: new Date(Date.now() + 5 * 60_000).toISOString(),
     },
   };
+}
+
+// ECO-04 P2:/responses → chat/completions 橋接的請求面。
+// 支援子集:model、input(string 或 message 陣列,含 vision 的
+// input_text/input_image parts)、instructions(→ system)、stream、
+// max_output_tokens(→ max_completion_tokens)、temperature、top_p。
+// 已知進階功能(background、previous_response_id、tools、reasoning、
+// text.format …)回 400 unsupported_feature,其餘未知欄位回
+// unsupported_parameter;對閘道中立的參數(user/store/metadata/
+// service_tier)與 chat 同一批容忍丟棄。執行、計費(reserve→settle→
+// refund)與上游選路完全共用 chat 管線,endpoint 欄位標 `responses`。
+const PUBLIC_RESPONSES_FIELDS = new Set([
+  "model",
+  "input",
+  "instructions",
+  "stream",
+  "max_output_tokens",
+  "temperature",
+  "top_p",
+]);
+const RESPONSES_UNSUPPORTED_FEATURES = new Set([
+  "background",
+  "previous_response_id",
+  "conversation",
+  "tools",
+  "tool_choice",
+  "parallel_tool_calls",
+  "reasoning",
+  "text",
+  "include",
+  "truncation",
+  "prompt",
+  "prompt_template",
+]);
+
+// Responses 的 input items:EasyInputMessage 形狀 —— {role, content},
+// content 為字串或 parts 陣列;parts 型別為 input_text / input_image
+// (Responses 面的命名,非 chat 的 text/image_url),轉換為 chat 的
+// parts 形狀後交给 validateMessages 走同一套限制(vision 旗標、URL
+// 基底、長度上限)。
+function responsesInputToMessages(input: unknown, instructions: unknown): any[] {
+  if (input !== undefined && typeof input !== "string" && !Array.isArray(input)) {
+    throw invalidRequest("input must be a string or an array of message items.", "input");
+  }
+  const messages: any[] = [];
+  if (typeof instructions === "string" && instructions.length > 0) {
+    messages.push({ role: "system", content: instructions });
+  } else if (instructions !== undefined && instructions !== null) {
+    throw invalidRequest("instructions must be a string.", "instructions");
+  }
+  if (typeof input === "string") {
+    messages.push({ role: "user", content: input });
+    return messages;
+  }
+  for (const [index, item] of (Array.isArray(input) ? input : []).entries()) {
+    const label = `input.${index}`;
+    if (!isObject(item) || typeof item.role !== "string") {
+      throw invalidRequest("Each input item must be an object with a role.", label);
+    }
+    if (!["system", "developer", "user", "assistant"].includes(item.role)) {
+      throw invalidRequest(
+        "input items only support system, developer, user, and assistant roles.",
+        `${label}.role`,
+      );
+    }
+    if (item.role === "user" && Array.isArray(item.content)) {
+      messages.push({
+        role: "user",
+        content: item.content.map((part: any, partIndex: number) => {
+          const partLabel = `${label}.content.${partIndex}`;
+          if (isObject(part) && part.type === "input_text") {
+            return { type: "text", text: part.text };
+          }
+          if (isObject(part) && part.type === "input_image") {
+            const url = typeof part.image_url === "string" ? part.image_url : part.image_url?.url;
+            if (typeof url !== "string") {
+              throw invalidRequest(
+                "input_image parts require an image_url string.",
+                `${partLabel}.image_url`,
+              );
+            }
+            return { type: "image_url", image_url: { url } };
+          }
+          throw invalidRequest("input content parts must be input_text or input_image items.", partLabel);
+        }),
+      });
+      continue;
+    }
+    if (item.role !== "user" && Array.isArray(item.content)) {
+      throw invalidRequest("Content parts are only supported on user input items.", `${label}.content`);
+    }
+    if (typeof item.content !== "string" || item.content.length === 0) {
+      throw invalidRequest("Input items require non-empty text content.", `${label}.content`);
+    }
+    messages.push({ role: item.role, content: item.content });
+  }
+  if (messages.filter((message) => message.role !== "system" && message.role !== "developer").length === 0) {
+    throw invalidRequest("input must contain at least one user or assistant message.", "input");
+  }
+  return messages;
+}
+
+export async function prepareAkentrosResponsesRequest({
+  body,
+  aiKey,
+  idempotencyKey = null,
+}: {
+  body: any;
+  aiKey: any;
+  idempotencyKey?: string | null;
+}) {
+  if (!isObject(body)) throw invalidRequest("The request body must be a JSON object.");
+  // 與 chat 同一批「對閘道中立」容忍欄位(responses API 的 store 由服務
+  // 端預設開啟,Akentros 不落地回應,接受後丟棄即可)。
+  const unsupportedField = Object.keys(body).find(
+    (field) =>
+      !PUBLIC_RESPONSES_FIELDS.has(field) &&
+      !TOLERATED_IGNORED_FIELDS.has(field) &&
+      !RESPONSES_UNSUPPORTED_FEATURES.has(field),
+  );
+  if (unsupportedField) {
+    throw invalidRequest(
+      `The parameter '${unsupportedField}' is not supported by Akentros.`,
+      unsupportedField,
+      "unsupported_parameter",
+    );
+  }
+  const unsupportedFeature = Object.keys(body).find((field) => RESPONSES_UNSUPPORTED_FEATURES.has(field));
+  if (unsupportedFeature) {
+    throw invalidRequest(
+      `The parameter '${unsupportedFeature}' names an OpenAI Responses feature that Akentros does not support yet.`,
+      unsupportedFeature,
+      "unsupported_feature",
+    );
+  }
+  const modelId = typeof body.model === "string" ? body.model.trim() : "";
+  let model: ReturnType<typeof requireModelPricing>;
+  try {
+    model = requireModelPricing(modelId);
+  } catch {
+    throw new AkentrosError(`The model '${modelId || "unknown"}' does not exist or is disabled.`, {
+      status: 404,
+      type: "invalid_request_error",
+      code: "model_not_found",
+      param: "model",
+    });
+  }
+  if (
+    Array.isArray(aiKey?.model_allowlist) &&
+    aiKey.model_allowlist.length > 0 &&
+    !aiKey.model_allowlist.includes(modelId)
+  ) {
+    throw new AkentrosError("The API key does not allow this model.", {
+      status: 403,
+      type: "permission_error",
+      code: "model_not_allowed",
+      param: "model",
+    });
+  }
+  if (model.capabilities.chat_completions !== true) {
+    throw invalidRequest(
+      "This Akentros model does not support the responses API.",
+      "model",
+      "unsupported_feature",
+    );
+  }
+  if (body.stream !== undefined && typeof body.stream !== "boolean") {
+    throw invalidRequest("stream must be a boolean.", "stream");
+  }
+  const stream = body.stream ?? false;
+  if (stream && model.capabilities.streaming !== true) {
+    throw invalidRequest("Streaming is not supported by this model.", "stream", "unsupported_feature");
+  }
+  const messages = responsesInputToMessages(body.input, body.instructions);
+  // 轉換為 chat 形狀後,交給共享的 chat 準備管線(endpoint 標 responses)。
+  // 回應包裝(publicResponsesObject)與 SSE 橋接(streamBridge)由端點層
+  // 負責;這裡回傳的 body 就是 chat/completions 上游體。instructions 原樣
+  // 附在 prepared 上供回應面回票(OpenAI 慣例)。
+  const prepared = await prepareAkentrosChatBody({
+    body: {
+      model: modelId,
+      messages,
+      stream,
+      ...(body.max_output_tokens !== undefined ? { max_completion_tokens: body.max_output_tokens } : {}),
+      ...(body.temperature !== undefined ? { temperature: body.temperature } : {}),
+      ...(body.top_p !== undefined ? { top_p: body.top_p } : {}),
+    },
+    aiKey,
+    idempotencyKey,
+    endpoint: "responses",
+  });
+  return { ...prepared, instructions: typeof body.instructions === "string" ? body.instructions : null };
 }
 
 export function publicProviderError(error: unknown) {
@@ -842,6 +1268,227 @@ function publicCompletion(result: any, prepared: any) {
     model: prepared.modelId,
     choices: result.payload.choices.map(publicChoice),
     usage: publicUsage(result.payload.usage, result),
+  };
+}
+
+// ECO-04 P2:/responses 橋接的回應面 —— 把公開 chat completion 包回
+// Responses API 的 response 物件。第一版輸出面僅 message/output_text
+// (工具呼叫不支援,請求面已提前擋下);finish_reason=length 映射為
+// status=incomplete + incomplete_details,其餼 completed。usage 欄位名
+// 依 Responses 慣例(input_tokens / output_tokens / total_tokens)。
+function responsesAssistantText(chatBody: any): string {
+  const choice = Array.isArray(chatBody?.choices) ? chatBody.choices[0] : null;
+  if (choice?.message && typeof choice.message.content === "string") return choice.message.content;
+  return "";
+}
+
+function responsesFinishReason(chatBody: any): string | null {
+  const choice = Array.isArray(chatBody?.choices) ? chatBody.choices[0] : null;
+  return choice?.finish_reason ?? null;
+}
+
+export function publicResponsesObject(chatBody: any, prepared: any) {
+  const text = responsesAssistantText(chatBody);
+  const finishReason = responsesFinishReason(chatBody);
+  const incomplete = finishReason === "length";
+  const usage = chatBody?.usage ?? { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
+  const messageId = `msg_${prepared.requestId.slice(4)}`;
+  return {
+    id: `resp_${prepared.requestId.slice(4)}`,
+    object: "response",
+    created_at: prepared.created,
+    status: incomplete ? "incomplete" : "completed",
+    error: null,
+    incomplete_details: incomplete ? { reason: "max_output_tokens" } : null,
+    instructions: prepared.instructions ?? null,
+    max_output_tokens: prepared.maxCompletionTokens ?? null,
+    model: prepared.modelId,
+    output: [
+      {
+        id: messageId,
+        type: "message",
+        status: "completed",
+        role: "assistant",
+        content: [{ type: "output_text", text, annotations: [] }],
+      },
+    ],
+    parallel_tool_calls: false,
+    previous_response_id: null,
+    tools: [],
+    temperature: prepared.body?.temperature ?? null,
+    top_p: prepared.body?.top_p ?? null,
+    usage: {
+      input_tokens: usage.prompt_tokens ?? 0,
+      output_tokens: usage.completion_tokens ?? 0,
+      total_tokens: usage.total_tokens ?? 0,
+    },
+  };
+}
+
+// ECO-04 P2:/responses 橋接的串流面 —— 逐個吃「已正規化的公開 chat
+// chunk」(normalizeStreamChunk 的輸出),吐出 Responses SSE 事件序列
+// (response.created → output_item.added → content_part.added →
+// output_text.delta* → output_text.done → content_part.done →
+// output_item.done → response.completed/incomplete)。狀態機由本廠
+// 函式持有,端點層只負責把事件編成 SSE frame;計費仍走 chat 管線的
+// finalizeStream(結算使用量以 usage chunk 為準,與事件序列解耦)。
+export function createAkentrosResponsesStreamBridge(prepared: any) {
+  const messageId = `msg_${prepared.requestId.slice(4)}`;
+  let started = false;
+  let text = "";
+  let finishReason: string | null = null;
+  let usage: any = null;
+
+  function responseSkeleton(status: string) {
+    return {
+      id: `resp_${prepared.requestId.slice(4)}`,
+      object: "response",
+      created_at: prepared.created,
+      status,
+      error: null,
+      incomplete_details: null,
+      instructions: prepared.instructions ?? null,
+      max_output_tokens: prepared.maxCompletionTokens ?? null,
+      model: prepared.modelId,
+      output: [],
+      parallel_tool_calls: false,
+      previous_response_id: null,
+      tools: [],
+      temperature: prepared.body?.temperature ?? null,
+      top_p: prepared.body?.top_p ?? null,
+      ...(usage
+        ? {
+            usage: {
+              input_tokens: usage.prompt_tokens ?? 0,
+              output_tokens: usage.completion_tokens ?? 0,
+              total_tokens: usage.total_tokens ?? 0,
+            },
+          }
+        : {}),
+    };
+  }
+
+  function openingEvents(): Array<{ event: string; data: any }> {
+    return [
+      {
+        event: "response.created",
+        data: { type: "response.created", sequence_number: 0, response: responseSkeleton("in_progress") },
+      },
+      {
+        event: "response.output_item.added",
+        data: {
+          type: "response.output_item.added",
+          sequence_number: 1,
+          output_index: 0,
+          item: { id: messageId, type: "message", status: "in_progress", role: "assistant", content: [] },
+        },
+      },
+      {
+        event: "response.content_part.added",
+        data: {
+          type: "response.content_part.added",
+          sequence_number: 2,
+          item_id: messageId,
+          output_index: 0,
+          content_index: 0,
+          part: { type: "output_text", text: "", annotations: [] },
+        },
+      },
+    ];
+  }
+
+  return {
+    translate(chunk: any): Array<{ event: string; data: any }> {
+      const events: Array<{ event: string; data: any }> = [];
+      if (!started) {
+        started = true;
+        events.push(...openingEvents());
+      }
+      if (chunk?.usage) usage = chunk.usage;
+      for (const choice of Array.isArray(chunk?.choices) ? chunk.choices : []) {
+        const delta = choice?.delta || {};
+        if (typeof delta.content === "string" && delta.content) {
+          text += delta.content;
+          events.push({
+            event: "response.output_text.delta",
+            data: {
+              type: "response.output_text.delta",
+              item_id: messageId,
+              output_index: 0,
+              content_index: 0,
+              delta: delta.content,
+            },
+          });
+        }
+        if (choice?.finish_reason) finishReason = choice.finish_reason;
+      }
+      return events;
+    },
+    finalize(): Array<{ event: string; data: any }> {
+      const opening: Array<{ event: string; data: any }> = [];
+      if (!started) {
+        started = true;
+        opening.push(...openingEvents());
+      }
+      const incomplete = finishReason === "length";
+      const finalResponse = {
+        ...responseSkeleton(incomplete ? "incomplete" : "completed"),
+        incomplete_details: incomplete ? { reason: "max_output_tokens" } : null,
+        output: [
+          {
+            id: messageId,
+            type: "message",
+            status: "completed",
+            role: "assistant",
+            content: [{ type: "output_text", text, annotations: [] }],
+          },
+        ],
+      };
+      return [
+        ...opening,
+        {
+          event: "response.output_text.done",
+          data: {
+            type: "response.output_text.done",
+            item_id: messageId,
+            output_index: 0,
+            content_index: 0,
+            text,
+          },
+        },
+        {
+          event: "response.content_part.done",
+          data: {
+            type: "response.content_part.done",
+            item_id: messageId,
+            output_index: 0,
+            content_index: 0,
+            part: { type: "output_text", text, annotations: [] },
+          },
+        },
+        {
+          event: "response.output_item.done",
+          data: {
+            type: "response.output_item.done",
+            output_index: 0,
+            item: {
+              id: messageId,
+              type: "message",
+              status: "completed",
+              role: "assistant",
+              content: [{ type: "output_text", text, annotations: [] }],
+            },
+          },
+        },
+        {
+          event: incomplete ? "response.incomplete" : "response.completed",
+          data: {
+            type: incomplete ? "response.incomplete" : "response.completed",
+            response: finalResponse,
+          },
+        },
+      ];
+    },
   };
 }
 

@@ -1,8 +1,8 @@
 {
   "schema_version": "1.0.0",
-  "revision": "2026-09-19.1",
-  "published_at": "2026-09-19T00:00:00Z",
-  "effective_at": "2026-09-19T00:00:00Z",
+  "revision": "2026-10-11.1",
+  "published_at": "2026-10-11T00:00:00Z",
+  "effective_at": "2026-10-11T00:00:00Z",
   "currency": {
     "code": "USD",
     "settlement_unit": "usd_micros",
@@ -18,8 +18,9 @@
         "chat_completions": true,
         "streaming": true,
         "tools": true,
-        "json_mode": false,
-        "vision": false
+        "json_mode": true,
+        "structured_outputs": true,
+        "vision": true
       },
       "billing": {
         "input_usd_per_million_tokens": "10.00",
@@ -53,8 +54,9 @@
         "chat_completions": true,
         "streaming": true,
         "tools": true,
-        "json_mode": false,
-        "vision": false
+        "json_mode": true,
+        "structured_outputs": true,
+        "vision": true
       },
       "billing": {
         "input_usd_per_million_tokens": "1.26",
@@ -88,7 +90,8 @@
         "chat_completions": true,
         "streaming": true,
         "tools": true,
-        "json_mode": false,
+        "json_mode": true,
+        "structured_outputs": true,
         "vision": false
       },
       "billing": {
@@ -124,7 +127,8 @@
         "streaming": true,
         "tools": true,
         "json_mode": false,
-        "vision": false
+        "structured_outputs": false,
+        "vision": true
       },
       "billing": {
         "input_usd_per_million_tokens": "5.00",
@@ -159,7 +163,8 @@
         "streaming": true,
         "tools": true,
         "json_mode": false,
-        "vision": false
+        "structured_outputs": false,
+        "vision": true
       },
       "billing": {
         "input_usd_per_million_tokens": "2.00",
@@ -194,7 +199,8 @@
         "streaming": true,
         "tools": true,
         "json_mode": false,
-        "vision": false
+        "structured_outputs": false,
+        "vision": true
       },
       "billing": {
         "input_usd_per_million_tokens": "1.02",
@@ -228,8 +234,9 @@
         "chat_completions": true,
         "streaming": true,
         "tools": true,
-        "json_mode": false,
-        "vision": false
+        "json_mode": true,
+        "structured_outputs": true,
+        "vision": true
       },
       "billing": {
         "input_usd_per_million_tokens": "2.01",
@@ -263,8 +270,9 @@
         "chat_completions": true,
         "streaming": true,
         "tools": true,
-        "json_mode": false,
-        "vision": false
+        "json_mode": true,
+        "structured_outputs": true,
+        "vision": true
       },
       "billing": {
         "input_usd_per_million_tokens": "0.30",
@@ -298,8 +306,9 @@
         "chat_completions": true,
         "streaming": true,
         "tools": true,
-        "json_mode": false,
-        "vision": false
+        "json_mode": true,
+        "structured_outputs": true,
+        "vision": true
       },
       "billing": {
         "input_usd_per_million_tokens": "0.12",
@@ -333,8 +342,9 @@
         "chat_completions": true,
         "streaming": true,
         "tools": true,
-        "json_mode": false,
-        "vision": false
+        "json_mode": true,
+        "structured_outputs": true,
+        "vision": true
       },
       "billing": {
         "input_usd_per_million_tokens": "2.00",
@@ -368,7 +378,8 @@
         "chat_completions": true,
         "streaming": true,
         "tools": true,
-        "json_mode": false,
+        "json_mode": true,
+        "structured_outputs": true,
         "vision": false
       },
       "billing": {
@@ -403,7 +414,8 @@
         "chat_completions": true,
         "streaming": true,
         "tools": true,
-        "json_mode": false,
+        "json_mode": true,
+        "structured_outputs": false,
         "vision": false
       },
       "billing": {
@@ -447,7 +459,8 @@
         "chat_completions": true,
         "streaming": true,
         "tools": true,
-        "json_mode": false,
+        "json_mode": true,
+        "structured_outputs": false,
         "vision": false
       },
       "billing": {
@@ -491,8 +504,9 @@
         "chat_completions": true,
         "streaming": true,
         "tools": true,
-        "json_mode": false,
-        "vision": false
+        "json_mode": true,
+        "structured_outputs": false,
+        "vision": true
       },
       "billing": {
         "input_usd_per_million_tokens": "3.00",
@@ -536,6 +550,7 @@
         "streaming": true,
         "tools": true,
         "json_mode": false,
+        "structured_outputs": false,
         "vision": false
       },
       "billing": {
@@ -580,7 +595,8 @@
         "streaming": true,
         "tools": true,
         "json_mode": false,
-        "vision": false
+        "structured_outputs": false,
+        "vision": true
       },
       "billing": {
         "input_usd_per_million_tokens": "0.15",
@@ -623,8 +639,9 @@
         "chat_completions": true,
         "streaming": true,
         "tools": true,
-        "json_mode": false,
-        "vision": false
+        "json_mode": true,
+        "structured_outputs": false,
+        "vision": true
       },
       "billing": {
         "input_usd_per_million_tokens": "2.01",
@@ -658,8 +675,9 @@
         "chat_completions": true,
         "streaming": true,
         "tools": true,
-        "json_mode": false,
-        "vision": false
+        "json_mode": true,
+        "structured_outputs": false,
+        "vision": true
       },
       "billing": {
         "input_usd_per_million_tokens": "0.15",
@@ -694,6 +712,7 @@
         "streaming": true,
         "tools": false,
         "json_mode": false,
+        "structured_outputs": false,
         "vision": false
       },
       "billing": {
@@ -730,6 +749,7 @@
         "streaming": false,
         "tools": false,
         "json_mode": false,
+        "structured_outputs": false,
         "vision": false
       },
       "billing": {
@@ -766,6 +786,7 @@
         "streaming": false,
         "tools": false,
         "json_mode": false,
+        "structured_outputs": false,
         "vision": false
       },
       "billing": {
