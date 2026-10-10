@@ -379,3 +379,46 @@ test("/healthz is available without the fail-closed gate and reports database st
   assert.equal(okBody.status, "ok");
   assert.equal(okBody.database, "ok");
 });
+
+test("developer face rejects cross-site Origin headers (SN-15, audit N2)", async () => {
+  // 防禦縱深:開發者管理面原本只掛 requireCsrfToken,與 /api/auth/* 的
+  // requireTrustedOrigin 不一致。補上後,跨源 POST 即使帶有效 session
+  // cookie 也應在 origin 閘門層被擋下(403 origin_forbidden),先於 CSRF
+  // 雙提交檢查。GET 不受影響(仍由 authenticateToken 擋 401)。
+  const base = { AKENTROS_ENABLED: "true", JWT_SECRET: SECRET };
+  const evil = { "Content-Type": "application/json", Origin: "https://evil.example" };
+
+  // 跨源 POST /api/ai/developer/keys 應被 requireTrustedOrigin 擋 403,
+  // 而非進入 authenticateToken 回 401。
+  const post = await aiRequest("/api/ai/developer/keys", base, {
+    method: "POST",
+    body: JSON.stringify({ name: "test" }),
+    headers: evil,
+  });
+  assert.equal(post.status, 403);
+  assert.equal(((await post.json()) as any).code, "origin_forbidden");
+
+  // 同源 POST 仍可進入 handler(此處由 authenticateToken 擋 401,證明
+  // origin 閘門放行同源請求)。
+  const sameOrigin = await aiRequest("/api/ai/developer/keys", base, {
+    method: "POST",
+    body: JSON.stringify({ name: "test" }),
+    headers: { "Content-Type": "application/json", Origin: "http://localhost" },
+  });
+  assert.equal(sameOrigin.status, 401);
+  assert.equal(((await sameOrigin.json()) as any).code, "authentication_required");
+
+  // 非瀏覽器客戶端(無 Origin/Referer)放行 → 進入 authenticateToken。
+  const noOrigin = await aiRequest("/api/ai/developer/keys", base, {
+    method: "POST",
+    body: JSON.stringify({ name: "test" }),
+    headers: { "Content-Type": "application/json" },
+  });
+  assert.equal(noOrigin.status, 401);
+
+  // GET 不受 origin 閘門影響(requireTrustedOrigin 對 GET 放行)。
+  const get = await aiRequest("/api/ai/developer/keys", base, {
+    headers: { Origin: "https://evil.example" },
+  });
+  assert.equal(get.status, 401);
+});
