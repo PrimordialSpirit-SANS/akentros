@@ -1,4 +1,4 @@
-export const AKENTROS_SCHEMA_VERSION = 3;
+export const AKENTROS_SCHEMA_VERSION = 4;
 
 function freezeRecord(record: Record<string, string[]>) {
   return Object.freeze(

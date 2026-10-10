@@ -208,7 +208,8 @@ const CANONICAL_INDEXES = Object.freeze([
 // 版本歷史:PostgreSQL 時代的 v1–v7(legacy 修復、計費指紋、免費額度桶、
 // IP 限流視窗)在 SQLite 方言下是全新資料庫,legacy 修復不適用,因此版本
 // 歷史重置:v1 = 完整 canonical schema,v2 = 分散式 IP 限流視窗表,
-// v3 = 冪等重放儲存(金鑰 TTL 欄位 + 回應落地表)。
+// v3 = 冪等重放儲存(金鑰 TTL 欄位 + 回應落地表),
+// v4 = 伺服端會話撤銷(users.session_epoch,SEC-01)。
 // PostgreSQL 並行版的歷史請參閱 Git 歷史。
 function buildAkentrosMigrations(dialect: "postgres" | "sqlite") {
   return [
@@ -262,6 +263,25 @@ function buildAkentrosMigrations(dialect: "postgres" | "sqlite") {
        ON ai_idempotency_replays (api_key_id, idempotency_key)`,
         `CREATE INDEX IF NOT EXISTS idx_ai_idempotency_replays_expiry
        ON ai_idempotency_replays (expires_at)`,
+      ]),
+    }),
+    Object.freeze({
+      version: 4,
+      name: "session-epoch-revocation",
+      statements: Object.freeze([
+        // SEC-01 fix:伺服端會話撤銷。users.session_epoch 是帳號級的會話
+        // epoch 計數:akentros_token JWT 於簽發時把當時的 epoch 簽入固定
+        // claim epv(見 apps/gateway/src/utils/jwt.ts),authenticateToken
+        // 比對不一致即 401。「撤銷全部會話」= UPDATE users SET
+        // session_epoch = session_epoch + 1(apps/gateway/scripts/
+        // revokeAkentrosSessions.ts),不必輪替 JWT_SECRET(那會把全站
+        // 用戶一起登出)。與 v3 同一手法:users 基礎 DDL(gateway 層
+        // ensureUsersSchema)不含此欄位,統一由此遷移加入,讓 fresh/
+        // upgrade 兩條路徑的 ALTER 行為一致;users 表由 bootstrap 在
+        // 版本化遷移之前建立(與 v1 依賴 ledger_entries 先存在同一前置
+        // 模式)。既有列 DEFAULT 0 —— 無 epv 的舊 token 視為 0,過渡期
+        // 不自動登出既有用戶。
+        `ALTER TABLE users ADD COLUMN session_epoch INTEGER NOT NULL DEFAULT 0`,
       ]),
     }),
   ];
