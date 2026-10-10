@@ -157,6 +157,7 @@ export function renderAkentrosPrometheus({ dbUp }: { dbUp: boolean }) {
 const LOOPBACK_ADDRESSES = new Set(["127.0.0.1", "::1", "::ffff:127.0.0.1"]);
 const METRICS_SCRAPE_WINDOW_MS = 60_000;
 const METRICS_SCRAPE_MAX_PER_WINDOW = 12;
+const METRICS_SCRAPE_MAX_TRACKED_KEYS = 4096;
 const metricsScrapeWindows = new Map<string, { windowStart: number; count: number }>();
 
 export type AkentrosMetricsAccessVerdict = "allow" | "unauthorized" | "forbidden" | "rate_limited";
@@ -185,13 +186,34 @@ export function evaluateMetricsAccess(input: {
   const key = remoteAddr || "unknown";
   const bucket = metricsScrapeWindows.get(key);
   if (!bucket || now - bucket.windowStart >= METRICS_SCRAPE_WINDOW_MS) {
-    if (metricsScrapeWindows.size > 4096) metricsScrapeWindows.clear();
+    // SN-14 fix (audit N1):原本超量時呼叫 clear() 整表清除,與 rateLimit.ts
+    // 明確避免的反模式相同——攻擊者可藉觸發桶上限歸零既有計數。改為只淘汰
+    // 已過期的桶(窗口已滾出),仍滿時對新身份直接 429(下方 rate_limited
+    // 分支),既有計數保持不變。對外公開部署仍建議設 AKENTROS_METRICS_TOKEN,
+    // 此處只是防禦縱深。
+    if (metricsScrapeWindows.size > METRICS_SCRAPE_MAX_TRACKED_KEYS) {
+      for (const [existingKey, existingBucket] of metricsScrapeWindows) {
+        if (now - existingBucket.windowStart >= METRICS_SCRAPE_WINDOW_MS) {
+          metricsScrapeWindows.delete(existingKey);
+        }
+      }
+      if (metricsScrapeWindows.size >= METRICS_SCRAPE_MAX_TRACKED_KEYS) {
+        // 仍滿(全在窗口內):對新身份回 429,既有計數保持不變。
+        return "rate_limited";
+      }
+    }
     metricsScrapeWindows.set(key, { windowStart: now, count: 1 });
     return "allow";
   }
   bucket.count += 1;
   if (bucket.count > METRICS_SCRAPE_MAX_PER_WINDOW) return "rate_limited";
   return "allow";
+}
+
+// 測試專用:重置模組級 scrapeWindows Map,避免跨測試污染(與 rateLimit.ts
+// 的 resetRateLimitsForTests 同一目的)。生產程式碼不應呼叫。
+export function resetMetricsScrapeWindowsForTests(): void {
+  metricsScrapeWindows.clear();
 }
 
 const METRICS_ERROR_BODIES: Record<AkentrosMetricsAccessVerdict, { status: number; code: string }> = {
