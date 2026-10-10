@@ -83,3 +83,57 @@ test("frontend SSE reader reports AbortError instead of parsing a partial frame"
 
   await assert.rejects(pending, (cause) => cause instanceof DOMException && cause.name === "AbortError");
 });
+
+// ---------------------------------------------------------------------------
+// FUNC-01(gateway core sse.ts 同步修正):readSseEvents 必須丟棄串流開頭的
+// U+FEFF(BOM);只剝一次,資料中的 U+FEFF 不受影響。
+// ---------------------------------------------------------------------------
+
+test("FUNC-01: frontend SSE reader strips a leading BOM so first-chunk data events survive", async () => {
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream({
+    start(controller) {
+      controller.enqueue(encoder.encode('\uFEFFdata: {"ok":true}\n\ndata: [DONE]\n\n'));
+      controller.close();
+    },
+  });
+  const received: any[] = [];
+  for await (const event of readSseEvents(stream)) received.push(event);
+
+  assert.deepEqual(received, [
+    { type: "message", data: '{"ok":true}' },
+    { type: "message", data: "[DONE]" },
+  ]);
+});
+
+test("FUNC-01: frontend SSE reader strips the BOM exactly once; U+FEFF inside data is preserved", async () => {
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream({
+    start(controller) {
+      controller.enqueue(encoder.encode('\uFEFFdata: {"content":"\uFEFF"}\n\ndata: \uFEFFtail\n\n'));
+      controller.close();
+    },
+  });
+  const received: any[] = [];
+  for await (const event of readSseEvents(stream)) received.push(event);
+
+  assert.deepEqual(received, [
+    { type: "message", data: '{"content":"\uFEFF"}' },
+    { type: "message", data: "\uFEFFtail" },
+  ]);
+});
+
+test("FUNC-01: frontend SSE reader strips a BOM split across chunk boundaries", async () => {
+  const stream = new ReadableStream({
+    start(controller) {
+      controller.enqueue(new Uint8Array([0xef]));
+      controller.enqueue(new Uint8Array([0xbb, 0xbf]));
+      controller.enqueue(new TextEncoder().encode("data: split\n\n"));
+      controller.close();
+    },
+  });
+  const received: any[] = [];
+  for await (const event of readSseEvents(stream)) received.push(event);
+
+  assert.deepEqual(received, [{ type: "message", data: "split" }]);
+});

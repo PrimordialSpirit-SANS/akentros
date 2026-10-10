@@ -109,6 +109,18 @@ export async function* parseSseStream(
   const decoder = new TextDecoder();
   const parser = new SseEventParser(maxEventCharacters);
   let reachedEof = false;
+  // FUNC-01 fix:SSE 規格要求丟棄串流開頭的 U+FEFF(BOM)(TextDecoder 預設
+  // ignoreBOM=false,會把 BOM 解進文字)。不剝離時 BOM 會併入首行欄位名
+  // (「\uFEFFdata」被當成未知欄位),帶 BOM 的上游串流會整批靜默丟失
+  // data 事件。只對「串流解碼出的第一段非空文字」剝一次首位 BOM:多位元組
+  // BOM 可能跨 chunk 抵達,首個 chunk 或許解碼為空,故以「已解出字元」為準;
+  // 一旦解出字元,之後任何位置的 U+FEFF 都屬於資料,不再修改。
+  let awaitingFirstDecodedText = true;
+  const stripLeadingBomOnce = (text: string) => {
+    if (!awaitingFirstDecodedText || text === "") return text;
+    awaitingFirstDecodedText = false;
+    return text.replace(/^\uFEFF/, "");
+  };
 
   try {
     while (true) {
@@ -117,11 +129,11 @@ export async function* parseSseStream(
         reachedEof = true;
         break;
       }
-      const decoded = decoder.decode(value, { stream: true });
+      const decoded = stripLeadingBomOnce(decoder.decode(value, { stream: true }));
       for (const event of parser.feed(decoded)) yield event;
     }
 
-    const tail = decoder.decode();
+    const tail = stripLeadingBomOnce(decoder.decode());
     for (const event of parser.feed(tail, true)) yield event;
   } finally {
     if (!reachedEof) {
