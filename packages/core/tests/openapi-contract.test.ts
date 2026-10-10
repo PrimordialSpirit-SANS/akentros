@@ -36,7 +36,12 @@ test("Akentros OpenAPI document parses and resolves every local reference", () =
 });
 
 test("inference and developer surfaces keep separate authentication contracts", () => {
-  for (const path of ["/api/ai/v1/models", "/api/ai/v1/chat/completions", "/api/ai/v1/embeddings"]) {
+  for (const path of [
+    "/api/ai/v1/models",
+    "/api/ai/v1/chat/completions",
+    "/api/ai/v1/embeddings",
+    "/api/ai/v1/responses",
+  ]) {
     const operation: any = Object.values(specification.paths[path])[0];
     assert.deepEqual(operation.security, [{ AkentrosKey: [] }]);
   }
@@ -64,18 +69,18 @@ const EXPECTED_PUBLIC_INFERENCE_PATHS = [
   "/api/ai/v1/models",
   "/api/ai/v1/chat/completions",
   "/api/ai/v1/embeddings",
+  "/api/ai/v1/responses",
 ];
 
 test("the public inference surface exposes exactly the documented endpoints", () => {
   const publicPaths = Object.keys(specification.paths).filter((path) => path.startsWith("/api/ai/v1/"));
   assert.deepEqual(publicPaths, EXPECTED_PUBLIC_INFERENCE_PATHS);
-  // 契約描述必須載明不支援的 OpenAI 端點,與 README 相容性矩陣一致。
+  // 契約描述必須載明支援與不支援的 OpenAI 端點,與 README 相容性矩陣一致。
   const description: string = specification.info.description;
   for (const endpoint of EXPECTED_PUBLIC_INFERENCE_PATHS) {
     assert.ok(description.includes(endpoint), `${endpoint} missing from info.description`);
   }
   for (const unsupported of [
-    "/responses",
     "/audio",
     "/images",
     "/moderations",
@@ -89,6 +94,26 @@ test("the public inference surface exposes exactly the documented endpoints", ()
       `info.description must explicitly list ${unsupported} as unsupported`,
     );
   }
+});
+
+// ECO-04 P2:/responses 的橋接子集與進階功能拒絕清單同樣釘死在契約上,
+// 防止支援面與文件無聲漂移。
+test("the responses bridge documents its supported subset and feature gates", () => {
+  const request = specification.components.schemas.ResponsesCreateRequest;
+  assert.equal(request.additionalProperties, false);
+  assert.deepEqual(Object.keys(request.properties).sort(), [
+    "input",
+    "instructions",
+    "max_output_tokens",
+    "model",
+    "stream",
+    "temperature",
+    "top_p",
+  ]);
+  assert.match(request.description, /unsupported_feature/);
+  const path = specification.paths["/api/ai/v1/responses"].post;
+  assert.match(path.description, /response\.output_text\.delta/);
+  assert.match(path.description, /chat pipeline/);
 });
 
 test("API key secrets are confined to create and rotate mutation responses", () => {

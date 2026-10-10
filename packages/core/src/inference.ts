@@ -699,6 +699,22 @@ export async function prepareAkentrosChatRequest({
   aiKey: any;
   idempotencyKey?: string | null;
 }) {
+  // ECO-04 P2:/responses 橋接共用同一套 chat 準備邏輯,僅 endpoint 標籤
+  // 不同(計費、指紋與請求紀錄都要能分辨回應是哪個公開端點來的)。
+  return prepareAkentrosChatBody({ body, aiKey, idempotencyKey, endpoint: "chat.completions" });
+}
+
+async function prepareAkentrosChatBody({
+  body,
+  aiKey,
+  idempotencyKey = null,
+  endpoint = "chat.completions",
+}: {
+  body: any;
+  aiKey: any;
+  idempotencyKey?: string | null;
+  endpoint?: string;
+}) {
   if (!isObject(body)) throw invalidRequest("The request body must be a JSON object.");
   // ECO-02:白名單外的欄位回 400 unsupported_parameter;但對閘道中立、
   // 可安全忽略的 OpenAI 參數(TOLERATED_IGNORED_FIELDS)接受後丟棄,
@@ -897,7 +913,7 @@ export async function prepareAkentrosChatRequest({
   const id = requestId();
   const snapshot = createBillingSnapshot(modelId);
   const fingerprint = await createAkentrosRequestFingerprint({
-    endpoint: "chat.completions",
+    endpoint,
     body: upstreamBody,
   });
 
@@ -906,7 +922,7 @@ export async function prepareAkentrosChatRequest({
     created: Math.floor(Date.now() / 1000),
     modelId,
     model,
-    endpoint: "chat.completions",
+    endpoint,
     routes: listCandidateRoutes(model),
     body: upstreamBody,
     stream,
@@ -918,7 +934,7 @@ export async function prepareAkentrosChatRequest({
       apiKeyId: String(aiKey.id),
       idempotencyKey: normalizedIdempotencyKey,
       requestFingerprint: fingerprint,
-      endpoint: "chat.completions",
+      endpoint,
       stream,
       publicModel: modelId,
       pricingRevision: snapshot.pricing_revision,
@@ -927,6 +943,198 @@ export async function prepareAkentrosChatRequest({
       expiresAt: new Date(Date.now() + 5 * 60_000).toISOString(),
     },
   };
+}
+
+// ECO-04 P2:/responses → chat/completions 橋接的請求面。
+// 支援子集:model、input(string 或 message 陣列,含 vision 的
+// input_text/input_image parts)、instructions(→ system)、stream、
+// max_output_tokens(→ max_completion_tokens)、temperature、top_p。
+// 已知進階功能(background、previous_response_id、tools、reasoning、
+// text.format …)回 400 unsupported_feature,其餘未知欄位回
+// unsupported_parameter;對閘道中立的參數(user/store/metadata/
+// service_tier)與 chat 同一批容忍丟棄。執行、計費(reserve→settle→
+// refund)與上游選路完全共用 chat 管線,endpoint 欄位標 `responses`。
+const PUBLIC_RESPONSES_FIELDS = new Set([
+  "model",
+  "input",
+  "instructions",
+  "stream",
+  "max_output_tokens",
+  "temperature",
+  "top_p",
+]);
+const RESPONSES_UNSUPPORTED_FEATURES = new Set([
+  "background",
+  "previous_response_id",
+  "conversation",
+  "tools",
+  "tool_choice",
+  "parallel_tool_calls",
+  "reasoning",
+  "text",
+  "include",
+  "truncation",
+  "prompt",
+  "prompt_template",
+]);
+
+// Responses 的 input items:EasyInputMessage 形狀 —— {role, content},
+// content 為字串或 parts 陣列;parts 型別為 input_text / input_image
+// (Responses 面的命名,非 chat 的 text/image_url),轉換為 chat 的
+// parts 形狀後交给 validateMessages 走同一套限制(vision 旗標、URL
+// 基底、長度上限)。
+function responsesInputToMessages(input: unknown, instructions: unknown): any[] {
+  if (input !== undefined && typeof input !== "string" && !Array.isArray(input)) {
+    throw invalidRequest("input must be a string or an array of message items.", "input");
+  }
+  const messages: any[] = [];
+  if (typeof instructions === "string" && instructions.length > 0) {
+    messages.push({ role: "system", content: instructions });
+  } else if (instructions !== undefined && instructions !== null) {
+    throw invalidRequest("instructions must be a string.", "instructions");
+  }
+  if (typeof input === "string") {
+    messages.push({ role: "user", content: input });
+    return messages;
+  }
+  for (const [index, item] of (Array.isArray(input) ? input : []).entries()) {
+    const label = `input.${index}`;
+    if (!isObject(item) || typeof item.role !== "string") {
+      throw invalidRequest("Each input item must be an object with a role.", label);
+    }
+    if (!["system", "developer", "user", "assistant"].includes(item.role)) {
+      throw invalidRequest(
+        "input items only support system, developer, user, and assistant roles.",
+        `${label}.role`,
+      );
+    }
+    if (item.role === "user" && Array.isArray(item.content)) {
+      messages.push({
+        role: "user",
+        content: item.content.map((part: any, partIndex: number) => {
+          const partLabel = `${label}.content.${partIndex}`;
+          if (isObject(part) && part.type === "input_text") {
+            return { type: "text", text: part.text };
+          }
+          if (isObject(part) && part.type === "input_image") {
+            const url = typeof part.image_url === "string" ? part.image_url : part.image_url?.url;
+            if (typeof url !== "string") {
+              throw invalidRequest(
+                "input_image parts require an image_url string.",
+                `${partLabel}.image_url`,
+              );
+            }
+            return { type: "image_url", image_url: { url } };
+          }
+          throw invalidRequest("input content parts must be input_text or input_image items.", partLabel);
+        }),
+      });
+      continue;
+    }
+    if (item.role !== "user" && Array.isArray(item.content)) {
+      throw invalidRequest("Content parts are only supported on user input items.", `${label}.content`);
+    }
+    if (typeof item.content !== "string" || item.content.length === 0) {
+      throw invalidRequest("Input items require non-empty text content.", `${label}.content`);
+    }
+    messages.push({ role: item.role, content: item.content });
+  }
+  if (messages.filter((message) => message.role !== "system" && message.role !== "developer").length === 0) {
+    throw invalidRequest("input must contain at least one user or assistant message.", "input");
+  }
+  return messages;
+}
+
+export async function prepareAkentrosResponsesRequest({
+  body,
+  aiKey,
+  idempotencyKey = null,
+}: {
+  body: any;
+  aiKey: any;
+  idempotencyKey?: string | null;
+}) {
+  if (!isObject(body)) throw invalidRequest("The request body must be a JSON object.");
+  // 與 chat 同一批「對閘道中立」容忍欄位(responses API 的 store 由服務
+  // 端預設開啟,Akentros 不落地回應,接受後丟棄即可)。
+  const unsupportedField = Object.keys(body).find(
+    (field) =>
+      !PUBLIC_RESPONSES_FIELDS.has(field) &&
+      !TOLERATED_IGNORED_FIELDS.has(field) &&
+      !RESPONSES_UNSUPPORTED_FEATURES.has(field),
+  );
+  if (unsupportedField) {
+    throw invalidRequest(
+      `The parameter '${unsupportedField}' is not supported by Akentros.`,
+      unsupportedField,
+      "unsupported_parameter",
+    );
+  }
+  const unsupportedFeature = Object.keys(body).find((field) => RESPONSES_UNSUPPORTED_FEATURES.has(field));
+  if (unsupportedFeature) {
+    throw invalidRequest(
+      `The parameter '${unsupportedFeature}' names an OpenAI Responses feature that Akentros does not support yet.`,
+      unsupportedFeature,
+      "unsupported_feature",
+    );
+  }
+  const modelId = typeof body.model === "string" ? body.model.trim() : "";
+  let model: ReturnType<typeof requireModelPricing>;
+  try {
+    model = requireModelPricing(modelId);
+  } catch {
+    throw new AkentrosError(`The model '${modelId || "unknown"}' does not exist or is disabled.`, {
+      status: 404,
+      type: "invalid_request_error",
+      code: "model_not_found",
+      param: "model",
+    });
+  }
+  if (
+    Array.isArray(aiKey?.model_allowlist) &&
+    aiKey.model_allowlist.length > 0 &&
+    !aiKey.model_allowlist.includes(modelId)
+  ) {
+    throw new AkentrosError("The API key does not allow this model.", {
+      status: 403,
+      type: "permission_error",
+      code: "model_not_allowed",
+      param: "model",
+    });
+  }
+  if (model.capabilities.chat_completions !== true) {
+    throw invalidRequest(
+      "This Akentros model does not support the responses API.",
+      "model",
+      "unsupported_feature",
+    );
+  }
+  if (body.stream !== undefined && typeof body.stream !== "boolean") {
+    throw invalidRequest("stream must be a boolean.", "stream");
+  }
+  const stream = body.stream ?? false;
+  if (stream && model.capabilities.streaming !== true) {
+    throw invalidRequest("Streaming is not supported by this model.", "stream", "unsupported_feature");
+  }
+  const messages = responsesInputToMessages(body.input, body.instructions);
+  // 轉換為 chat 形狀後,交給共享的 chat 準備管線(endpoint 標 responses)。
+  // 回應包裝(publicResponsesObject)與 SSE 橋接(streamBridge)由端點層
+  // 負責;這裡回傳的 body 就是 chat/completions 上游體。instructions 原樣
+  // 附在 prepared 上供回應面回票(OpenAI 慣例)。
+  const prepared = await prepareAkentrosChatBody({
+    body: {
+      model: modelId,
+      messages,
+      stream,
+      ...(body.max_output_tokens !== undefined ? { max_completion_tokens: body.max_output_tokens } : {}),
+      ...(body.temperature !== undefined ? { temperature: body.temperature } : {}),
+      ...(body.top_p !== undefined ? { top_p: body.top_p } : {}),
+    },
+    aiKey,
+    idempotencyKey,
+    endpoint: "responses",
+  });
+  return { ...prepared, instructions: typeof body.instructions === "string" ? body.instructions : null };
 }
 
 export function publicProviderError(error: unknown) {
@@ -1060,6 +1268,227 @@ function publicCompletion(result: any, prepared: any) {
     model: prepared.modelId,
     choices: result.payload.choices.map(publicChoice),
     usage: publicUsage(result.payload.usage, result),
+  };
+}
+
+// ECO-04 P2:/responses 橋接的回應面 —— 把公開 chat completion 包回
+// Responses API 的 response 物件。第一版輸出面僅 message/output_text
+// (工具呼叫不支援,請求面已提前擋下);finish_reason=length 映射為
+// status=incomplete + incomplete_details,其餼 completed。usage 欄位名
+// 依 Responses 慣例(input_tokens / output_tokens / total_tokens)。
+function responsesAssistantText(chatBody: any): string {
+  const choice = Array.isArray(chatBody?.choices) ? chatBody.choices[0] : null;
+  if (choice?.message && typeof choice.message.content === "string") return choice.message.content;
+  return "";
+}
+
+function responsesFinishReason(chatBody: any): string | null {
+  const choice = Array.isArray(chatBody?.choices) ? chatBody.choices[0] : null;
+  return choice?.finish_reason ?? null;
+}
+
+export function publicResponsesObject(chatBody: any, prepared: any) {
+  const text = responsesAssistantText(chatBody);
+  const finishReason = responsesFinishReason(chatBody);
+  const incomplete = finishReason === "length";
+  const usage = chatBody?.usage ?? { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
+  const messageId = `msg_${prepared.requestId.slice(4)}`;
+  return {
+    id: `resp_${prepared.requestId.slice(4)}`,
+    object: "response",
+    created_at: prepared.created,
+    status: incomplete ? "incomplete" : "completed",
+    error: null,
+    incomplete_details: incomplete ? { reason: "max_output_tokens" } : null,
+    instructions: prepared.instructions ?? null,
+    max_output_tokens: prepared.maxCompletionTokens ?? null,
+    model: prepared.modelId,
+    output: [
+      {
+        id: messageId,
+        type: "message",
+        status: "completed",
+        role: "assistant",
+        content: [{ type: "output_text", text, annotations: [] }],
+      },
+    ],
+    parallel_tool_calls: false,
+    previous_response_id: null,
+    tools: [],
+    temperature: prepared.body?.temperature ?? null,
+    top_p: prepared.body?.top_p ?? null,
+    usage: {
+      input_tokens: usage.prompt_tokens ?? 0,
+      output_tokens: usage.completion_tokens ?? 0,
+      total_tokens: usage.total_tokens ?? 0,
+    },
+  };
+}
+
+// ECO-04 P2:/responses 橋接的串流面 —— 逐個吃「已正規化的公開 chat
+// chunk」(normalizeStreamChunk 的輸出),吐出 Responses SSE 事件序列
+// (response.created → output_item.added → content_part.added →
+// output_text.delta* → output_text.done → content_part.done →
+// output_item.done → response.completed/incomplete)。狀態機由本廠
+// 函式持有,端點層只負責把事件編成 SSE frame;計費仍走 chat 管線的
+// finalizeStream(結算使用量以 usage chunk 為準,與事件序列解耦)。
+export function createAkentrosResponsesStreamBridge(prepared: any) {
+  const messageId = `msg_${prepared.requestId.slice(4)}`;
+  let started = false;
+  let text = "";
+  let finishReason: string | null = null;
+  let usage: any = null;
+
+  function responseSkeleton(status: string) {
+    return {
+      id: `resp_${prepared.requestId.slice(4)}`,
+      object: "response",
+      created_at: prepared.created,
+      status,
+      error: null,
+      incomplete_details: null,
+      instructions: prepared.instructions ?? null,
+      max_output_tokens: prepared.maxCompletionTokens ?? null,
+      model: prepared.modelId,
+      output: [],
+      parallel_tool_calls: false,
+      previous_response_id: null,
+      tools: [],
+      temperature: prepared.body?.temperature ?? null,
+      top_p: prepared.body?.top_p ?? null,
+      ...(usage
+        ? {
+            usage: {
+              input_tokens: usage.prompt_tokens ?? 0,
+              output_tokens: usage.completion_tokens ?? 0,
+              total_tokens: usage.total_tokens ?? 0,
+            },
+          }
+        : {}),
+    };
+  }
+
+  function openingEvents(): Array<{ event: string; data: any }> {
+    return [
+      {
+        event: "response.created",
+        data: { type: "response.created", sequence_number: 0, response: responseSkeleton("in_progress") },
+      },
+      {
+        event: "response.output_item.added",
+        data: {
+          type: "response.output_item.added",
+          sequence_number: 1,
+          output_index: 0,
+          item: { id: messageId, type: "message", status: "in_progress", role: "assistant", content: [] },
+        },
+      },
+      {
+        event: "response.content_part.added",
+        data: {
+          type: "response.content_part.added",
+          sequence_number: 2,
+          item_id: messageId,
+          output_index: 0,
+          content_index: 0,
+          part: { type: "output_text", text: "", annotations: [] },
+        },
+      },
+    ];
+  }
+
+  return {
+    translate(chunk: any): Array<{ event: string; data: any }> {
+      const events: Array<{ event: string; data: any }> = [];
+      if (!started) {
+        started = true;
+        events.push(...openingEvents());
+      }
+      if (chunk?.usage) usage = chunk.usage;
+      for (const choice of Array.isArray(chunk?.choices) ? chunk.choices : []) {
+        const delta = choice?.delta || {};
+        if (typeof delta.content === "string" && delta.content) {
+          text += delta.content;
+          events.push({
+            event: "response.output_text.delta",
+            data: {
+              type: "response.output_text.delta",
+              item_id: messageId,
+              output_index: 0,
+              content_index: 0,
+              delta: delta.content,
+            },
+          });
+        }
+        if (choice?.finish_reason) finishReason = choice.finish_reason;
+      }
+      return events;
+    },
+    finalize(): Array<{ event: string; data: any }> {
+      const opening: Array<{ event: string; data: any }> = [];
+      if (!started) {
+        started = true;
+        opening.push(...openingEvents());
+      }
+      const incomplete = finishReason === "length";
+      const finalResponse = {
+        ...responseSkeleton(incomplete ? "incomplete" : "completed"),
+        incomplete_details: incomplete ? { reason: "max_output_tokens" } : null,
+        output: [
+          {
+            id: messageId,
+            type: "message",
+            status: "completed",
+            role: "assistant",
+            content: [{ type: "output_text", text, annotations: [] }],
+          },
+        ],
+      };
+      return [
+        ...opening,
+        {
+          event: "response.output_text.done",
+          data: {
+            type: "response.output_text.done",
+            item_id: messageId,
+            output_index: 0,
+            content_index: 0,
+            text,
+          },
+        },
+        {
+          event: "response.content_part.done",
+          data: {
+            type: "response.content_part.done",
+            item_id: messageId,
+            output_index: 0,
+            content_index: 0,
+            part: { type: "output_text", text, annotations: [] },
+          },
+        },
+        {
+          event: "response.output_item.done",
+          data: {
+            type: "response.output_item.done",
+            output_index: 0,
+            item: {
+              id: messageId,
+              type: "message",
+              status: "completed",
+              role: "assistant",
+              content: [{ type: "output_text", text, annotations: [] }],
+            },
+          },
+        },
+        {
+          event: incomplete ? "response.incomplete" : "response.completed",
+          data: {
+            type: incomplete ? "response.incomplete" : "response.completed",
+            response: finalResponse,
+          },
+        },
+      ];
+    },
   };
 }
 

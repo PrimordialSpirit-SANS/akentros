@@ -12,9 +12,9 @@ info:
     | OpenAI endpoint | Supported |
     | --- | --- |
     | `GET /api/ai/v1/models` | Yes |
-    | `POST /api/ai/v1/chat/completions` | Yes (SSE streaming, tools, capability-gated structured outputs) |
+    | `POST /api/ai/v1/chat/completions` | Yes (SSE streaming, tools, capability-gated structured outputs, vision parts) |
     | `POST /api/ai/v1/embeddings` | Yes (text input only) |
-    | `POST /api/ai/v1/responses` | No |
+    | `POST /api/ai/v1/responses` | Bridged subset (`model`, `input`, `instructions`, `stream`, `max_output_tokens`, `temperature`, `top_p`; executed on the chat pipeline and wrapped back into a Responses object; SSE events bridged to `response.*`) |
     | legacy /completions (`POST /api/ai/v1/completions`) | No (deprecated upstream; not planned) |
     | `/audio/*` (speech, transcription) | No |
     | `/images/*` (generations, edits, variations) | No |
@@ -26,6 +26,9 @@ info:
     that use unsupported OpenAI parameters return 400 `unsupported_parameter`
     (or `unsupported_feature` when the parameter names a real OpenAI capability
     Akentros does not expose), so callers can distinguish gaps from mistakes.
+    Responses-API parameters that name capabilities beyond the bridged subset
+    (`background`, `previous_response_id`, `tools`, `reasoning`, `text`,
+    `truncation`, ...) are rejected with 400 `unsupported_feature`.
 servers:
   - url: /
     description: Current Akentros API origin
@@ -157,6 +160,88 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/EmbeddingResponse'
+        '400':
+          $ref: '#/components/responses/PublicError'
+        '401':
+          $ref: '#/components/responses/PublicError'
+        '402':
+          $ref: '#/components/responses/PublicError'
+        '403':
+          $ref: '#/components/responses/PublicError'
+        '404':
+          $ref: '#/components/responses/PublicError'
+        '408':
+          $ref: '#/components/responses/PublicError'
+        '409':
+          $ref: '#/components/responses/PublicError'
+        '413':
+          $ref: '#/components/responses/PublicError'
+        '429':
+          $ref: '#/components/responses/PublicError'
+        '503':
+          $ref: '#/components/responses/PublicError'
+
+  /api/ai/v1/responses:
+    post:
+      tags: [Inference]
+      operationId: createAkentrosResponse
+      summary: Create a response (chat-completions bridge)
+      description: |
+        OpenAI Responses API surface bridged onto the Akentros chat pipeline.
+        The bridged subset supports `model`, `input` (string or message items,
+        including `input_text` / `input_image` parts on vision-capable
+        models), `instructions` (prepended as a system message), `stream`,
+        `max_output_tokens`, `temperature`, and `top_p`. Requests are
+        executed on the chat pipeline (provider routing, billing
+        reserve-settle-refund, idempotency) with the endpoint labeled
+        `responses`. Non-streaming results are wrapped into a Responses
+        object; streaming results emit `event: response.*` SSE events
+        (`response.created`, `response.output_item.added`,
+        `response.content_part.added`, `response.output_text.delta`,
+        `response.output_text.done`, `response.content_part.done`,
+        `response.output_item.done`, `response.completed` /
+        `response.incomplete`). Parameters naming capabilities beyond the
+        subset (`background`, `previous_response_id`, `tools`, `reasoning`,
+        `text`, ...) return 400 `unsupported_feature`. Requires the
+        `responses` scope; keys granted `chat:completions` before the
+        responses release are also accepted for backward compatibility.
+      security:
+        - AkentrosKey: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResponsesCreateRequest'
+      responses:
+        '200':
+          description: |
+            A Responses object when `stream` is false, or an SSE stream of
+            `event: response.*` frames ending with `response.completed` (or
+            `response.incomplete` when the output limit is hit).
+          headers:
+            X-Request-Id:
+              $ref: '#/components/headers/XRequestId'
+            X-Akentros-Pricing-Revision:
+              $ref: '#/components/headers/XPricingRevision'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResponsesObject'
+            text/event-stream:
+              schema:
+                type: string
+              example: |
+                event: response.created
+                data: {"type":"response.created","response":{"status":"in_progress"}}
+
+                event: response.output_text.delta
+                data: {"type":"response.output_text.delta","delta":"Hello"}
+
+                event: response.completed
+                data: {"type":"response.completed","response":{"status":"completed"}}
         '400':
           $ref: '#/components/responses/PublicError'
         '401':
@@ -816,6 +901,176 @@ components:
                     name:
                       type: string
                       pattern: '^[a-zA-Z0-9_-]{1,64}$'
+
+    ResponsesCreateRequest:
+      type: object
+      required: [model, input]
+      additionalProperties: false
+      description: |
+        Bridged subset of the OpenAI Responses API. Neutral parameters
+        (`user`, `store`, `metadata`, `service_tier`) are accepted then
+        dropped. Known Responses parameters that name unsupported capabilities
+        (`background`, `previous_response_id`, `conversation`, `tools`,
+        `tool_choice`, `parallel_tool_calls`, `reasoning`, `text`, `include`,
+        `truncation`, `prompt`, `prompt_template`) are rejected with 400
+        `unsupported_feature`; any other undeclared parameter returns
+        `unsupported_parameter`.
+      properties:
+        model:
+          type: string
+        input:
+          oneOf:
+            - type: string
+            - type: array
+              minItems: 1
+              items:
+                $ref: '#/components/schemas/ResponsesInputItem'
+        instructions:
+          type: string
+          description: Prepended to the conversation as a system message.
+        stream:
+          type: boolean
+          default: false
+        max_output_tokens:
+          type: integer
+          minimum: 1
+        temperature:
+          type: number
+          minimum: 0
+          maximum: 2
+        top_p:
+          type: number
+          minimum: 0
+          maximum: 1
+
+    ResponsesInputItem:
+      type: object
+      required: [role]
+      additionalProperties: false
+      properties:
+        role:
+          type: string
+          enum: [system, developer, user, assistant]
+        content:
+          oneOf:
+            - type: string
+            - type: array
+              minItems: 1
+              maxItems: 64
+              description: |
+                Content parts, supported on user items of vision-capable
+                models (`input_text` / `input_image`, the Responses naming).
+                Image URLs must use `https://` or `data:image/` sources.
+              items:
+                oneOf:
+                  - type: object
+                    additionalProperties: false
+                    required: [type, text]
+                    properties:
+                      type:
+                        const: input_text
+                      text:
+                        type: string
+                        minLength: 1
+                        maxLength: 100000
+                  - type: object
+                    additionalProperties: false
+                    required: [type, image_url]
+                    properties:
+                      type:
+                        const: input_image
+                      image_url:
+                        type: string
+                        minLength: 1
+                        maxLength: 8192
+                        pattern: '^(https://|data:image/)'
+
+    ResponsesObject:
+      type: object
+      required: [id, object, created_at, status, model, output, usage]
+      description: |
+        A bridged Responses object. The first version surfaces a single
+        assistant message with `output_text` content; `status` is
+        `incomplete` (with `incomplete_details.reason=max_output_tokens`)
+        when the upstream chat completion finished for length.
+      properties:
+        id:
+          type: string
+        object:
+          const: response
+        created_at:
+          type: integer
+        status:
+          type: string
+          enum: [completed, incomplete]
+        error:
+          type: 'null'
+        incomplete_details:
+          oneOf:
+            - type: 'null'
+            - type: object
+              required: [reason]
+              properties:
+                reason:
+                  const: max_output_tokens
+        instructions:
+          type: [string, 'null']
+        max_output_tokens:
+          oneOf:
+            - type: 'null'
+            - type: integer
+        model:
+          type: string
+        output:
+          type: array
+          items:
+            type: object
+            required: [id, type, status, role, content]
+            properties:
+              id:
+                type: string
+              type:
+                const: message
+              status:
+                type: string
+              role:
+                const: assistant
+              content:
+                type: array
+                items:
+                  type: object
+                  required: [type, text, annotations]
+                  properties:
+                    type:
+                      const: output_text
+                    text:
+                      type: string
+                    annotations:
+                      type: array
+        parallel_tool_calls:
+          type: boolean
+        previous_response_id:
+          type: 'null'
+        tools:
+          type: array
+        temperature:
+          oneOf:
+            - type: 'null'
+            - type: number
+        top_p:
+          oneOf:
+            - type: 'null'
+            - type: number
+        usage:
+          type: object
+          required: [input_tokens, output_tokens, total_tokens]
+          properties:
+            input_tokens:
+              type: integer
+            output_tokens:
+              type: integer
+            total_tokens:
+              type: integer
 
     TokenUsage:
       type: object
