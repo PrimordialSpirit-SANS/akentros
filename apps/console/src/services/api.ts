@@ -7,8 +7,18 @@
 // /auth/* 路徑;`||` 讓空字串正確退回同源 /api。
 const API_BASE = (import.meta.env.VITE_AKENTROS_API_BASE || "/api").replace(/\/+$/, "");
 
+// SN-16 fix (audit N5):原本 name 直接插值進入 RegExp 建構式,若 name 含
+// RegExp 中繼字元(如 .、*、+、?、(、)、[、]、{、}、^、$、|、\\)會匹配
+// 到非預期的 cookie 或丟出例外。目前所有呼叫端都用硬編碼字串
+// (csrf_token、XSRF-TOKEN)無中繼字元,實際安全;但這是防禦縱深缺口——
+// 逸出後即使未來傳入使用者或 URL 控制的名稱也不會破壞 regex。
+function escapeRegexLiteral(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function readCookie(name: string): string | null {
-  const match = document.cookie.match(new RegExp(`(?:^|;\\s*)${name}=([^;]*)`));
+  const pattern = new RegExp(`(?:^|;\\s*)${escapeRegexLiteral(name)}=([^;]*)`);
+  const match = document.cookie.match(pattern);
   return match ? decodeURIComponent(match[1]) : null;
 }
 

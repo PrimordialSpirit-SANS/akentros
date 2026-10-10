@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { createAkentrosPublicCorsMiddleware, createCorsMiddleware } from "./middleware/cors.ts";
 import { aiDeveloperRoutes } from "./routes/aiDeveloper.ts";
 import { aiPublicRoutes } from "./routes/aiPublic.ts";
-import { authRoutes, requireCsrfToken } from "./routes/auth.ts";
+import { authRoutes, requireCsrfToken, requireTrustedOrigin } from "./routes/auth.ts";
 import type { AkentrosContext, AkentrosEnv, AkentrosNext, AkentrosRuntimeEnv } from "./types.ts";
 import { sendOpenAiError } from "./utils/aiErrors.ts";
 import { dbQuery } from "./utils/db.ts";
@@ -69,6 +69,14 @@ export function createApp(env: AkentrosRuntimeEnv = {}) {
 
   app.use("/api/ai/*", createAkentrosGate(env));
   app.use("/api/ai/v1/*", createAkentrosPublicCorsMiddleware());
+  // SN-15 fix (audit N2):開發者管理面原本只掛 requireCsrfToken(雙提交
+  // cookie),與 /api/auth/* 的 requireTrustedOrigin 防禦縱深不一致。瀏覽器
+  // 對非簡單請求會 preflight,CORS 拒絕時擋下實際請求;但若未來新增簡單
+  // content-type 的 mutating 路由、或 CORS 設定錯誤,CSRF token 會是唯一
+  // 防線。補上 requireTrustedOrigin,與 auth 採同一份 origin 白名單邏輯
+  // (requireTrustedOrigin 對缺 Origin/Referer 的非瀏覽器呼叫放行,不影響
+  // curl/SDK 客戶端)。
+  app.use("/api/ai/developer/*", requireTrustedOrigin);
   app.use("/api/ai/developer/*", requireCsrfToken);
 
   app.route("/api/ai/v1", aiPublicRoutes);

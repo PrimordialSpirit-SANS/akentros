@@ -6,6 +6,7 @@ import {
   recordAkentrosAiRequest,
   recordAkentrosSettlement,
   renderAkentrosPrometheus,
+  resetMetricsScrapeWindowsForTests,
 } from "../src/utils/metrics.ts";
 
 test("metrics render Prometheus text format with labels, sums, and gauges", () => {
@@ -121,4 +122,36 @@ test("metrics access control requires a token or a loopback source (SN-1)", asyn
     req: { header: () => undefined },
   });
   assert.equal(forbidden.status, 404);
+});
+
+test("metrics scrape bucket overflow evicts only expired entries (SN-14, audit N1)", () => {
+  // 反模式防御:原本超量時呼叫 clear() 整表清除,允許攻擊者藉觸發桶上限
+  // 把既有計數歸零。修復後只淘汰已過期的桶,仍滿時對新身份回 429,既有
+  // 計數保持不變。本測試釘死此不變量。
+  resetMetricsScrapeWindowsForTests();
+  const token = { token: "t", authorization: "Bearer t" };
+  const baseNow = 10_000_000;
+  const freshKey = (i: number) => `198.51.100.${i}`;
+  // 容量語意:`size > MAX_TRACKED_KEYS (=4096)` 才觸發淘汰,故可容納至
+  // 4097 個並存桶;第 4098 個新身份(仍在窗口內)會觸發淘汰 — 全部都未
+  // 過期,淘汰後 size 仍 >= MAX,回 429。本迴圈驗證 1..4097 全部 allow。
+  for (let i = 1; i <= 4097; i += 1) {
+    const verdict = evaluateMetricsAccess({
+      ...token,
+      remoteAddr: freshKey(i),
+      now: baseNow,
+    });
+    assert.equal(verdict, "allow", `bucket ${i} should be allowed while under capacity`);
+  }
+  // 第 4098 個新身份(仍在窗口內)應被 429:所有桶都未過期,淘汰後
+  // size 仍 >= MAX,既有計數保持不變(不被歸零)。
+  assert.equal(evaluateMetricsAccess({ ...token, remoteAddr: "203.0.113.99", now: baseNow }), "rate_limited");
+  // 既有身份的計數仍可讀(允許 retry):立即再呼叫同一既有身份,其
+  // windowStart 仍在窗口內、count=1 → 2 < 12,應為 allow。
+  assert.equal(evaluateMetricsAccess({ ...token, remoteAddr: freshKey(1), now: baseNow }), "allow");
+  // 推進時間到所有桶過期後,新身份應可再度進入(淘汰已過期桶,釋出空間)。
+  const later = baseNow + 61_000;
+  assert.equal(evaluateMetricsAccess({ ...token, remoteAddr: "203.0.113.99", now: later }), "allow");
+  // 重置以避免影響後續測試。
+  resetMetricsScrapeWindowsForTests();
 });
