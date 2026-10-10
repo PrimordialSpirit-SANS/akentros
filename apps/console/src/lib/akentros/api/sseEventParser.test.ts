@@ -84,6 +84,40 @@ describe("readSseEvents", () => {
     expect(events.map((event) => event.data)).toEqual(["a", "b", "[DONE]"]);
   });
 
+  // FUNC-01(與 gateway core sse.ts 同步):串流開頭的 U+FEFF(BOM)必須丟棄;
+  // 只剝一次,資料中的 U+FEFF 不受影響。
+  it("strips a leading BOM so first-chunk data events survive", async () => {
+    const stream = streamFromChunks(['\uFEFFdata: {"ok":true}\n\ndata: [DONE]\n\n']);
+    const events = await collect(readSseEvents(stream));
+    expect(events).toEqual([
+      { type: "message", data: '{"ok":true}' },
+      { type: "message", data: "[DONE]" },
+    ]);
+  });
+
+  it("strips the BOM exactly once and preserves U+FEFF inside data", async () => {
+    const stream = streamFromChunks(['\uFEFFdata: {"content":"\uFEFF"}\n\ndata: \uFEFFtail\n\n']);
+    const events = await collect(readSseEvents(stream));
+    expect(events).toEqual([
+      { type: "message", data: '{"content":"\uFEFF"}' },
+      { type: "message", data: "\uFEFFtail" },
+    ]);
+  });
+
+  it("strips a BOM split across chunk boundaries", async () => {
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream({
+      start(controller) {
+        controller.enqueue(new Uint8Array([0xef]));
+        controller.enqueue(new Uint8Array([0xbb, 0xbf]));
+        controller.enqueue(encoder.encode("data: split\n\n"));
+        controller.close();
+      },
+    });
+    const events = await collect(readSseEvents(stream));
+    expect(events).toEqual([{ type: "message", data: "split" }]);
+  });
+
   it("throws immediately when the signal is already aborted", async () => {
     const controller = new AbortController();
     controller.abort(new Error("cancelled"));

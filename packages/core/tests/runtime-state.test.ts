@@ -166,6 +166,87 @@ test("provider pool claim and circuit release use one shared database state", as
   assert.equal(Number(credential.rows[0].in_flight), 0);
 });
 
+// ---------------------------------------------------------------------------
+// FUNC-02:in_flight 為觀測近似值;逾期未釋放租約(程序崩潰)後高估,
+// 維護迴圈對帳(reconcileInFlight)以實際未過期 lease 計數歸零/歸真。
+// ---------------------------------------------------------------------------
+
+test("FUNC-02: in-flight reconciliation zeroes expired leases and preserves active ones", async () => {
+  assert.match(AKENTROS_PROVIDER_POOL_SQL.reconcileInFlight, /released_at IS NULL/);
+  assert.match(AKENTROS_PROVIDER_POOL_SQL.reconcileInFlight, /expires_at > \?/);
+  // 對帳只重算觀測值,絕不能刪租約列或改寫 released_at。
+  assert.doesNotMatch(AKENTROS_PROVIDER_POOL_SQL.reconcileInFlight, /DELETE/);
+
+  const { query } = createSqliteTestDb();
+  await migrateAkentrosSchema(query);
+  const store = createAkentrosProviderPoolStore(query);
+  await (store as any).sync();
+
+  // cloudflare-workers-ai-production 有三個等權重 credential;各 claim 一筆
+  // 租約:primary 的將模擬崩潰(逾期未釋放),secondary 的保持進行中。
+  // 加權輪詢下首次 claim 選 primary(比例同為 0,credential_id 排序),
+  // primary 被選過後比例升高,第二次 claim 自然落在 secondary。
+  const staleClaim: any = await store.claim({
+    poolId: "cloudflare-workers-ai-production",
+    requestId: "req_crashed",
+    leaseTtlMs: 90_000,
+    leaseId: "00000000-0000-4000-8000-0000000000a1",
+  });
+  assert.equal(staleClaim.credentialId, "cloudflare-workers-ai-primary");
+  const activeClaim: any = await store.claim({
+    poolId: "cloudflare-workers-ai-production",
+    requestId: "req_active",
+    leaseTtlMs: 600_000,
+    leaseId: "00000000-0000-4000-8000-0000000000b2",
+  });
+  assert.equal(activeClaim.credentialId, "cloudflare-workers-ai-secondary");
+
+  // 模擬程序崩潰:primary 的租約逾期未歸還(expires_at 已成過去)。
+  await query(`UPDATE ai_provider_credential_leases SET expires_at = ? WHERE lease_id = ?`, [
+    new Date(Date.now() - 1_000).toISOString(),
+    staleClaim.leaseId,
+  ]);
+
+  // 崩潰後 in_flight 仍高估(觀測 drift)。入場權威是 lease 子查詢(不計
+  // 逾期租約),不讀這個值,正確性無虞——見 markClaimed/applyRelease 註解。
+  let credential = await query(
+    `SELECT in_flight FROM ai_provider_credentials WHERE credential_id = 'cloudflare-workers-ai-primary'`,
+  );
+  assert.equal(Number(credential.rows[0].in_flight), 1);
+
+  const reconciled = await store.reconcileInFlight();
+  assert.deepEqual(reconciled, [{ credentialId: "cloudflare-workers-ai-primary", inFlight: 0 }]);
+
+  credential = await query(
+    `SELECT in_flight FROM ai_provider_credentials WHERE credential_id IN ('cloudflare-workers-ai-primary', 'cloudflare-workers-ai-secondary') ORDER BY credential_id`,
+  );
+  assert.equal(Number(credential.rows[0].in_flight), 0); // 逾期租約 → 歸零
+  assert.equal(Number(credential.rows[1].in_flight), 1); // 進行中租約 → 歸真(不受影響)
+
+  // 進行中租約列原封不動:未釋放、期限不變。
+  const activeLease = await query(
+    `SELECT released_at, expires_at FROM ai_provider_credential_leases WHERE lease_id = ?`,
+    [activeClaim.leaseId],
+  );
+  assert.equal(activeLease.rows[0].released_at, null);
+  assert.equal(new Date(activeLease.rows[0].expires_at).getTime(), new Date(activeClaim.expiresAt).getTime());
+
+  // 冪等:無 drift 時再跑一次,不回報任何修正。
+  assert.deepEqual(await store.reconcileInFlight(), []);
+
+  // 對帳後正常 release 仍運作(觀測值夾下界,不為負)。
+  const released = await store.release({
+    leaseId: activeClaim.leaseId,
+    success: true,
+    selection: { base_cooldown_ms: 5000, max_cooldown_ms: 300000 },
+  });
+  assert.equal(released.state, "healthy");
+  credential = await query(
+    `SELECT in_flight FROM ai_provider_credentials WHERE credential_id = 'cloudflare-workers-ai-secondary'`,
+  );
+  assert.equal(Number(credential.rows[0].in_flight), 0);
+});
+
 test("provider pool releases unusable claims and advances to the next healthy credential", async () => {
   const pool = {
     provider: "openrouter",

@@ -118,6 +118,11 @@ function providerPoolSql(query: { dialect?: "postgres" | "sqlite" } = {}) {
       credentials.credential_id
     LIMIT 1
   `,
+    // FUNC-02 文件化:in_flight 為觀測近似值,不是入場權威——claim 的入場
+    // 判定走 candidateCredentials 的 lease 子查詢(未過期且未釋放才算數)。
+    // 這裡寫入的「實際 lease 數 + 1」在租約逾期未歸還(程序崩潰)後會高估,
+    // 直到下一次 claim 重算或維護迴圈對帳(reconcileInFlight)才自癒;
+    // drift 只影響 credentialState 的觀測價值,不影響正確性。
     markClaimed: `
     UPDATE ai_provider_credentials
     SET in_flight = ?,
@@ -145,6 +150,10 @@ function providerPoolSql(query: { dialect?: "postgres" | "sqlite" } = {}) {
     FROM ai_provider_credentials
     WHERE credential_id = ?
   `,
+    // FUNC-02 文件化(同 markClaimed):遞減的 in_flight 只是觀測近似值——
+    // 讀的是當下快照再減 1,與 lease 子查詢的權威計數可能暫時 drift
+    // (例如逾期未歸還的租約已不被子查詢計入,但這裡仍會遞減)。
+    // Math.max(…, 0) 夾住下界;真正的校正由下一次 claim 或 reconcileInFlight 完成。
     applyRelease: `
     UPDATE ai_provider_credentials
     SET in_flight = ?,
@@ -161,6 +170,29 @@ function providerPoolSql(query: { dialect?: "postgres" | "sqlite" } = {}) {
         updated_at = ?
     WHERE credential_id = ?
     RETURNING credential_id, state, consecutive_failures, cooldown_until
+  `,
+    // FUNC-02 選配對帳:以實際未過期且未釋放的 lease 計數重算全部 credential 的
+    // in_flight,供維護迴圈(*/30 cron)週期性歸零/歸真觀測 drift。WHERE 夾住
+    // 「只有 drift 的列」:無 drift 時不寫列、不動 updated_at;RETURNING 回傳
+    // 實際被修正的 credential。入場判定不受影響——權威始終是 claim 的子查詢。
+    reconcileInFlight: `
+    UPDATE ai_provider_credentials
+    SET in_flight = (
+      SELECT COUNT(*)
+      FROM ai_provider_credential_leases AS leases
+      WHERE leases.credential_id = ai_provider_credentials.credential_id
+        AND leases.released_at IS NULL
+        AND leases.expires_at > ?
+    ),
+    updated_at = ?
+    WHERE in_flight <> (
+      SELECT COUNT(*)
+      FROM ai_provider_credential_leases AS leases
+      WHERE leases.credential_id = ai_provider_credentials.credential_id
+        AND leases.released_at IS NULL
+        AND leases.expires_at > ?
+    )
+    RETURNING credential_id, in_flight
   `,
   });
 }
@@ -205,6 +237,19 @@ export function createAkentrosProviderPoolStore(query: AkentrosQuery) {
   return Object.freeze({
     sync: (config: any) => syncAkentrosProviderCredentials(query, config),
 
+    /** FUNC-02:以實際未過期且未釋放的租約重算全部 credential 的 in_flight,
+     * 回傳被修正的列({ credentialId, inFlight })。觀測對帳用途:程序崩潰
+     * 導致租約逾期未歸還時,in_flight 會高估到下一次 claim 才自癒,此方法
+     * 讓維護迴圈得以週期性歸零/歸真;不影響入場判定(權威是 lease 子查詢)。 */
+    async reconcileInFlight(): Promise<Array<{ credentialId: string; inFlight: number }>> {
+      const now = new Date().toISOString();
+      const reconciled = await query(sql.reconcileInFlight, [now, now, now]);
+      return rows(reconciled).map((row: any) => ({
+        credentialId: String(row.credential_id),
+        inFlight: Number(row.in_flight),
+      }));
+    },
+
     async claim({
       poolId,
       requestId,
@@ -242,6 +287,8 @@ export function createAkentrosProviderPoolStore(query: AkentrosQuery) {
         if (!candidate) return null;
 
         await query(sql.markClaimed, [
+          // FUNC-02:claim 時以「實際 lease 子查詢 + 1」重算(準確值);此後
+          // 僅作觀測,逾期未歸還的租約會讓它高估,由下一次 claim 或對帳自癒。
           Number(candidate.active_leases) + 1,
           now,
           expiresAt,
@@ -325,6 +372,8 @@ export function createAkentrosProviderPoolStore(query: AkentrosQuery) {
         const ewma = latency === null ? oldEwma : oldEwma === null ? latency : oldEwma * 0.8 + latency * 0.2;
 
         const applied = await query(sql.applyRelease, [
+          // FUNC-02:遞減觀測值,夾住下界;與 lease 子查詢的暫時 drift 由
+          // 下一次 claim 重算或維護迴圈 reconcileInFlight 對帳歸真。
           Math.max(Number(state.in_flight || 0) - 1, 0),
           ok ? 1 : 0,
           ok ? 0 : 1,

@@ -70,3 +70,12 @@ export async function releaseAkentrosProviderCredential(
   const store = await ready(env);
   return store.release({ ...(outcome as any), leaseId: claim.leaseId, selection: claim.pool.selection });
 }
+
+// FUNC-02:維護迴圈用的觀測對帳——以實際未過期且未釋放的租約重算全部
+// credential 的 in_flight,回傳被修正的列。租約逾期未歸還(程序崩潰)後
+// in_flight 會高估到下一次 claim 才自癒;此函式讓 */30 維護週期得以提前
+// 歸零/歸真,不影響入場判定(權威是 claim 的 lease 子查詢)。
+export async function reconcileAkentrosProviderInFlight(env: AkentrosRuntimeEnv) {
+  const store = await ready(env);
+  return store.reconcileInFlight();
+}

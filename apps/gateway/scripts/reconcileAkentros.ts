@@ -4,6 +4,7 @@ import {
   reconcileStaleAkentrosReservations,
   resolveQuarantinedAkentrosReservations,
 } from "../src/utils/aiBilling.ts";
+import { reconcileAkentrosProviderInFlight } from "../src/utils/aiProviderPool.ts";
 import { installNodeAkentrosDbAdapter } from "../src/utils/db.ts";
 
 dotenv.config({
@@ -35,6 +36,14 @@ try {
   console.log(
     `Akentros quarantine resolution: ${JSON.stringify({ scanned: quarantined.length, ...summarize(quarantined) })}`,
   );
+
+  // FUNC-02:in_flight 觀測對帳(與 in-process 維護迴圈同一條 UPDATE)——
+  // 外部排程器情境下程序內 timer 不會跑,逾期未歸還租約造成的觀測 drift
+  // 也需要在這裡歸零/歸真。失敗不阻斷其他對帳工作。
+  const inFlightReconciled = await reconcileAkentrosProviderInFlight(process.env)
+    .then((reconciled: Array<{ credentialId: string }>) => reconciled.length)
+    .catch(() => 0);
+  console.log(`Akentros provider in-flight reconciliation: ${JSON.stringify({ reconciled: inFlightReconciled })}`);
 } catch (error: any) {
   console.error("Akentros reconciliation failed:", error?.code || error?.name || "unknown");
   process.exitCode = 1;
