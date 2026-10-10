@@ -422,6 +422,133 @@ test("neutral OpenAI parameters are tolerated and dropped before upstream dispat
   }
 });
 
+// ECO-03:vision 能力開啟的模型(gpt-6-astra)接受 user 訊息混合
+// text/image_url parts;非 vision 模型(gpt-5.2-codex)維持 400;
+// http:// 的 image_url 一律 400(僅放行 https:// 與 data:image/);
+// 估計輸入 token 含每個 image part 的固定保守值。
+test("vision models accept mixed content parts with conservative token estimates", async () => {
+  const visionRequest = await prepareAkentrosChatRequest({
+    body: body({
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "text", text: "這張圖片裡有什麼?" },
+            { type: "image_url", image_url: { url: "https://example.com/chart.png" } },
+            { type: "image_url", image_url: { url: "data:image/png;base64,aGVsbG8=" } },
+          ],
+        },
+      ],
+    }),
+    aiKey: aiKey(),
+  });
+  assert.deepEqual(visionRequest.body.messages[0].content, [
+    { type: "text", text: "這張圖片裡有什麼?" },
+    { type: "image_url", image_url: { url: "https://example.com/chart.png" } },
+    { type: "image_url", image_url: { url: "data:image/png;base64,aGVsbG8=" } },
+  ]);
+
+  // 非 vision 模型:parts 維持「string or null」契約的 400。
+  await assert.rejects(
+    prepareAkentrosChatRequest({
+      body: body({
+        model: "akentros/gpt-5.2-codex",
+        messages: [{ role: "user", content: [{ type: "text", text: "no vision here" }] }],
+      }),
+      aiKey: aiKey(),
+    }),
+    (error: any) => error.status === 400 && /string or null/.test(error.message),
+  );
+
+  // http:// 的 image_url 一律拒絕(防奇怪 scheme 透傳上游)。
+  await assert.rejects(
+    prepareAkentrosChatRequest({
+      body: body({
+        messages: [
+          {
+            role: "user",
+            content: [{ type: "image_url", image_url: { url: "http://example.com/insecure.png" } }],
+          },
+        ],
+      }),
+      aiKey: aiKey(),
+    }),
+    (error: any) =>
+      error.status === 400 &&
+      /https:\/\/ or data:image\//.test(error.message) &&
+      error.param === "messages.0.content.0.image_url.url",
+  );
+
+  // 系統/assistant 訊息不可攜帶 parts(僅 user 開放)。
+  await assert.rejects(
+    prepareAkentrosChatRequest({
+      body: body({
+        messages: [
+          { role: "system", content: [{ type: "text", text: "system as parts" }] },
+          { role: "user", content: "hi" },
+        ],
+      }),
+      aiKey: aiKey(),
+    }),
+    (error: any) => error.status === 400 && /string or null/.test(error.message),
+  );
+
+  // 未知 part 類型與空 parts 陣列回 400。
+  await assert.rejects(
+    prepareAkentrosChatRequest({
+      body: body({
+        messages: [{ role: "user", content: [{ type: "video", video: "must-not-pass" }] }],
+      }),
+      aiKey: aiKey(),
+    }),
+    (error: any) => error.status === 400 && /text or image_url items/.test(error.message),
+  );
+  await assert.rejects(
+    prepareAkentrosChatRequest({
+      body: body({ messages: [{ role: "user", content: [] }] }),
+      aiKey: aiKey(),
+    }),
+    (error: any) => error.status === 400 && /content parts/.test(error.message),
+  );
+
+  // 估計 token:同文字內容下,每加一個 image part 至少多 1,000 tokens。
+  const textOnly = await prepareAkentrosChatRequest({
+    body: body({ messages: [{ role: "user", content: "describe" }] }),
+    aiKey: aiKey(),
+  });
+  const withOneImage = await prepareAkentrosChatRequest({
+    body: body({
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "text", text: "describe" },
+            { type: "image_url", image_url: { url: "https://example.com/a.png" } },
+          ],
+        },
+      ],
+    }),
+    aiKey: aiKey(),
+  });
+  const withTwoImages = await prepareAkentrosChatRequest({
+    body: body({
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "text", text: "describe" },
+            { type: "image_url", image_url: { url: "https://example.com/a.png" } },
+            { type: "image_url", image_url: { url: "https://example.com/b.png" } },
+          ],
+        },
+      ],
+    }),
+    aiKey: aiKey(),
+  });
+  assert.ok(withOneImage.estimatedInputTokens >= textOnly.estimatedInputTokens + 1_000);
+  assert.ok(withTwoImages.estimatedInputTokens >= withOneImage.estimatedInputTokens + 1_000);
+});
+
 // ECO-05:n>1 維持不支援,但錯誤改為明確的 unsupported_feature 並給出
 // 替代做法;形狀不合法仍回一般 400;n=1 照常透傳。
 test("n beyond one returns a distinguishable unsupported_feature error", async () => {

@@ -215,7 +215,61 @@ function validateFunctionCall(
   return { name: value.name, arguments: value.arguments };
 }
 
-function validateMessages(messages: unknown): any[] {
+// ECO-03:vision 輸入的 content parts 上限。每 part 文字 ≤100k(沿用純文字
+// 訊息上限)、URL ≤8k、parts ≤64,總體沿用 HTTP 層 32MB body 上限。
+const MAX_MESSAGE_CONTENT_PARTS = 64;
+const MAX_IMAGE_URL_CHARS = 8 * 1024;
+// 每個 image part 以固定保守值計入輸入 token 估計(起跳 1,000;URL 位元組
+// 已在 JSON 序列化估計內,此值補上「圖片本體」未被 URL 長度反映的成本),
+// 依解析度精化留待後續。預留額邏輯沿用,確保不高估不足額。
+const IMAGE_PART_ESTIMATED_INPUT_TOKENS = 1_000;
+
+// ECO-03:vision 能力開啟的模型,user 訊息 content 可為 parts 陣列
+// ({type:"text"} 與 {type:"image_url"} 混合)。image_url 只接受 https://
+// 與 data:image/ 基底,防 file:// 等奇怪 scheme 直接透傳上游。
+function validateContentParts(value: unknown, label: string): any[] {
+  if (!Array.isArray(value) || value.length === 0 || value.length > MAX_MESSAGE_CONTENT_PARTS) {
+    throw invalidRequest(
+      `Message content parts must contain between 1 and ${MAX_MESSAGE_CONTENT_PARTS} items.`,
+      label,
+    );
+  }
+  return value.map((part: any, index: number) => {
+    const partLabel = `${label}.${index}`;
+    if (isObject(part) && part.type === "text") {
+      if (Object.keys(part).some((key) => key !== "type" && key !== "text")) {
+        throw invalidRequest("Text parts must only contain the type and text fields.", partLabel);
+      }
+      if (typeof part.text !== "string" || part.text.length === 0 || part.text.length > 100_000) {
+        throw invalidRequest("Text parts must contain 1-100000 characters.", `${partLabel}.text`);
+      }
+      return { type: "text", text: part.text };
+    }
+    if (isObject(part) && part.type === "image_url") {
+      if (
+        Object.keys(part).some((key) => key !== "type" && key !== "image_url") ||
+        !isObject(part.image_url) ||
+        Object.keys(part.image_url).some((key) => key !== "url")
+      ) {
+        throw invalidRequest("Image parts must only contain an image_url object with a url.", partLabel);
+      }
+      const url = part.image_url.url;
+      if (typeof url !== "string" || url.length === 0 || url.length > MAX_IMAGE_URL_CHARS) {
+        throw invalidRequest("Image URLs must contain 1-8192 characters.", `${partLabel}.image_url.url`);
+      }
+      if (!url.startsWith("https://") && !url.startsWith("data:image/")) {
+        throw invalidRequest(
+          "Image URLs must use https:// or data:image/ sources.",
+          `${partLabel}.image_url.url`,
+        );
+      }
+      return { type: "image_url", image_url: { url } };
+    }
+    throw invalidRequest("Message content parts must be text or image_url items.", partLabel);
+  });
+}
+
+function validateMessages(messages: unknown, { vision = false }: { vision?: boolean } = {}): any[] {
   if (!Array.isArray(messages) || messages.length === 0 || messages.length > 256) {
     throw invalidRequest("messages must contain between 1 and 256 items.", "messages");
   }
@@ -235,18 +289,30 @@ function validateMessages(messages: unknown): any[] {
         throw invalidRequest("Tool messages require a valid tool_call_id.", `${label}.tool_call_id`);
     } else if (message.tool_call_id !== undefined)
       throw invalidRequest("tool_call_id is only valid for tool messages.", `${label}.tool_call_id`);
+    let content: any;
     if (hasToolCalls) {
       // Assistant tool-call turns may carry null content (or a short string of
       // interleaved text), but never structured content parts — the public
-      // contract declares content as string|null for every role.
+      // contract declares content as string|null for every non-user role.
       if (message.content !== undefined && message.content !== null && typeof message.content !== "string")
         throw invalidRequest("Message content must be a string or null.", `${label}.content`);
-    } else if (typeof message.content !== "string" || message.content.length === 0)
+      content = message.content === undefined || message.content === null ? null : message.content;
+    } else if (Array.isArray(message.content)) {
+      // ECO-03:content parts 僅開放給 vision 能力模型上的 user 訊息
+      // (視覺輸入的實際載體);其餘角色維持 string|null 契約。
+      if (message.role !== "user" || !vision) {
+        throw invalidRequest("Message content must be a string or null.", `${label}.content`);
+      }
+      content = validateContentParts(message.content, `${label}.content`);
+    } else if (typeof message.content !== "string" || message.content.length === 0) {
       throw invalidRequest(
         "Messages require non-empty text content or assistant tool calls.",
         `${label}.content`,
       );
-    if (typeof message.content === "string" && message.content.length > 100_000) {
+    } else {
+      content = message.content;
+    }
+    if (typeof content === "string" && content.length > 100_000) {
       throw invalidRequest("A message exceeds the supported text length.", `messages.${index}.content`);
     }
     if (message.tool_calls !== undefined && message.role !== "assistant")
@@ -258,8 +324,7 @@ function validateMessages(messages: unknown): any[] {
       : undefined;
     return {
       role: message.role,
-      content:
-        hasToolCalls && (message.content === undefined || message.content === null) ? null : message.content,
+      content,
       ...(toolCalls ? { tool_calls: toolCalls } : {}),
       ...(message.role === "tool" ? { tool_call_id: message.tool_call_id } : {}),
     };
@@ -352,7 +417,13 @@ function validateToolChoice(value: any, tools: any[]) {
 // 錯誤與「形狀不合法」可分辨,遷移者能立即定位是能力問題還是請求問題。
 function validateResponseFormat(value: unknown, model: any) {
   if (value === undefined) return undefined;
-  const type = isObject(value) ? value.type : undefined;
+  if (!isObject(value)) {
+    throw invalidRequest(
+      "response_format.type must be one of text, json_object, or json_schema.",
+      "response_format",
+    );
+  }
+  const type = value.type;
   if (type === "text") {
     // text 即預設行為:不轉發、不拒絕,靜默等同未指定。
     return undefined;
@@ -381,7 +452,7 @@ function validateResponseFormat(value: unknown, model: any) {
         "unsupported_feature",
       );
     }
-    const jsonSchema = value.json_schema;
+    const jsonSchema: unknown = value.json_schema;
     if (
       !isObject(jsonSchema) ||
       typeof jsonSchema.name !== "string" ||
@@ -675,7 +746,8 @@ export async function prepareAkentrosChatRequest({
   }
   // ECO-01:response_format 分型處理(見 validateResponseFormat)。
   const responseFormat = validateResponseFormat(body.response_format, model);
-  const messages = validateMessages(body.messages);
+  // ECO-03:vision 能力開啟的模型,user 訊息可攜帶混合 text/image_url parts。
+  const messages = validateMessages(body.messages, { vision: model.capabilities.vision === true });
   const usesTools =
     body.tools !== undefined ||
     body.tool_choice !== undefined ||
@@ -776,7 +848,19 @@ export async function prepareAkentrosChatRequest({
   };
   let estimatedInputTokens: number;
   try {
-    estimatedInputTokens = estimateInputTokens({ messages, ...(tools ? { tools } : {}) });
+    // ECO-03:image part 另以固定保守值計入(URL 位元組已在序列化估計內),
+    // 預留額不因圖片未被 URL 長度反映而低估。
+    const imagePartCount = messages.reduce(
+      (count: number, message: any) =>
+        count +
+        (Array.isArray(message.content)
+          ? message.content.filter((part: any) => part?.type === "image_url").length
+          : 0),
+      0,
+    );
+    estimatedInputTokens =
+      estimateInputTokens({ messages, ...(tools ? { tools } : {}) }) +
+      imagePartCount * IMAGE_PART_ESTIMATED_INPUT_TOKENS;
   } catch (error) {
     if (error instanceof RangeError)
       throw invalidRequest(

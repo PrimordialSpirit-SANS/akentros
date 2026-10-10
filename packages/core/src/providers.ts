@@ -229,6 +229,49 @@ function anthropicTextBlocks(content: unknown) {
   return [];
 }
 
+// ECO-03:OpenAI image_url part → Anthropic image source block。
+// - https:// URL → {"type":"url","url"}(Anthropic Messages API 原生支援)
+// - data:image/…;base64 → {"type":"base64","media_type","data"}
+// 推斷層已保證 URL 基底為 https:// 或 data:image/,此處僅做形狀轉換;
+// 不合法的 media type 交由上游回錯(可觀察、可 fallback),不靜默丟圖。
+function anthropicImageSource(url: string): any {
+  if (url.startsWith("data:image/")) {
+    const commaIndex = url.indexOf(",");
+    const meta = commaIndex > 0 ? url.slice("data:image/".length, commaIndex) : "";
+    const semicolon = meta.indexOf(";");
+    const mediaType = semicolon > 0 ? `image/${meta.slice(0, semicolon)}` : "";
+    const isBase64 =
+      semicolon > 0 &&
+      meta
+        .slice(semicolon + 1)
+        .split(";")
+        .includes("base64");
+    if (mediaType && isBase64) {
+      return { type: "base64", media_type: mediaType, data: url.slice(commaIndex + 1) };
+    }
+    return null;
+  }
+  return { type: "url", url };
+}
+
+// ECO-03:user 訊息的 content parts(text/image_url 混合)→ Anthropic
+// content blocks 陣列。未知 part 形狀理論上到不了這裡(推斷層已驗證),
+// 防禦性跳過而非崩潰,維持 transport 層不因上游形狀丟 5xx 的立場。
+function anthropicUserBlocks(content: unknown): any[] {
+  if (typeof content === "string" && content) return [{ type: "text", text: content }];
+  if (!Array.isArray(content)) return [];
+  const blocks: any[] = [];
+  for (const part of content) {
+    if (part?.type === "text" && typeof part.text === "string" && part.text) {
+      blocks.push({ type: "text", text: part.text });
+    } else if (part?.type === "image_url" && typeof part?.image_url?.url === "string") {
+      const source = anthropicImageSource(part.image_url.url);
+      if (source) blocks.push({ type: "image", source });
+    }
+  }
+  return blocks;
+}
+
 // Converts the public OpenAI-style chat body to the Anthropic Messages API:
 // system/developer messages become the `system` parameter, tool results become
 // user `tool_result` blocks, and assistant tool calls become `tool_use` blocks.
@@ -275,7 +318,12 @@ function anthropicRequestBody(body: any, route: any, stream: boolean) {
     }
     turns.push({
       role: message?.role === "assistant" ? "assistant" : "user",
-      content: anthropicTextBlocks(message?.content),
+      // ECO-03:user 訊息可為 content parts(含 image_url),轉換為 Anthropic
+      // 的 text/image blocks;assistant 純文字訊息維持 text blocks。
+      content:
+        message?.role === "assistant"
+          ? anthropicTextBlocks(message?.content)
+          : anthropicUserBlocks(message?.content),
     });
   }
   // Anthropic folds consecutive same-role turns; tool_result blocks must lead
