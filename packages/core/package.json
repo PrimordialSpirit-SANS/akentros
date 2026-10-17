@@ -1,10 +1,37 @@
 {
   "name": "@akentros/core",
-  "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "Portable Akentros core: pricing authority, billing, API keys, provider pools, inference and SSE.",
+  "description": "Portable Akentros core: pricing authority, USD billing (reserve/settle/refund), API keys, provider pools, inference pipeline and SSE — the behavior core of the self-hosted OpenAI-compatible Akentros AI gateway.",
   "license": "MIT",
+  "keywords": [
+    "ai-gateway",
+    "openai-compatible",
+    "llm",
+    "api-gateway",
+    "billing",
+    "provider-pool",
+    "sse",
+    "api-keys",
+    "typescript"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/PrimordialSpirit-SANS/akentros.git",
+    "directory": "packages/core"
+  },
+  "bugs": "https://github.com/PrimordialSpirit-SANS/akentros/issues",
+  "homepage": "https://github.com/PrimordialSpirit-SANS/akentros#readme",
+  "engines": {
+    "node": ">=20.19"
+  },
+  "sideEffects": false,
+  "files": [
+    "dist",
+    "config",
+    "README.md",
+    "LICENSE"
+  ],
   "exports": {
     "./package.json": "./package.json",
     "./apiKeys": "./src/apiKeys.ts",
@@ -24,8 +51,18 @@
     "./validation": "./src/validation.ts",
     "./sqlDialect": "./src/sqlDialect.ts"
   },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
+    "build": "node scripts/build-dist.mjs",
+    "prepack": "npm run build",
+    "stage": "node scripts/stage-publish.mjs",
     "test": "node --test \"tests/*.test.ts\"",
     "typecheck": "tsc --noEmit"
-  }
+  },
+  "devDependencies": {
+    "amaro": "^1.2.1"
+  },
+  "private": true
 }

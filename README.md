@@ -1,6 +1,6 @@
 # Akentros Gateway
 
-**English.** Akentros Gateway is a self-hosted, OpenAI-compatible AI gateway: USD-based billing, multi-provider pooling with automatic failover, `sk-akentros-*` API keys, and a built-in Traditional-Chinese developer console. Core (`packages/core`) is a portable TypeScript library; the gateway runs as a plain Node.js server on SQLite (no external database), on PostgreSQL — from a long-lived VPS to serverless platforms (Neon's WebSocket driver, Cloudflare Hyperdrive) — **or on Cloudflare Workers inside a Durable Object**; the console is a React + Vite app deployable to Cloudflare Pages.
+**English.** Akentros Gateway is a self-hosted, OpenAI-compatible AI gateway: USD-based billing, multi-provider pooling with automatic failover, `sk-akentros-*` API keys, and a built-in Traditional-Chinese developer console. Core (`packages/core`) is a portable TypeScript library; the gateway runs as a plain Node.js server on SQLite (no external database), on PostgreSQL — from a long-lived VPS to serverless platforms (Neon's WebSocket driver, Cloudflare Hyperdrive) — **or on Cloudflare Workers inside a Durable Object**; the console is a React + Vite app deployable to Cloudflare Pages. Full English documentation: **[README.en.md](README.en.md)**.
 
 ```bash
 cp apps/gateway/.dev.vars.example apps/gateway/.dev.vars   # fill in secrets
@@ -18,7 +18,7 @@ See [Quick start](#快速開始) below, [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)
 
 | 目錄 | 說明 |
 | --- | --- |
-| `packages/core` | 可攜行為核心:定價權威、美元計費(預留/結算/退款,微美元整數)、API 金鑰(HMAC + pepper)、供應商池選路、SSE 解析、schema 版本化遷移 |
+| `packages/core` | 可攜行為核心:定價權威、美元計費(預留/結算/退款,微美元整數)、API 金鑰(HMAC + pepper)、供應商池選路、SSE 解析、schema 版本化遷移。v0.1.0 起亦發佈於 npm:[@akentros/core](https://www.npmjs.com/package/@akentros/core) |
 | `apps/gateway` | Gateway(Hono):Node server(`@hono/node-server` + `node:sqlite`)或 Cloudflare Workers(單一 Durable Object + `storage.sql`);對外暴露 OpenAI 相容 API、開發者管理面、內建帳號系統、定時對帳 |
 | `apps/console` | 開發者控制台(React + Vite):金鑰管理、串流測試、模型目錄、用量紀錄,含離線示範模式 |
 
@@ -132,7 +132,7 @@ const stream = await client.chat.completions.create({
 
 ## 部署
 
-兩種支援的 gateway 拓撲(console 都是靜態站,可放 Cloudflare Pages 或任意靜態主機):
+三種支援的 gateway 拓撲(console 都是靜態站,可放 Cloudflare Pages 或任意靜態主機):
 
 **A. 自架伺服器(Node ≥ 22.18)** — 完整程序(遷移、煙霧測試、對帳、備份)見
 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)。摘要:
@@ -157,6 +157,20 @@ npx wrangler deploy          # secrets 以 wrangler secret put 設定
 
 設定、secrets 與注意事項見 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) 的
 「Topology B: Cloudflare Workers」章節。
+
+**D. Docker / docker compose(容器化自架)** — 拓撲 A 的容器化等價物：gateway
+（Node runtime、`/data` SQLite volume、`/healthz` 健康檢查）+ nginx console
+（`/api` 反向代理，SSE 安全設定、身分標頭覆寫契約）：
+
+```bash
+cp apps/gateway/.dev.vars.example .env    # 填入 secrets
+docker compose up -d --build              # console 在 http://localhost:8080
+docker compose run --rm akentros-gateway npm run migrate   # 首次部署
+```
+
+映像檔、proxy 契約與備份/回滾程序見 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) 的
+「Topology D: Docker / docker compose」章節；發佈版映像隨每個 `v*` tag 推送至
+GHCR。
 
 ## 設定
 
@@ -188,11 +202,16 @@ npx wrangler deploy          # secrets 以 wrangler secret put 設定
 
 | 文件 | 內容 |
 | --- | --- |
+| [README.en.md](README.en.md) | 英文版完整文件(雙語切換) |
 | [docs/openapi.yaml](docs/openapi.yaml) | 公開 API 與管理面完整契約(OpenAPI 3.1) |
 | [docs/PROVIDERS.md](docs/PROVIDERS.md) | 各上游供應商的 API 形態、參數怪癖、價格表、新增供應商程序 |
-| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | 部署 runbook:綁定、遷移、煙霧測試、對帳、canary、回滾 |
+| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | 部署 runbook:拓撲 A–D、遷移、煙霧測試、對帳、canary、回滾 |
+| [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md) | 框架對接:LangChain(JS/Python)、Vercel AI SDK、OpenWebUI、LobeChat |
+| [docs/MIGRATION.md](docs/MIGRATION.md) | 遷移指南:從 LiteLLM 與 one-api |
+| [docs/RELEASING.md](docs/RELEASING.md) | 發佈 runbook:版本對齊、tag、npm 發佈、GHCR 映像、一次性平台設定 |
 | [docs/ADR-0001-rebuild-boundaries.md](docs/ADR-0001-rebuild-boundaries.md) | 架構決策:契約權威、設定分離、安全與計費邊界 |
 | [docs/BRAND_ASSETS.md](docs/BRAND_ASSETS.md) | 品牌圖示政策(第三方商標不隨 repo 散布) |
+| [examples/](examples/) | 可執行範例:Node SDK、Python SDK、cURL(含串流與冪等) |
 
 ## 安全模型(摘要)
 
@@ -202,6 +221,12 @@ npx wrangler deploy          # secrets 以 wrangler secret put 設定
 - 計費全流程冪等,crash 後由定時任務對帳(過期預留自動退款、隔離單自動退款出口)。
 
 發現安全問題請見 [SECURITY.md](SECURITY.md),請勿以 issue 回報。
+
+## 社群與支援
+
+- **問題回報與功能提案**:[issues](https://github.com/PrimordialSpirit-SANS/akentros/issues)(附範本)。
+- **使用問題**:GitHub Discussions(啟用步驟見 [docs/RELEASING.md](docs/RELEASING.md) 的一次性平台設定;啟用前以 issue 處理,管道對照表見 [SUPPORT.md](SUPPORT.md))。
+- **參與貢獻**:請先讀 [CONTRIBUTING.md](CONTRIBUTING.md)(契約先行五規則)與 [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)。
 
 ## 授權
 

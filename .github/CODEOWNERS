@@ -1,2 +1,4 @@
-# Default owners for all paths. Replace @your-handle with the maintainer account.
-* @your-handle
+# ECO-COMM-1 — accountability for every change.
+# The org account owns the repository; the top committer runs releases.
+# Both must be able to review, so either can be requested as a code owner.
+* @PrimordialSpirit-SANS @sans105004

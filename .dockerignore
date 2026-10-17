@@ -1,0 +1,52 @@
+# ECO-SUPPLY-2 — keep the image context lean and secret-free.
+# The gateway runtime reads the TypeScript sources directly; nothing here
+# regenerates from installed state.
+
+# VCS / CI
+.git
+.gitignore
+.github
+.gitleaks.toml
+
+# Dependencies (rebuilt inside each stage)
+node_modules
+**/node_modules
+
+# Build outputs (rebuilt inside the builder stage; the gateway runs src/)
+**/dist
+**/dist-worker
+**/.publish-stage
+*.tsbuildinfo
+
+# Local state and secrets — must never enter an image
+.env
+.env.*
+**/.dev.vars
+**/.dev.vars.*
+!**/.dev.vars.example
+**/.env
+**/.env.*
+!apps/console/.env.example
+data
+*.db
+*.db-shm
+*.db-wal
+
+# Wrangler / Cloudflare local state
+.wrangler
+**/.wrangler
+
+# Logs and reports
+*.log
+npm-install.log
+
+# Docs that are not needed to build or run
+docs
+examples
+CHANGELOG.md
+DEFECT_REPORT.md
+SECURITY.md
+CONTRIBUTING.md
+CODE_OF_CONDUCT.md
+SUPPORT.md
+README.en.md

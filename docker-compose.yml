@@ -1,0 +1,61 @@
+# ECO-SUPPLY-2 — one-command self-host (Topology D in docs/DEPLOYMENT.md).
+#
+#   cp apps/gateway/.dev.vars.example .env    # fill JWT_SECRET / pepper / provider keys
+#   docker compose up -d --build
+#   docker compose run --rm akentros-gateway npm run migrate   # first deploy only
+#   open http://localhost:8080
+#
+# .env is read by the gateway service (env_file, optional so `up` works for a
+# demo even before you fill secrets — the gateway fails closed without
+# JWT_SECRET/pepper, which is the intended behavior, not a compose bug).
+
+name: akentros
+
+services:
+  akentros-gateway:
+    build:
+      context: .
+      target: gateway
+    image: akentros/gateway:local
+    restart: unless-stopped
+    environment:
+      AKENTROS_ENABLED: "true"
+      AKENTROS_HOST: "0.0.0.0"
+      AKENTROS_DB_PATH: /data/akentros.db
+      # The compose nginx proxy overwrites identity headers (see
+      # deploy/nginx-console.conf), so trusting it is required for
+      # per-client login rate limiting instead of one shared bucket
+      # (README: AKENTROS_TRUST_PROXY).
+      AKENTROS_TRUST_PROXY: "true"
+      # The console is served from this compose network on port 8080.
+      FRONTEND_ORIGINS: "http://localhost:8080"
+    env_file:
+      - path: .env
+        required: false
+    volumes:
+      - akentros-data:/data
+    # Gateway stays on the compose network only; publish it directly (e.g.
+    # for SDK traffic without the console) by uncommenting:
+    # ports:
+    #   - "8787:8787"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8787/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+
+  akentros-console:
+    build:
+      context: .
+      target: console
+    image: akentros/console:local
+    restart: unless-stopped
+    depends_on:
+      akentros-gateway:
+        condition: service_healthy
+    ports:
+      - "8080:80"
+
+volumes:
+  akentros-data:

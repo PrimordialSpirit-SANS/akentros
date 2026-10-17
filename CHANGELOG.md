@@ -6,6 +6,8 @@ versioning follows [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-10-15
+
 ### Security
 
 - **Server-side session revocation via session epochs (SEC-01, schema v4).**
@@ -686,3 +688,88 @@ versioning follows [SemVer](https://semver.org/).
   ZWJ compound emoji (family, professions, flag-with-symbol sequences) are
   intentionally excluded along with the other invisible joiners, since
   ZWJ is itself a spoofing vector.
+
+### Ecosystem
+
+First-release remediation of the 2026-10-15 ecosystem audit
+("supply & distribution" / "community visibility" / "integration & docs"
+tracked as ECO-SUPPLY / ECO-COMM / ECO-INTEG; the runbook-level tracking
+conventions and the two platform settings that cannot be committed as files
+are in `docs/RELEASING.md`).
+
+- **Publish `@akentros/core` to npm (ECO-SUPPLY-1).** The portable core was
+  previously unpublished — the README's "portable library" claim was
+  unverifiable by dependency management. The in-repo manifest stays
+  `private: true` (an accidental `npm publish` in `packages/core` is refused
+  by npm itself), and the publishable artifact is assembled by
+  `packages/core/scripts/stage-publish.mjs`: it rebuilds `dist/`, derives
+  the `exports`→dist manifest mechanically from the src map (no duplicated
+  table to drift), strips `scripts`/`devDependencies` (an artifact never
+  runs lifecycle code), and verifies every exports target on disk plus
+  smoke-imports all 16 modules from the stage directory. `dist/` itself is
+  produced by `scripts/build-dist.mjs` using `amaro` (`strip-only`) — the
+  same erasable-syntax type-stripping transform Node applies when the repo
+  runs its TypeScript sources directly, so published behavior is
+  byte-identical to development behavior — plus `tsc --emitDeclarationOnly`
+  for `.d.ts`. npm 11's deprecated `publishConfig.exports` override was
+  evaluated and rejected: it silently fails to apply. CI now pins the whole
+  pipeline with a dry-run "publish artifact sanity" step (grep the staged
+  tarball for `dist/billing.js`, assert no `src/billing.ts`).
+- **Docker distribution (ECO-SUPPLY-2).** Multi-stage `Dockerfile` with two
+  runnable targets: `gateway` (node:22-slim, production dependency tree via
+  `npm ci --omit=dev --ignore-scripts`, unprivileged `node` user, SQLite on
+  the `/data` volume, `AKENTROS_HOST=0.0.0.0`, `/healthz` healthcheck,
+  TypeScript sources executed directly — same runtime mode as the bare-metal
+  topology) and `console` (nginx:1.27-alpine serving the Vite build with
+  same-origin `/api`, hashed-asset immutable caching, SPA fallback).
+  `docker-compose.yml` wires both with a named data volume and
+  `AKENTROS_TRUST_PROXY=true`; `deploy/nginx-console.conf` implements the
+  README's identity-header contract (overwrites `cf-connecting-ip` from the
+  socket, appends `X-Forwarded-For`) and SSE-safe proxying (buffering off,
+  3600s read timeout). Documented as Topology D in `docs/DEPLOYMENT.md`
+  (first deploy, upgrade/rollback, volume backup, PostgreSQL variant,
+  GHCR images); `.dockerignore` keeps secrets, databases and local state out
+  of image contexts; Dependabot now tracks the docker ecosystem alongside
+  npm and actions.
+- **Tag-driven release automation (ECO-SUPPLY-3).** `.github/workflows/
+  release.yml`: pushing an annotated `v*` tag runs the full CI gauntlet,
+  hard-fails if any of the four workspace manifests diverges from the tag
+  (`guard-version-alignment`), stages + publishes `@akentros/core` to npm
+  (`NPM_TOKEN`), builds and pushes both Docker targets to GHCR (lowercased
+  repository path, `gateway`/`console` image names, version + `latest`
+  tags), and opens the GitHub Release with generated notes — including a
+  registry availability probe. `docs/RELEASING.md` is the operator runbook:
+  version-alignment pre-flight, CHANGELOG cut, the one-time platform
+  settings (repo topics list, Discussions enablement — both web-UI-only),
+  the `NPM_TOKEN` creation recipe, post-release verification, and the
+  2–4-week ecosystem metrics review (stars / external forks / external
+  PRs, `@akentros/core` weekly downloads, external mentions).
+- **Version anchors (ECO-SUPPLY-4).** This is the first tagged release: the
+  CHANGELOG's accumulated `[Unreleased]` history is cut into a dated
+  `[0.1.0]` section, all four workspace manifests align at `0.1.0`, the
+  annotated `v0.1.0` git tag exists, and compare/release links are recorded
+  at the bottom of this file. Future releases follow `docs/RELEASING.md`.
+- **Community facilities (ECO-COMM-1..5).** `CODEOWNERS` now names the real
+  maintainer accounts (the org and the release runner) instead of the
+  unconfigured `@your-handle` template; `CODE_OF_CONDUCT.md` adopts
+  Contributor Covenant 2.1 with private reporting through the same channel
+  as security reports; `SUPPORT.md` routes questions/bugs/security to the
+  right channel; `.github/PULL_REQUEST_TEMPLATE.md` mirrors CONTRIBUTING's
+  five rules as a checklist with the audit-ID tracking conventions; repo
+  topics and Discussions enablement are specified in `docs/RELEASING.md`
+  (web-UI settings, not committable files).
+- **Integration & documentation reach (ECO-INTEG-1..4).** `examples/` with
+  runnable Node OpenAI SDK (chat, SSE streaming, idempotency 409/replay
+  semantics), Python OpenAI SDK and cURL examples, each with a README and
+  shared environment conventions; `docs/INTEGRATIONS.md` covers LangChain
+  (JS + Python), Vercel AI SDK, OpenWebUI and LobeChat wiring plus the
+  three cross-framework semantic differences; `docs/MIGRATION.md` maps
+  LiteLLM and one-api concepts (virtual keys/tokens, channels/provider
+  pools, budgets/quota, model naming) onto Akentros with a
+  post-migration verification checklist; `README.en.md` provides the full
+  English README with bilingual switch links, CI/license/npm badges, and
+  the Docker topology. Both READMEs, `CONTRIBUTING.md` and the docs tables
+  now reference the new material.
+
+[Unreleased]: https://github.com/PrimordialSpirit-SANS/akentros/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/PrimordialSpirit-SANS/akentros/releases/tag/v0.1.0

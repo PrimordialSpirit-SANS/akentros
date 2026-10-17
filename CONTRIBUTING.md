@@ -8,10 +8,12 @@
 npm install
 npm run typecheck   # 三個 workspace 的 tsc --noEmit
 npm test            # packages/core(node --test,SQLite in-memory)+ apps/console(vitest)+ apps/gateway(node --test)
-npm run build       # console 生產建置
+npm run build       # console 生產建置 + core dist(npm 發佈產物)
 ```
 
 ## 規則
+
+0. **行為準則**:參與即代表同意遵守 [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)。
 
 1. **契約先行**:改變公開 API 行為前,先更新 `docs/openapi.yaml` 與相關契約測試(`packages/core/tests/openapi-contract.test.ts`、`developer-route-contract.test.ts`),實作差異不得先於契約。
 2. **定價與 catalog 權威分離**:`packages/core/config/backend-pricing.v1.json` 是唯一 runtime 權威;`apps/console/public/data/akentros/*` 只供展示。兩邊漂移會被 `config-validation.test.ts` 擋下。

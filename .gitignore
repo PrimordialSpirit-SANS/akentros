@@ -26,3 +26,6 @@ Thumbs.db
 
 # Local agent workspace files
 .zcode/
+
+# ECO-SUPPLY-1: npm publish staging (assembled by packages/core/scripts/stage-publish.mjs)
+.publish-stage/

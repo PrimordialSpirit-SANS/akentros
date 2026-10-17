@@ -15,3 +15,9 @@ updates:
     directory: /
     schedule:
       interval: weekly
+  # ECO-SUPPLY-2: keep the Dockerfile base images (node:22-slim,
+  # nginx:1.27-alpine) fresh alongside the npm tree.
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly

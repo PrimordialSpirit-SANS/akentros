@@ -6,9 +6,10 @@ default when migrating or deploying Akentros.
 
 ## 0. Supported deployment topologies (read first)
 
-Akentros supports three gateway topologies. All run the same Hono app and the
-same versioned schema (SQLite dialect for A/B, PostgreSQL dialect for C); they
-differ only in the database adapter and the maintenance scheduler.
+Akentros supports four gateway topologies. All run the same Hono app and the
+same versioned schema (SQLite dialect for A/B/D, PostgreSQL dialect for C);
+they differ only in the database adapter, the maintenance scheduler and the
+packaging (bare Node, Workers, or container).
 
 ### Topology A: Node server (self-hosted, reference topology)
 
@@ -210,6 +211,66 @@ max 10) is right for a long-lived process; TLS is automatic for remote hosts.
   process.
 - Pools are cached on `globalThis`, so dev-server hot reloads and isolate
   reloads reuse connections instead of leaking them.
+
+### Topology D: Docker / docker compose (containerized self-host)
+
+**`docker compose up -d --build` is the containerized equivalent of Topology A**
+(ECO-SUPPLY-2). The same Node runtime, the same TypeScript sources executed
+directly (type stripping — no compile step inside the image), SQLite on a named
+volume, and an nginx console target that proxies `/api` to the gateway with
+SSE-safe settings and the identity-header contract below.
+
+**First deploy**
+
+```bash
+cp apps/gateway/.dev.vars.example .env
+#   fill JWT_SECRET / AKENTROS_API_KEY_PEPPER (openssl rand -hex 32)
+#   ADMIN_EMAIL / ADMIN_PASSWORD, and at least one provider key
+docker compose up -d --build                              # console on :8080
+docker compose run --rm akentros-gateway npm run migrate  # schema + admin seed
+```
+
+**What the image does**
+
+- Gateway target: `node:22-slim`, production dependency tree only
+  (`npm ci --omit=dev --ignore-scripts`), unprivileged `node` user, SQLite at
+  `/data/akentros.db` (named volume `akentros-data`), `AKENTROS_HOST=0.0.0.0`
+  (containers must bind all interfaces — the loopback default is a
+  bare-metal-only safety), `/healthz` wired into the compose healthcheck.
+- Console target: `nginx:1.27-alpine` serving the Vite build with same-origin
+  `/api` base (rebuild with `--build-arg VITE_AKENTROS_API_BASE=…` to point
+  elsewhere), hashed-asset immutable caching, SPA fallback.
+- Operational scripts keep working inside the container: `migrate`,
+  `reconcileAkentros`, `revokeAkentrosSessions` (see sections 2, 4 and the
+  session-revocation notes — prefix with
+  `docker compose run --rm akentros-gateway`).
+
+**Proxy contract (do not skip).** The compose nginx overwrites
+`cf-connecting-ip` from the socket and appends `X-Forwarded-For`, so the
+compose file sets `AKENTROS_TRUST_PROXY=true`. If you put your own proxy in
+front of this stack, it must likewise overwrite (not append) the identity
+headers — see the README's `AKENTROS_TRUST_PROXY` row. `FRONTEND_ORIGINS` in
+`docker-compose.yml` must list every origin the console is reachable at.
+
+**Upgrade / rollback.** Pull, rebuild, re-run `migrate`, then `docker compose
+up -d` (rolling replace). The SQLite volume is the only state; back it up
+with the container stopped (`docker compose stop akentros-gateway && docker
+run --rm -v akentros_akentros-data:/data -v $PWD:/backup node:22-slim tar czf
+/backup/akentros-db.tar.gz -C /data .`) and restore by reversing the command.
+Rollback = restore the volume + re-run the previous image tag; schema
+migrations are forward-only, so roll back the backup, not just the binary.
+
+**PostgreSQL variant.** Set `DATABASE_URL` in `.env` (Topology C applies
+unchanged inside the container); the `/data` volume then holds nothing worth
+mounting. The `pgServerless` driver rules and connection-budget guidance
+above apply verbatim.
+
+**Published images.** The release workflow (`.github/workflows/release.yml`)
+pushes the `gateway` and `console` targets to GHCR on every `v*` tag —
+`ghcr.io/<owner>/gateway:<version>` and `ghcr.io/<owner>/console:<version>`
+(owner lowercased, since GHCR requires it). Swap the `build:` block for
+`image: ghcr.io/...` in compose to run a released version instead of a local
+build.
 
 ## 1. Required configuration
 

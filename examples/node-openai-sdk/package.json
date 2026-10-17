@@ -1,0 +1,14 @@
+{
+  "name": "akentros-example-node-openai-sdk",
+  "private": true,
+  "type": "module",
+  "description": "Calling an Akentros gateway with the official OpenAI Node SDK: chat, SSE streaming, idempotency.",
+  "scripts": {
+    "chat": "node chat.mjs",
+    "stream": "node stream.mjs",
+    "idempotency": "node idempotency.mjs"
+  },
+  "dependencies": {
+    "openai": "^7.4.0"
+  }
+}
